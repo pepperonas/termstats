@@ -4,22 +4,53 @@
 
 **Beautiful terminal server dashboard with real-time charts.**
 
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+<!-- status -->
+[![Tests](https://github.com/pepperonas/termstats/actions/workflows/tests.yml/badge.svg)](https://github.com/pepperonas/termstats/actions/workflows/tests.yml)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-153-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![Version](https://img.shields.io/badge/version-1.1.3-blue)](https://github.com/pepperonas/termstats/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTQgNGgxNnYxMkg0eiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48cGF0aCBkPSJNMSAyMGgyMiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=)](https://github.com/pepperonas/termstats)
+[![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)](https://github.com/pepperonas/termstats/commits/main)
 
+<!-- runtime -->
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python versions](https://img.shields.io/badge/tested%20on-3.9%20%7C%203.13-3776AB?logo=python&logoColor=white)](https://github.com/pepperonas/termstats/actions/workflows/tests.yml)
+[![Terminal](https://img.shields.io/badge/interface-terminal-black?logo=gnubash&logoColor=white)](#usage)
+[![No config](https://img.shields.io/badge/config-none-informational)](#usage)
+[![No telemetry](https://img.shields.io/badge/telemetry-none-success?logo=ghostery&logoColor=white)](#how-it-works)
+[![Offline](https://img.shields.io/badge/network%20calls-zero-success)](#how-it-works)
+
+<!-- platforms -->
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/pepperonas/termstats)
 [![Linux](https://img.shields.io/badge/Linux-supported-success?logo=linux&logoColor=white)](https://github.com/pepperonas/termstats)
 [![macOS](https://img.shields.io/badge/macOS-supported-success?logo=apple&logoColor=white)](https://github.com/pepperonas/termstats)
 [![Windows](https://img.shields.io/badge/Windows-supported-success?logo=windows&logoColor=white)](https://github.com/pepperonas/termstats)
+[![Raspberry Pi](https://img.shields.io/badge/Raspberry%20Pi-works-C51A4A?logo=raspberrypi&logoColor=white)](#platform-support)
+[![SSH friendly](https://img.shields.io/badge/over%20SSH-yes-success?logo=openssh&logoColor=white)](#usage)
 
+<!-- dependencies -->
 [![psutil](https://img.shields.io/badge/psutil-%E2%89%A55.9-orange?logo=python&logoColor=white)](https://github.com/giampaolo/psutil)
 [![rich](https://img.shields.io/badge/rich-%E2%89%A513.0-purple?logo=python&logoColor=white)](https://github.com/Textualize/rich)
 [![plotext](https://img.shields.io/badge/plotext-5.x-blue?logo=python&logoColor=white)](https://github.com/piccolomo/plotext)
+[![Dependencies](https://img.shields.io/badge/runtime%20deps-3-informational)](#requirements)
+[![Install](https://img.shields.io/badge/install-pipx%20%2B%20git-2088FF?logo=git&logoColor=white)](#installation)
 
+<!-- repository -->
+[![Top language](https://img.shields.io/github/languages/top/pepperonas/termstats?logo=python&logoColor=white)](https://github.com/pepperonas/termstats)
+[![Code size](https://img.shields.io/github/languages/code-size/pepperonas/termstats)](https://github.com/pepperonas/termstats)
+[![Repo size](https://img.shields.io/github/repo-size/pepperonas/termstats)](https://github.com/pepperonas/termstats)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/pepperonas/termstats)](https://github.com/pepperonas/termstats/commits/main)
+[![Last commit](https://img.shields.io/github/last-commit/pepperonas/termstats)](https://github.com/pepperonas/termstats/commits/main)
+[![Contributors](https://img.shields.io/github/contributors/pepperonas/termstats)](https://github.com/pepperonas/termstats/graphs/contributors)
+[![Open issues](https://img.shields.io/github/issues/pepperonas/termstats)](https://github.com/pepperonas/termstats/issues)
+[![Open PRs](https://img.shields.io/github/issues-pr/pepperonas/termstats)](https://github.com/pepperonas/termstats/pulls)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pepperonas/termstats/pulls)
-[![GitHub stars](https://img.shields.io/github/stars/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats)
-[![GitHub issues](https://img.shields.io/github/issues/pepperonas/termstats)](https://github.com/pepperonas/termstats/issues)
-[![GitHub last commit](https://img.shields.io/github/last-commit/pepperonas/termstats)](https://github.com/pepperonas/termstats/commits)
+
+<!-- social -->
+[![Stars](https://img.shields.io/github/stars/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats/stargazers)
+[![Forks](https://img.shields.io/github/forks/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats/network/members)
+[![Watchers](https://img.shields.io/github/watchers/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats/watchers)
+
+[![Made by celox.io](https://img.shields.io/badge/bottled%20%F0%9F%8D%BB%20by-Martin%20Pfeffer%20%C2%B7%20celox.io-informational)](https://celox.io)
 
 </div>
 
@@ -82,7 +113,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 1.1.2
+termstats --version   # -> termstats 1.1.3
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -242,11 +273,40 @@ termstats/
 git clone https://github.com/pepperonas/termstats.git
 cd termstats
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -e ".[dev]"   # runtime deps + pytest
 
 termstats -l             # run it
 python -m termstats -l   # same thing without the console script
 ```
+
+### Tests
+
+```bash
+pytest                   # 153 tests, well under a second
+pytest -q tests/test_args.py
+```
+
+The suite is pure unit tests — no sleeping, no live terminal, no network. psutil is stubbed
+with fakes so the collectors can be driven through their failure paths (an unreadable
+mountpoint, `AccessDenied` on connection counts, a process that vanishes mid-iteration), and
+the chart layer is tested both against real plotext and against a simulated plotext 6.x.
+
+What it covers:
+
+| Area | Examples |
+|------|----------|
+| Argument parsing | every flag spelling, unknown options exit 2, `-i` value consumption, `nan`/`inf`/`0`/negative intervals |
+| Charts | the plotext 5.x guard, graceful degradation, byte→KB conversion, the 0–100 CPU axis, Linux-only steal series |
+| Formatting | bar fill and colour thresholds, rate scaling across the B/KB/MB boundaries |
+| Collectors | pseudo-filesystem filtering, mountpoint truncation, rate baselines, process sorting and limits, `/proc/stat` steal parsing |
+| Packaging | the two version strings agree, `plotext<6` stays pinned, no `stats` alias, no PyPI claim, README badges match the package |
+| Dashboard | one full render against the real machine, one history sample per render, brand line intact |
+
+Every assertion that guards a past bug was verified by re-introducing the bug and watching
+the test go red. Do the same for new ones — a test you have not seen fail is not a guarantee.
+
+CI runs the suite on Linux, macOS and Windows (and on Python 3.9, the claimed floor) via
+`.github/workflows/tests.yml`.
 
 Build distributables:
 
@@ -256,7 +316,9 @@ python -m build          # -> dist/termstats-<version>-py3-none-any.whl + .tar.g
 ```
 
 When bumping the version, change it in **both** `pyproject.toml` and
-`termstats/__init__.py` — the header and `--version` read the latter.
+`termstats/__init__.py` — the header and `--version` read the latter. The README version
+badge and the `# -> termstats X.Y.Z` line are checked by the test suite, so a forgotten bump
+shows up as a red test rather than as a stale badge.
 
 Uninstall:
 

@@ -6,6 +6,7 @@ Cross-platform system monitoring: CPU, RAM, Swap, Disk, Network,
 Top Processes, and live history graphs — all in your terminal.
 """
 
+import math
 import platform
 import sys
 import time
@@ -433,8 +434,8 @@ def main():
                 interval = float(raw)
             except ValueError:
                 _fail(f"option '{arg}' needs a number, got '{raw}'")
-            if interval <= 0:
-                _fail(f"option '{arg}' needs a positive number, got '{raw}'")
+            if not math.isfinite(interval) or interval <= 0:
+                _fail(f"option '{arg}' needs a positive, finite number, got '{raw}'")
             i += 1
         else:
             _fail(f"unknown option '{arg}'")

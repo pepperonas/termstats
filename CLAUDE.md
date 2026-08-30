@@ -40,6 +40,15 @@ termstats/
 │   ├── __init__.py   # __version__ — the single source the header and --version read
 │   ├── __main__.py   # python -m termstats
 │   └── cli.py        # everything: collectors, rendering, arg parsing, main()
+├── tests/
+│   ├── conftest.py          # autouse state reset + chart-capture fixtures
+│   ├── test_args.py         # flag spellings, rejected input, help/version
+│   ├── test_charts.py       # plotext guard, degradation, series contents
+│   ├── test_collectors.py   # psutil stubs, failure paths, /proc/stat steal
+│   ├── test_dashboard.py    # one real render, history accounting, brand line
+│   ├── test_formatting.py   # bar_horizontal, _fmt_bytes_rate boundaries
+│   └── test_packaging.py    # version sync, dependency pins, the rename, README claims
+├── .github/workflows/tests.yml               # Linux/macOS/Windows + py3.9
 ├── examples/celox-health-report.example.py   # server health report template, NOT packaged
 ├── pyproject.toml    # metadata + [project.scripts] termstats = "termstats.cli:main"
 └── termstats.png     # README hero image (raw.githubusercontent URL)
@@ -57,7 +66,10 @@ The version lives in **two** places and both must move together:
 - `termstats/__init__.py` → `__version__ = "X.Y.Z"`
 
 The dashboard header and `--version` read `__init__.py`; packaging reads `pyproject.toml`. A
-mismatch is invisible until someone reads the header.
+mismatch used to be invisible until someone read the header — `test_packaging.py` now fails
+on it, and on a stale README version badge or `# -> termstats X.Y.Z` line. **The unit-test
+count in the README badge is NOT checked** (parametrised cases make an exact pin brittle);
+update `unit%20tests-<n>` by hand when you add tests.
 
 ## Local install / running
 
@@ -77,7 +89,38 @@ live in the pipx venv, not in Homebrew's Python. That is expected, not a bug.
 
 ## Testing
 
-There is **no test suite**. Verification is manual and must actually be run, not assumed:
+**153 pytest tests** in `tests/`, all pure unit tests — no sleeps, no live terminal, no
+network, well under a second:
+
+```bash
+pip install -e ".[dev]" && pytest        # or: ~/.local/pipx/venvs/termstats/bin/pytest
+```
+
+pytest is injected into the pipx venv on this Mac (`pipx inject termstats pytest`), so the
+suite runs against the same resolved dependency set the command itself uses — which is the
+point, given that the last two bugs were a dependency resolve and an argument parser.
+
+`tests/conftest.py` carries the one fixture everything depends on: **`clean_module_state` is
+autouse and resets the four history deques, the two `_steal_last_*` globals and the
+`_last_io`/`_last`/`_last_time` function attributes.** Rate state survives between calls by
+design, so without it a collector test passes or fails depending on what ran before it.
+
+⚠️ **Mutation-test every new pin.** Thirteen mutations were run against this suite
+(dropping `-live`, silencing the unknown-option error, narrowing the chart `except`, relaxing
+the plotext pin, re-adding a `stats` alias, desyncing the two version strings, …) and all
+thirteen were caught. A test you have not watched fail is not a guarantee — this repo's
+sibling projects have shipped grün-blind pins more than once.
+
+⚠️ Two traps hit while writing these: an anchor string whose indentation did not match
+reports "ANCHOR MISSING" and quietly proves nothing, and `f"p{i}" in output` matched `p2`
+inside `p29` — count rows (`Table.row_count`), not name substrings.
+
+CI (`.github/workflows/tests.yml`) runs the suite on Linux/macOS/Windows plus Python 3.9, and
+prints the resolved psutil/plotext/rich versions — a fresh resolve is exactly how the
+plotext 6.0.0 break arrived.
+
+The manual checks still matter for anything the suite deliberately does not touch (real
+terminal output, the alternate screen):
 
 ```bash
 termstats --version && termstats --help
