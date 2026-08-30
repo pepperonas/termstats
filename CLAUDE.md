@@ -97,6 +97,16 @@ for i in range(60):
 print(cli.get_cpu_chart(70, 12))
 ```
 
+⚠️ When driving live mode under a pty, **keep draining the master fd while waiting for the
+child to exit**. Stop reading and the pty buffer fills; the child then blocks in `write()`
+during rich's screen teardown and never processes the `SIGINT` — the harness hangs and it
+looks like the app ignores Ctrl+C. It does not.
+
+Two shell traps that cost time here: **zsh does not word-split unquoted parameters**, so
+`for a in "-l -i abc"; do termstats $a; done` passes one 11-character argument and every case
+comes back "unknown option"; and `wait %1` in a non-interactive shell returns 127 — drive
+multi-step process tests from Python, not from a shell loop.
+
 Snapshot mode always shows `Collecting data...` in both charts — rates need two samples, and a
 snapshot only takes one after priming. That is correct behaviour; do not "fix" it.
 
@@ -127,9 +137,15 @@ snapshot only takes one after priming. That is correct behaviour; do not "fix" i
   than one missing a line.
 - **Live mode uses rich's alternate screen** (`Live(..., screen=True)`); `KeyboardInterrupt` is
   caught so the terminal is restored and scrollback survives.
-- **`-i` with a non-numeric value raises an uncaught `ValueError`**, and `-i` as the final
-  argument is silently ignored. Known, pre-existing, unfixed — argument handling is a hand-
-  rolled `sys.argv` loop, not `argparse`.
+- **Argument handling is a hand-rolled `sys.argv` loop, not `argparse` — so it validates by
+  hand.** Until 1.1.2 it matched only the exact flag spellings and **silently ignored
+  everything else**: `termstats -live` ran a *snapshot*, which shows `Collecting data...` in
+  both history panels and reads as "live mode is broken" (user report, 2026-08-30). Two
+  siblings of the same defect: `-i` as the last argument was dropped, and `-i abc` raised an
+  uncaught `ValueError`. Now every token must match something, long options are accepted with
+  one dash too (`-live`, `-interval`, `-version`, `-help`), and bad input goes to stderr with
+  exit code 2 via `_fail()`. If you add a flag, add it to the matching `_*_FLAGS` tuple —
+  anything not in a tuple is now a hard error, which is the point.
 - **The header string is `" TERMSTATS "`** plus the `(bottled 🍻 by Martin Pfeffer - celox.io)`
   branding — the branding is deliberate, don't strip it as noise.
 

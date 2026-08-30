@@ -82,7 +82,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 1.1.1
+termstats --version   # -> termstats 1.1.2
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -110,12 +110,14 @@ python -m termstats -l
 
 | Flag | Description |
 |------|-------------|
-| `-l`, `--live` | Live updating dashboard (full-screen, alternate buffer) |
-| `-i N`, `--interval N` | Update interval in seconds (default: 1) |
-| `-V`, `--version` | Show version |
-| `-h`, `--help` | Show help |
+| `-l`, `--live`, `-live` | Live updating dashboard (full-screen, alternate buffer) |
+| `-i N`, `--interval N`, `-interval N` | Update interval in seconds (default: 1) |
+| `-V`, `--version`, `-version` | Show version |
+| `-h`, `--help`, `-help` | Show help |
 
-Flags may be combined in any order. Unknown arguments are ignored.
+Flags may be combined in any order, and every long option is also accepted with a single dash
+(`-live`, `-interval`, …). An unknown option or a bad interval is an **error** — message on
+stderr, exit code 2 — not a silent fallback to snapshot mode.
 
 ### Exit
 
@@ -304,6 +306,11 @@ environment termstats was installed into.
 
 **Charts stay on `Collecting data...`** — expected in snapshot mode; they need two samples.
 Run `termstats -l`.
+
+**`termstats -live` printed a snapshot instead of the live dashboard** — before 1.1.2 the
+parser matched only `-l`/`--live` and silently ignored everything else, so `-live` fell
+through to snapshot mode, where both history panels read `Collecting data...`. Fixed in
+1.1.2: `-live` works, and unknown options now exit 2 with a message.
 
 **`AttributeError: module 'plotext' has no attribute 'clear_figure'`** — plotext 6.x is in
 your environment. It removed the 5.x API the charts use. Fixed in 1.1.1, which pins

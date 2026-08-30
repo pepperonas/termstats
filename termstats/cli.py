@@ -369,40 +369,76 @@ def run_live(interval=1.0):
         pass
 
 
+# Long options are accepted with one dash too ("-live"). The hand-rolled parser used to
+# match only "-l"/"--live" and SILENTLY ignore everything else, so "termstats -live" ran a
+# snapshot - which shows "Collecting data..." in both history panels and looks like live
+# mode is broken. Unknown options are now an error, not a shrug.
+_HELP_FLAGS = ("-h", "--help", "-help")
+_VERSION_FLAGS = ("-V", "--version", "-version")
+_LIVE_FLAGS = ("-l", "--live", "-live")
+_INTERVAL_FLAGS = ("-i", "--interval", "-interval")
+
+
+def print_help():
+    print(f"termstats v{__version__} - Beautiful terminal server dashboard")
+    print()
+    print("Usage: termstats [OPTIONS]")
+    print()
+    print("Options:")
+    print("  -l, --live          Live dashboard (Ctrl+C to exit)")
+    print("  -i, --interval N    Update interval in seconds (default: 1)")
+    print("  -V, --version       Show version")
+    print("  -h, --help          Show this help")
+    print()
+    print("Long options also work with a single dash: -live, -interval, -version, -help")
+    print()
+    print("Examples:")
+    print("  termstats           Single snapshot")
+    print("  termstats -l        Live dashboard")
+    print("  termstats -l -i 3   Live, update every 3 seconds")
+    print()
+    print("Module form:  python -m termstats [OPTIONS]")
+
+
+def _fail(message):
+    print(f"termstats: {message}", file=sys.stderr)
+    print("Try 'termstats --help' for usage.", file=sys.stderr)
+    sys.exit(2)
+
+
 def main():
     args = sys.argv[1:]
 
-    if "-h" in args or "--help" in args:
-        print(f"termstats v{__version__} - Beautiful terminal server dashboard")
-        print()
-        print("Usage: termstats [OPTIONS]")
-        print()
-        print("Options:")
-        print("  -l, --live          Live dashboard (Ctrl+C to exit)")
-        print("  -i, --interval N    Update interval in seconds (default: 1)")
-        print("  -V, --version       Show version")
-        print("  -h, --help          Show this help")
-        print()
-        print("Examples:")
-        print("  termstats           Single snapshot")
-        print("  termstats -l        Live dashboard")
-        print("  termstats -l -i 3   Live, update every 3 seconds")
-        print()
-        print("Module form:  python -m termstats [OPTIONS]")
+    if any(a in _HELP_FLAGS for a in args):
+        print_help()
         sys.exit(0)
 
-    if "-V" in args or "--version" in args:
+    if any(a in _VERSION_FLAGS for a in args):
         print(f"termstats {__version__}")
         sys.exit(0)
 
     interval = 1.0
     live_mode = False
 
-    for i, arg in enumerate(args):
-        if arg in ("-l", "--live"):
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in _LIVE_FLAGS:
             live_mode = True
-        elif arg in ("-i", "--interval") and i + 1 < len(args):
-            interval = float(args[i + 1])
+        elif arg in _INTERVAL_FLAGS:
+            if i + 1 >= len(args):
+                _fail(f"option '{arg}' needs an interval in seconds")
+            raw = args[i + 1]
+            try:
+                interval = float(raw)
+            except ValueError:
+                _fail(f"option '{arg}' needs a number, got '{raw}'")
+            if interval <= 0:
+                _fail(f"option '{arg}' needs a positive number, got '{raw}'")
+            i += 1
+        else:
+            _fail(f"unknown option '{arg}'")
+        i += 1
 
     if live_mode:
         run_live(interval)
