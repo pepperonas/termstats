@@ -84,11 +84,36 @@ termstats --version && termstats --help
 COLUMNS=150 LINES=45 termstats | head -60   # renders all panels non-interactively
 ```
 
+⚠️ Snapshot mode does **not** exercise the chart code — both charts short-circuit to
+`Collecting data...`. The `clear_figure` crash of 2026-08-30 lived entirely in a path that
+`termstats | head` never reaches. To actually cover it, either drive live mode under a real
+pty (rich renders nothing to a plain pipe, so a `subprocess.PIPE` run proves nothing) or
+prime the deques and call the collectors directly:
+
+```python
+from termstats import cli
+for i in range(60):
+    cli.cpu_history.append(i); cli.net_sent_history.append(1.0); cli.net_recv_history.append(2.0)
+print(cli.get_cpu_chart(70, 12))
+```
+
 Snapshot mode always shows `Collecting data...` in both charts — rates need two samples, and a
 snapshot only takes one after priming. That is correct behaviour; do not "fix" it.
 
 ## Gotchas
 
+- **plotext is pinned `<6` — do not relax it.** plotext **6.0.0** (PyPI 2026-08-23, labelled
+  beta upstream) is a full rewrite: the 5.x top-level API the charts are written against
+  (`clear_figure`, `plot`, `ylim`, `plotsize`, `build`) is gone, replaced by a `plt.figure`
+  object with `line`/`signal`/`clear`/`build`. With the old unpinned `plotext>=5.2`, a fresh
+  install picked 6.0.0 and `termstats --live` died with
+  `AttributeError: module 'plotext' has no attribute 'clear_figure'` (fixed in 1.1.1). The
+  latest usable release is **5.3.2**. Porting to the 6.x API is a real option later, but not
+  while it is beta — and it would break every 5.x environment.
+- **Charts fail soft.** `_render_chart()` checks `_PLOTEXT_5` (the five 5.x attributes) and
+  wraps the build in `try/except`, so a library break costs a chart, not the dashboard —
+  the same rule as the OS collectors below. Verify that path by stubbing
+  `sys.modules["plotext"]` with an empty module before importing `termstats.cli`.
 - **Rates need two samples.** CPU %, disk I/O and network throughput are deltas held in
   function attributes (`get_disk_section._last_io`, `get_network_section._last`) and
   module-level `deque(maxlen=60)`s. First call always yields 0 — hence `_prime_measurements()`

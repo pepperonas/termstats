@@ -14,7 +14,7 @@
 
 [![psutil](https://img.shields.io/badge/psutil-%E2%89%A55.9-orange?logo=python&logoColor=white)](https://github.com/giampaolo/psutil)
 [![rich](https://img.shields.io/badge/rich-%E2%89%A513.0-purple?logo=python&logoColor=white)](https://github.com/Textualize/rich)
-[![plotext](https://img.shields.io/badge/plotext-%E2%89%A55.2-blue?logo=python&logoColor=white)](https://github.com/piccolomo/plotext)
+[![plotext](https://img.shields.io/badge/plotext-5.x-blue?logo=python&logoColor=white)](https://github.com/piccolomo/plotext)
 
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pepperonas/termstats/pulls)
 [![GitHub stars](https://img.shields.io/github/stars/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats)
@@ -82,7 +82,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 1.1.0
+termstats --version   # -> termstats 1.1.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -167,7 +167,12 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - Python 3.9+
 - [psutil](https://github.com/giampaolo/psutil) — cross-platform system metrics
 - [rich](https://github.com/Textualize/rich) — terminal formatting
-- [plotext](https://github.com/piccolomo/plotext) — terminal plots
+- [plotext](https://github.com/piccolomo/plotext) — terminal plots (**5.x only**, see below)
+
+plotext is pinned to `>=5.2,<6`. plotext **6.0.0** (released 2026-08-23, labelled beta
+upstream) is a full rewrite that removed the 5.x top-level API — `clear_figure`, `plot`,
+`ylim`, `plotsize`, `build` — which the charts are written against. An unpinned install picks
+up 6.0.0 and the charts cannot be drawn.
 
 A terminal of roughly 120×40 or larger gives the intended two-column layout; the panels
 reflow on narrower terminals, and the charts scale with the window.
@@ -299,6 +304,17 @@ environment termstats was installed into.
 
 **Charts stay on `Collecting data...`** — expected in snapshot mode; they need two samples.
 Run `termstats -l`.
+
+**`AttributeError: module 'plotext' has no attribute 'clear_figure'`** — plotext 6.x is in
+your environment. It removed the 5.x API the charts use. Fixed in 1.1.1, which pins
+`plotext<6`; upgrade termstats, or downgrade the library in place:
+
+```bash
+pipx runpip termstats install 'plotext<6'    # or: pip install 'plotext<6'
+```
+
+**Charts read `Charts need plotext 5.x`** — same cause, but termstats 1.1.1+ now degrades to
+this note instead of crashing. Same fix as above.
 
 **Connection count missing on Windows** — `psutil.net_connections()` needs administrator
 rights there. The row is omitted rather than shown as zero.

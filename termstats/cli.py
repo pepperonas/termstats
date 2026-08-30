@@ -37,6 +37,12 @@ net_recv_history = deque(maxlen=HISTORY_LEN)
 _steal_last_total = None
 _steal_last_steal = None
 
+# plotext 6.0.0 (released 2026-08-23, still labelled beta upstream) replaced the whole 5.x
+# top-level function API - no clear_figure/plot/ylim/plotsize/build. pyproject pins <6; this
+# guard means a stray 6.x in the environment costs the charts, not the whole dashboard.
+_PLOTEXT_5 = all(hasattr(plt, name) for name in ("clear_figure", "plot", "ylim", "plotsize", "build"))
+_CHART_NEEDS_PLOTEXT_5 = "  Charts need plotext 5.x  (pip install 'plotext<6')"
+
 
 def bar_horizontal(label, percent, width=40, color="green"):
     if percent > 90:
@@ -204,32 +210,44 @@ def get_top_processes(n=8):
     return table
 
 
+def _render_chart(series, title, ylim, width, height):
+    """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
+
+    series: list of (values, label, color).
+    """
+    if not _PLOTEXT_5:
+        return _CHART_NEEDS_PLOTEXT_5
+    try:
+        plt.clear_figure()
+        for values, label, color in series:
+            plt.plot(values, label=label, color=color)
+        if ylim is not None:
+            plt.ylim(*ylim)
+        plt.title(title)
+        plt.theme("dark")
+        plt.plotsize(width, height)
+        return plt.build()
+    except Exception:
+        return "  Chart unavailable"
+
+
 def get_cpu_chart(width, height):
     if len(cpu_history) < 2:
         return "  Collecting data..."
-    plt.clear_figure()
-    plt.plot(list(cpu_history), label="CPU %", color="cyan")
+    series = [(list(cpu_history), "CPU %", "cyan")]
     if IS_LINUX and any(s > 0 for s in steal_history):
-        plt.plot(list(steal_history), label="Steal %", color="red")
-    plt.ylim(0, 100)
-    plt.title("CPU Usage (last 60s)")
-    plt.theme("dark")
-    plt.plotsize(width, height)
-    return plt.build()
+        series.append((list(steal_history), "Steal %", "red"))
+    return _render_chart(series, "CPU Usage (last 60s)", (0, 100), width, height)
 
 
 def get_net_chart(width, height):
     if len(net_sent_history) < 2:
         return "  Collecting data..."
-    plt.clear_figure()
-    sent_kb = [x / 1024 for x in net_sent_history]
-    recv_kb = [x / 1024 for x in net_recv_history]
-    plt.plot(sent_kb, label="TX KB/s", color="green")
-    plt.plot(recv_kb, label="RX KB/s", color="blue")
-    plt.title("Network (last 60s)")
-    plt.theme("dark")
-    plt.plotsize(width, height)
-    return plt.build()
+    series = [
+        ([x / 1024 for x in net_sent_history], "TX KB/s", "green"),
+        ([x / 1024 for x in net_recv_history], "RX KB/s", "blue"),
+    ]
+    return _render_chart(series, "Network (last 60s)", None, width, height)
 
 
 def get_load_info():
