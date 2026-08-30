@@ -89,7 +89,7 @@ live in the pipx venv, not in Homebrew's Python. That is expected, not a bug.
 
 ## Testing
 
-**153 pytest tests** in `tests/`, all pure unit tests — no sleeps, no live terminal, no
+**159 pytest tests** in `tests/`, all pure unit tests — no sleeps, no live terminal, no
 network, well under a second:
 
 ```bash
@@ -167,6 +167,14 @@ snapshot only takes one after priming. That is correct behaviour; do not "fix" i
   wraps the build in `try/except`, so a library break costs a chart, not the dashboard —
   the same rule as the OS collectors below. Verify that path by stubbing
   `sys.modules["plotext"]` with an empty module before importing `termstats.cli`.
+- **Windows redirects stdout as cp1252 — widen it before printing.** The dashboard is drawn
+  from `█ ░ ╭` and the header carries 🍻; none of that exists in cp1252, so `termstats > out.txt`
+  died with `UnicodeEncodeError` on Windows while a real console was fine (rich reaches a
+  console through the win32 API). `_ensure_console_encoding()` runs first in `main()` and
+  reconfigures only a stream that provably cannot carry `_GLYPH_PROBE`, with
+  `errors="replace"` so it can never raise. **Add any new non-ASCII output glyph to
+  `_GLYPH_PROBE`** — a test enforces that the four current ones are in it. Found by CI on its
+  very first run, which is the argument for having CI at all.
 - **Rates need two samples.** CPU %, disk I/O and network throughput are deltas held in
   function attributes (`get_disk_section._last_io`, `get_network_section._last`) and
   module-level `deque(maxlen=60)`s. First call always yields 0 — hence `_prime_measurements()`

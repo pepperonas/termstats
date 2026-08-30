@@ -6,8 +6,8 @@
 
 <!-- status -->
 [![Tests](https://github.com/pepperonas/termstats/actions/workflows/tests.yml/badge.svg)](https://github.com/pepperonas/termstats/actions/workflows/tests.yml)
-[![Unit tests](https://img.shields.io/badge/unit%20tests-153-brightgreen?logo=pytest&logoColor=white)](tests/)
-[![Version](https://img.shields.io/badge/version-1.1.3-blue)](https://github.com/pepperonas/termstats/releases)
+[![Unit tests](https://img.shields.io/badge/unit%20tests-159-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![Version](https://img.shields.io/badge/version-1.1.4-blue)](https://github.com/pepperonas/termstats/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Maintained](https://img.shields.io/badge/maintained-yes-brightgreen)](https://github.com/pepperonas/termstats/commits/main)
 
@@ -113,7 +113,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 1.1.3
+termstats --version   # -> termstats 1.1.4
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -282,7 +282,7 @@ python -m termstats -l   # same thing without the console script
 ### Tests
 
 ```bash
-pytest                   # 153 tests, well under a second
+pytest                   # 159 tests, well under a second
 pytest -q tests/test_args.py
 ```
 
@@ -301,6 +301,7 @@ What it covers:
 | Collectors | pseudo-filesystem filtering, mountpoint truncation, rate baselines, process sorting and limits, `/proc/stat` steal parsing |
 | Packaging | the two version strings agree, `plotext<6` stays pinned, no `stats` alias, no PyPI claim, README badges match the package |
 | Dashboard | one full render against the real machine, one history sample per render, brand line intact |
+| Output encoding | a cp1252 stdout is widened to UTF-8; unreconfigurable streams degrade quietly |
 
 Every assertion that guards a past bug was verified by re-introducing the bug and watching
 the test go red. Do the same for new ones — a test you have not seen fail is not a guarantee.
@@ -390,6 +391,11 @@ rights there. The row is omitted rather than shown as zero.
 
 **Layout looks cramped or wrapped** — widen the terminal; the two-column grid assumes roughly
 120 columns.
+
+**`UnicodeEncodeError: 'charmap' codec ...` on Windows** — you are redirecting output
+(`termstats > out.txt`) and Windows defaults that stream to cp1252, which cannot encode the
+block characters the bars are drawn with. Fixed in 1.1.4; on older versions set
+`PYTHONIOENCODING=utf-8`.
 
 ## License
 

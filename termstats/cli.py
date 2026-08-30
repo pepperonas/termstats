@@ -401,6 +401,28 @@ def print_help():
     print("Module form:  python -m termstats [OPTIONS]")
 
 
+# Windows hands a redirected stdout the legacy cp1252 codec, which can encode neither the
+# block characters the bars are drawn with nor the beer in the header. "termstats > out.txt"
+# therefore died with UnicodeEncodeError on Windows (found by CI on its first run, 1.1.4).
+# A real console is fine - rich talks to it through the win32 API - so only widen a stream
+# that demonstrably cannot carry the output.
+_GLYPH_PROBE = "\u2588\u2591\u256d\U0001f37b"
+
+
+def _ensure_console_encoding():
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            _GLYPH_PROBE.encode(stream.encoding or "")
+        except (AttributeError, LookupError, TypeError, UnicodeEncodeError):
+            reconfigure = getattr(stream, "reconfigure", None)
+            if reconfigure is None:
+                continue
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def _fail(message):
     print(f"termstats: {message}", file=sys.stderr)
     print("Try 'termstats --help' for usage.", file=sys.stderr)
@@ -408,6 +430,7 @@ def _fail(message):
 
 
 def main():
+    _ensure_console_encoding()
     args = sys.argv[1:]
 
     if any(a in _HELP_FLAGS for a in args):

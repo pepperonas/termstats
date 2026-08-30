@@ -70,3 +70,66 @@ def test_load_line_names_the_host_and_platform():
 
 def test_priming_does_not_raise():
     cli._prime_measurements()
+
+
+# --- output encoding --------------------------------------------------------------
+
+class FakeStream:
+    """Stands in for a redirected Windows stdout."""
+
+    def __init__(self, encoding, reconfigurable=True):
+        self.encoding = encoding
+        self.reconfigured = None
+        self._reconfigurable = reconfigurable
+
+    def reconfigure(self, **kwargs):
+        if not self._reconfigurable:
+            raise OSError("cannot reconfigure")
+        self.reconfigured = kwargs
+        self.encoding = kwargs.get("encoding", self.encoding)
+
+
+def test_a_cp1252_stream_is_widened_to_utf8(monkeypatch):
+    """`termstats > out.txt` on Windows: cp1252 cannot encode the block glyphs."""
+    out, err = FakeStream("cp1252"), FakeStream("cp1252")
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    monkeypatch.setattr(cli.sys, "stderr", err)
+    cli._ensure_console_encoding()
+    assert out.reconfigured == {"encoding": "utf-8", "errors": "replace"}
+    assert err.reconfigured == {"encoding": "utf-8", "errors": "replace"}
+
+
+def test_a_utf8_stream_is_left_alone(monkeypatch):
+    stream = FakeStream("utf-8")
+    monkeypatch.setattr(cli.sys, "stdout", stream)
+    monkeypatch.setattr(cli.sys, "stderr", stream)
+    cli._ensure_console_encoding()
+    assert stream.reconfigured is None
+
+
+def test_an_unreconfigurable_stream_does_not_raise(monkeypatch):
+    stream = FakeStream("cp1252", reconfigurable=False)
+    monkeypatch.setattr(cli.sys, "stdout", stream)
+    monkeypatch.setattr(cli.sys, "stderr", stream)
+    cli._ensure_console_encoding()          # must not raise
+
+
+def test_a_stream_without_reconfigure_does_not_raise(monkeypatch):
+    class Bare:
+        encoding = "ascii"
+
+    monkeypatch.setattr(cli.sys, "stdout", Bare())
+    monkeypatch.setattr(cli.sys, "stderr", Bare())
+    cli._ensure_console_encoding()          # pytest's capture objects look like this
+
+
+def test_a_stream_with_no_encoding_attribute_does_not_raise(monkeypatch):
+    monkeypatch.setattr(cli.sys, "stdout", object())
+    monkeypatch.setattr(cli.sys, "stderr", object())
+    cli._ensure_console_encoding()
+
+
+def test_every_glyph_the_dashboard_draws_is_in_the_probe():
+    """If a new glyph is added to the output, the probe must learn about it."""
+    for glyph in ("█", "░", "╭", "\U0001f37b"):
+        assert glyph in cli._GLYPH_PROBE
