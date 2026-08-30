@@ -1,4 +1,4 @@
-# stats
+# termstats
 
 <div align="center">
 
@@ -7,28 +7,28 @@
 [![PyPI version](https://img.shields.io/pypi/v/stats-dashboard?color=blue&label=PyPI)](https://pypi.org/project/stats-dashboard/)
 [![Python](https://img.shields.io/pypi/pyversions/stats-dashboard?logo=python&logoColor=white)](https://pypi.org/project/stats-dashboard/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTQgNGgxNnYxMkg0eiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48cGF0aCBkPSJNMSAyMGgyMiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=)](https://github.com/pepperonas/stats)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTQgNGgxNnYxMkg0eiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48cGF0aCBkPSJNMSAyMGgyMiIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz48L3N2Zz4=)](https://github.com/pepperonas/termstats)
 
-[![Linux](https://img.shields.io/badge/Linux-supported-success?logo=linux&logoColor=white)](https://github.com/pepperonas/stats)
-[![macOS](https://img.shields.io/badge/macOS-supported-success?logo=apple&logoColor=white)](https://github.com/pepperonas/stats)
-[![Windows](https://img.shields.io/badge/Windows-supported-success?logo=windows&logoColor=white)](https://github.com/pepperonas/stats)
+[![Linux](https://img.shields.io/badge/Linux-supported-success?logo=linux&logoColor=white)](https://github.com/pepperonas/termstats)
+[![macOS](https://img.shields.io/badge/macOS-supported-success?logo=apple&logoColor=white)](https://github.com/pepperonas/termstats)
+[![Windows](https://img.shields.io/badge/Windows-supported-success?logo=windows&logoColor=white)](https://github.com/pepperonas/termstats)
 
 [![psutil](https://img.shields.io/badge/psutil-%E2%89%A55.9-orange?logo=python&logoColor=white)](https://github.com/giampaolo/psutil)
 [![rich](https://img.shields.io/badge/rich-%E2%89%A513.0-purple?logo=python&logoColor=white)](https://github.com/Textualize/rich)
 [![plotext](https://img.shields.io/badge/plotext-%E2%89%A55.2-blue?logo=python&logoColor=white)](https://github.com/piccolomo/plotext)
 
 [![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pepperonas/stats/pulls)
-[![GitHub stars](https://img.shields.io/github/stars/pepperonas/stats?style=social)](https://github.com/pepperonas/stats)
-[![GitHub issues](https://img.shields.io/github/issues/pepperonas/stats)](https://github.com/pepperonas/stats/issues)
-[![GitHub last commit](https://img.shields.io/github/last-commit/pepperonas/stats)](https://github.com/pepperonas/stats/commits)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pepperonas/termstats/pulls)
+[![GitHub stars](https://img.shields.io/github/stars/pepperonas/termstats?style=social)](https://github.com/pepperonas/termstats)
+[![GitHub issues](https://img.shields.io/github/issues/pepperonas/termstats)](https://github.com/pepperonas/termstats/issues)
+[![GitHub last commit](https://img.shields.io/github/last-commit/pepperonas/termstats)](https://github.com/pepperonas/termstats/commits)
 
 </div>
 
 ---
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/pepperonas/stats/main/stats.png" alt="stats dashboard screenshot" width="800"/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/stats.png" alt="termstats dashboard screenshot" width="800"/>
 </div>
 
 ---
@@ -63,8 +63,8 @@ pipx install stats-dashboard
 ### From source
 
 ```bash
-git clone https://github.com/pepperonas/stats.git
-cd stats
+git clone https://github.com/pepperonas/termstats.git
+cd termstats
 pip install .
 ```
 
