@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stats-dashboard"
-version = "1.0.0"
+name = "termstats"
+version = "1.1.0"
 description = "Beautiful terminal server dashboard with real-time charts"
 readme = "README.md"
 license = "MIT"
@@ -46,7 +46,7 @@ Repository = "https://github.com/pepperonas/termstats"
 Issues = "https://github.com/pepperonas/termstats/issues"
 
 [project.scripts]
-stats = "stats.cli:main"
+termstats = "termstats.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["stats*"]
+include = ["termstats*"]

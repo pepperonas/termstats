@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-stats - Beautiful terminal server dashboard with real-time charts.
+termstats - Beautiful terminal server dashboard with real-time charts.
 
 Cross-platform system monitoring: CPU, RAM, Swap, Disk, Network,
 Top Processes, and live history graphs — all in your terminal.
@@ -20,7 +20,7 @@ from rich.text import Text
 from rich.live import Live
 from rich import box
 
-from stats import __version__
+from termstats import __version__
 
 IS_LINUX = platform.system() == "Linux"
 IS_MACOS = platform.system() == "Darwin"
@@ -280,7 +280,7 @@ def render_dashboard():
     cpu_chart = get_cpu_chart(chart_w, chart_h)
     net_chart = get_net_chart(chart_w, chart_h)
 
-    header = Text(" STATS DASHBOARD ", style="bold white on blue")
+    header = Text(" TERMSTATS ", style="bold white on blue")
     header_line = Text.assemble(
         header,
         ("  " + time.strftime("%Y-%m-%d %H:%M:%S"), "dim"),
@@ -355,9 +355,9 @@ def main():
     args = sys.argv[1:]
 
     if "-h" in args or "--help" in args:
-        print(f"stats v{__version__} - Beautiful terminal server dashboard")
+        print(f"termstats v{__version__} - Beautiful terminal server dashboard")
         print()
-        print("Usage: stats [OPTIONS]")
+        print("Usage: termstats [OPTIONS]")
         print()
         print("Options:")
         print("  -l, --live          Live dashboard (Ctrl+C to exit)")
@@ -366,13 +366,15 @@ def main():
         print("  -h, --help          Show this help")
         print()
         print("Examples:")
-        print("  stats               Single snapshot")
-        print("  stats -l            Live dashboard")
-        print("  stats -l -i 3       Live, update every 3 seconds")
+        print("  termstats           Single snapshot")
+        print("  termstats -l        Live dashboard")
+        print("  termstats -l -i 3   Live, update every 3 seconds")
+        print()
+        print("Module form:  python -m termstats [OPTIONS]")
         sys.exit(0)
 
     if "-V" in args or "--version" in args:
-        print(f"stats {__version__}")
+        print(f"termstats {__version__}")
         sys.exit(0)
 
     interval = 1.0
