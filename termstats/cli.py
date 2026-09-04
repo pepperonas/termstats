@@ -26,7 +26,17 @@ from termstats import __version__
 IS_LINUX = platform.system() == "Linux"
 IS_MACOS = platform.system() == "Darwin"
 IS_WINDOWS = platform.system() == "Windows"
+
+# HISTORY_LEN is a SAMPLE count, not a duration. What it covers in wall-clock time is
+# HISTORY_LEN * the refresh interval - see _window_label(), which is why the chart titles
+# are computed instead of hard-coded.
 HISTORY_LEN = 60
+DEFAULT_INTERVAL = 0.5
+SNAPSHOT_SAMPLE_S = 1.0
+
+# The interval the samples currently in the history deques were taken at. Set by run_live()
+# and run_once(); read by _window_label() so a chart never mislabels its own x-axis.
+sample_interval = DEFAULT_INTERVAL
 
 console = Console()
 
@@ -232,13 +242,26 @@ def _render_chart(series, title, ylim, width, height):
         return "  Chart unavailable"
 
 
+def _window_label(interval=None):
+    """Wall-clock span of a full history buffer, e.g. "last 30s" / "last 3m".
+
+    Hard-coding "last 60s" was true for exactly one interval value and wrong for every
+    other one - at the 0.5 s default the charts span 30 s, not 60.
+    """
+    seconds = HISTORY_LEN * (sample_interval if interval is None else interval)
+    if seconds < 90:
+        return f"last {seconds:.0f}s"
+    minutes = f"{seconds / 60:.1f}".rstrip("0").rstrip(".")
+    return f"last {minutes}m"
+
+
 def get_cpu_chart(width, height):
     if len(cpu_history) < 2:
         return "  Collecting data..."
     series = [(list(cpu_history), "CPU %", "cyan")]
     if IS_LINUX and any(s > 0 for s in steal_history):
         series.append((list(steal_history), "Steal %", "red"))
-    return _render_chart(series, "CPU Usage (last 60s)", (0, 100), width, height)
+    return _render_chart(series, f"CPU Usage ({_window_label()})", (0, 100), width, height)
 
 
 def get_net_chart(width, height):
@@ -248,7 +271,7 @@ def get_net_chart(width, height):
         ([x / 1024 for x in net_sent_history], "TX KB/s", "green"),
         ([x / 1024 for x in net_recv_history], "RX KB/s", "blue"),
     ]
-    return _render_chart(series, "Network (last 60s)", None, width, height)
+    return _render_chart(series, f"Network ({_window_label()})", None, width, height)
 
 
 def get_load_info():
@@ -278,6 +301,18 @@ def get_load_info():
     )
 
 
+def _as_renderable(chart):
+    """Hand plotext output to rich as parsed ANSI, not as a bare string.
+
+    A plain str goes through rich's normal text path, which counts the escape bytes as
+    printable cells. plotext emits ~190 of them per line, so rich thought a 71-column
+    chart was 259 wide and wrapped it into ragged fragments - the axis broke apart and the
+    title was cut off mid-word ("CPU Usage (last"). from_ansi turns them into real styles,
+    so the measured width is the visible width.
+    """
+    return Text.from_ansi(chart, no_wrap=True, overflow="crop")
+
+
 def render_dashboard():
     tw = shutil.get_terminal_size().columns
     th = shutil.get_terminal_size().lines
@@ -294,10 +329,13 @@ def render_dashboard():
     net_sent_history.append(sent_s)
     net_recv_history.append(recv_s)
 
-    chart_w = max(tw // 2 - 4, 30)
+    # Two panels side by side: each loses 2 columns to its border, 2 to the padding, and
+    # the pair shares 1 column of grid gap. Asking plotext for one column more than that
+    # makes rich re-wrap the chart and the axis falls apart.
+    chart_w = max((tw - 1) // 2 - 4, 30)
     chart_h = max(th // 4 - 2, 6)
-    cpu_chart = get_cpu_chart(chart_w, chart_h)
-    net_chart = get_net_chart(chart_w, chart_h)
+    cpu_chart = _as_renderable(get_cpu_chart(chart_w, chart_h))
+    net_chart = _as_renderable(get_net_chart(chart_w, chart_h))
 
     header = Text(" TERMSTATS ", style="bold white on blue")
     header_line = Text.assemble(
@@ -352,20 +390,45 @@ def _prime_measurements():
         pass
 
 
+def _schedule_tick(next_tick, now, interval):
+    """Fixed-cadence scheduling. Returns (next_tick, seconds_to_sleep).
+
+    Sleeping a flat `interval` after every render makes the real period
+    interval + render time, which drifts visibly at 0.5 s. If a render overran the
+    interval the schedule resyncs to now, rather than banking a backlog of instant frames.
+    """
+    next_tick += interval
+    if next_tick <= now:
+        next_tick = now + interval
+    return next_tick, next_tick - now
+
+
 def run_once():
+    """One snapshot, then exit.
+
+    Always samples for SNAPSHOT_SAMPLE_S regardless of --interval: rates need a gap
+    between two reads, and --interval is the *live refresh rate*, not a sampling window.
+    """
+    global sample_interval
+    sample_interval = SNAPSHOT_SAMPLE_S
     _prime_measurements()
-    time.sleep(1)
+    time.sleep(SNAPSHOT_SAMPLE_S)
     console.print(render_dashboard())
 
 
-def run_live(interval=1.0):
+def run_live(interval=DEFAULT_INTERVAL):
+    global sample_interval
+    sample_interval = interval
     _prime_measurements()
-    time.sleep(0.5)
+    time.sleep(min(interval, 0.5))
+    refresh = max(1, min(10, round(1 / interval)))
     try:
-        with Live(render_dashboard(), console=console, refresh_per_second=1, screen=True) as live:
+        with Live(render_dashboard(), console=console, refresh_per_second=refresh, screen=True) as live:
+            next_tick = time.monotonic()
             while True:
-                time.sleep(interval)
-                live.update(render_dashboard())
+                next_tick, delay = _schedule_tick(next_tick, time.monotonic(), interval)
+                time.sleep(delay)
+                live.update(render_dashboard(), refresh=True)
     except KeyboardInterrupt:
         pass
 
@@ -377,6 +440,7 @@ def run_live(interval=1.0):
 _HELP_FLAGS = ("-h", "--help", "-help")
 _VERSION_FLAGS = ("-V", "--version", "-version")
 _LIVE_FLAGS = ("-l", "--live", "-live")
+_ONCE_FLAGS = ("-1", "--once", "-once")
 _INTERVAL_FLAGS = ("-i", "--interval", "-interval")
 
 
@@ -385,18 +449,24 @@ def print_help():
     print()
     print("Usage: termstats [OPTIONS]")
     print()
+    print("Runs the live dashboard by default. When stdout is not a terminal")
+    print("(piped, redirected, cron) it prints a single snapshot instead, so")
+    print("`termstats > report.txt` terminates rather than looping forever.")
+    print()
     print("Options:")
-    print("  -l, --live          Live dashboard (Ctrl+C to exit)")
-    print("  -i, --interval N    Update interval in seconds (default: 1)")
+    print(f"  -i, --interval N    Live refresh interval in seconds (default: {DEFAULT_INTERVAL:g})")
+    print("  -1, --once          Force a single snapshot and exit")
+    print("  -l, --live          Force the live dashboard, even when piped")
     print("  -V, --version       Show version")
     print("  -h, --help          Show this help")
     print()
-    print("Long options also work with a single dash: -live, -interval, -version, -help")
+    print("Long options also work with a single dash: -live, -once, -interval, -version, -help")
     print()
     print("Examples:")
-    print("  termstats           Single snapshot")
-    print("  termstats -l        Live dashboard")
-    print("  termstats -l -i 3   Live, update every 3 seconds")
+    print("  termstats           Live dashboard (Ctrl+C to exit)")
+    print("  termstats -i 2      Live, refresh every 2 seconds")
+    print("  termstats --once    One snapshot, then exit")
+    print("  termstats > out.txt One snapshot (stdout is not a terminal)")
     print()
     print("Module form:  python -m termstats [OPTIONS]")
 
@@ -423,6 +493,18 @@ def _ensure_console_encoding():
                 pass
 
 
+def _stdout_is_interactive():
+    """True when a human is watching. Decides live-vs-snapshot when no mode was asked for.
+
+    A bare `termstats` in a terminal should keep updating; the same command in a pipe,
+    a cron job or a CI step must produce output and exit.
+    """
+    try:
+        return bool(sys.stdout.isatty())
+    except Exception:
+        return False
+
+
 def _fail(message):
     print(f"termstats: {message}", file=sys.stderr)
     print("Try 'termstats --help' for usage.", file=sys.stderr)
@@ -441,14 +523,20 @@ def main():
         print(f"termstats {__version__}")
         sys.exit(0)
 
-    interval = 1.0
-    live_mode = False
+    interval = DEFAULT_INTERVAL
+    mode = None  # None = decide from the terminal
 
     i = 0
     while i < len(args):
         arg = args[i]
         if arg in _LIVE_FLAGS:
-            live_mode = True
+            if mode == "once":
+                _fail("'--live' and '--once' are mutually exclusive")
+            mode = "live"
+        elif arg in _ONCE_FLAGS:
+            if mode == "live":
+                _fail("'--live' and '--once' are mutually exclusive")
+            mode = "once"
         elif arg in _INTERVAL_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs an interval in seconds")
@@ -464,7 +552,10 @@ def main():
             _fail(f"unknown option '{arg}'")
         i += 1
 
-    if live_mode:
+    if mode is None:
+        mode = "live" if _stdout_is_interactive() else "once"
+
+    if mode == "live":
         run_live(interval)
     else:
         run_once()

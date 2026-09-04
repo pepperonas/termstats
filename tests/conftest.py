@@ -17,6 +17,9 @@ def clean_module_state():
         dq.clear()
     cli._steal_last_total = None
     cli._steal_last_steal = None
+    # run_live()/run_once() write this; the chart titles read it, so a test that ran a
+    # mode would otherwise relabel every later chart test's x-axis.
+    cli.sample_interval = cli.DEFAULT_INTERVAL
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),
         (cli.get_network_section, ("_last", "_last_time")),
@@ -27,6 +30,7 @@ def clean_module_state():
     yield
     for dq in (cli.cpu_history, cli.steal_history, cli.net_sent_history, cli.net_recv_history):
         dq.clear()
+    cli.sample_interval = cli.DEFAULT_INTERVAL
 
 
 @pytest.fixture

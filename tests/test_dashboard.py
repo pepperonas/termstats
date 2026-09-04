@@ -4,6 +4,9 @@ Cheap smoke cover for the wiring the unit tests stub out - this is the path that
 on plotext 6 and that `termstats | head` alone does not exercise.
 """
 
+import os
+
+import pytest
 from rich.console import Console
 
 from termstats import cli
@@ -62,6 +65,68 @@ def test_charts_appear_once_there_is_history(primed_history):
 def test_dashboard_survives_a_dead_chart_backend(monkeypatch, primed_history):
     monkeypatch.setattr(cli, "_PLOTEXT_5", False)
     assert "Charts need plotext" in render()
+
+
+# --- chart layout ------------------------------------------------------------------
+#
+# plotext emits ANSI escapes inside the string it returns - roughly 190 bytes per line.
+# Handed to rich as a plain str they are counted as printable cells, so a 70-column chart
+# measured 259 wide, rich re-wrapped it, the axis broke into fragments and the title was
+# cut mid-word ("CPU Usage (last"). _as_renderable parses them into real styles instead.
+
+@pytest.mark.parametrize("width", [80, 100, 120, 150, 200])
+def test_no_rendered_line_is_wider_than_the_terminal(primed_history, width):
+    """The property that broke: charts must fit the panel they were sized for."""
+    for line in render(width=width).split("\n"):
+        assert len(line) <= width, f"line overflows a {width}-column terminal: {line[:60]!r}"
+
+
+@pytest.mark.parametrize("width", [80, 100, 120, 150, 200])
+def test_chart_titles_are_not_cut_in_half(primed_history, width):
+    cli.sample_interval = 0.5
+    out = render(width=width)
+    assert "CPU Usage (last 30s)" in out
+    assert "Network (last 30s)" in out
+
+
+def test_charts_reach_rich_as_parsed_ansi_not_as_a_string(monkeypatch, primed_history):
+    """Guard the fix itself: a bare str would silently restore the broken measurement."""
+    seen = []
+    real = cli._as_renderable
+    monkeypatch.setattr(cli, "_as_renderable", lambda chart: seen.append(chart) or real(chart))
+    cli.render_dashboard()
+    assert len(seen) == 2, "both charts must go through the ANSI parser"
+
+
+def test_as_renderable_measures_visible_width_not_escape_bytes():
+    coloured = "\x1b[38;5;3m" + "x" * 10 + "\x1b[0m"
+    assert len(coloured) > 10
+    assert cli._as_renderable(coloured).cell_len == 10
+
+
+def test_as_renderable_never_rewraps():
+    """Even on a terminal narrower than the chart, cropping beats a shredded axis."""
+    text = cli._as_renderable("y" * 200)
+    assert text.no_wrap is True
+    assert text.overflow == "crop"
+
+
+def test_as_renderable_handles_the_plain_notices():
+    for note in ("  Collecting data...", "  Chart unavailable", cli._CHART_NEEDS_PLOTEXT_5):
+        assert cli._as_renderable(note).plain == note
+
+
+@pytest.mark.parametrize("width", [80, 100, 120, 150, 200])
+def test_chart_width_leaves_room_for_the_panel_chrome(monkeypatch, width):
+    """Each panel spends 2 columns on borders and 2 on padding, and the pair shares
+    one column of grid gap. One column too many is all it takes to trigger a rewrap."""
+    asked = []
+    monkeypatch.setattr(cli, "get_cpu_chart", lambda w, h: asked.append(w) or "x")
+    monkeypatch.setattr(cli, "get_net_chart", lambda w, h: "x")
+    monkeypatch.setattr(cli.shutil, "get_terminal_size",
+                        lambda: os.terminal_size((width, 45)))
+    cli.render_dashboard()
+    assert asked[0] <= (width - 1) // 2 - 4
 
 
 def test_load_line_names_the_host_and_platform():

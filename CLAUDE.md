@@ -8,6 +8,26 @@ Guidance for Claude Code when working in this repository.
 processes, live 60-sample history charts). Pure Python, no server, no config file, no state on
 disk. Repo `pepperonas/termstats` (public, MIT).
 
+**A bare `termstats` runs the LIVE dashboard** (0.5 s refresh) — but only when stdout is a
+terminal. Piped, redirected or under cron it prints one snapshot and exits, because a live
+loop there never terminates. `--once/-1` forces the snapshot, `--live/-l` forces the loop.
+
+## Version reset to 0.1.0 (2026-09-04) — read this first
+
+The version went **backwards**, from `1.1.4` to `0.1.0`, in the same release that made live
+mode the default. Two reasons, both deliberate:
+
+- termstats has never been on a package index (see the PyPI note below), so no downstream
+  install could break.
+- 1.x claims a stable interface. A tool that still changes its own default behaviour is a
+  0.x tool. Under SemVer's 0.x rule a **minor** bump may break the CLI and a **patch** bump
+  may not; 1.0.0 will be the first release that promises stability.
+
+`CHANGELOG.md` (Keep a Changelog) records this, and the pre-reset releases are listed at its
+bottom. The git history is untouched — commits still say "v1.1.4". Do not "fix" that.
+
+⚠️ **Do not bump back over 1.0.0 casually.** Reaching 1.0.0 is a promise, not a milestone.
+
 ## The rename (2026-08-30) — read this first
 
 The project was called **`stats`** and had to surrender that name to an unrelated project (the
@@ -42,13 +62,20 @@ termstats/
 │   └── cli.py        # everything: collectors, rendering, arg parsing, main()
 ├── tests/
 │   ├── conftest.py          # autouse state reset + chart-capture fixtures
-│   ├── test_args.py         # flag spellings, rejected input, help/version
+│   ├── test_args.py         # flag spellings, mode selection, rejected input
+│   ├── test_badges.py       # LOC/test counting rules and the refusals
 │   ├── test_charts.py       # plotext guard, degradation, series contents
 │   ├── test_collectors.py   # psutil stubs, failure paths, /proc/stat steal
-│   ├── test_dashboard.py    # one real render, history accounting, brand line
+│   ├── test_dashboard.py    # real renders, chart layout, history accounting, encoding
 │   ├── test_formatting.py   # bar_horizontal, _fmt_bytes_rate boundaries
-│   └── test_packaging.py    # version sync, dependency pins, the rename, README claims
-├── .github/workflows/tests.yml               # Linux/macOS/Windows + py3.9
+│   ├── test_packaging.py    # version/changelog sync, pins, README claims, PayPal link
+│   └── test_timing.py       # window label, frame scheduling, run_live/run_once
+├── tools/badges.py   # generates .github/badges/*.json (version, LOC, test count)
+├── .github/
+│   ├── badges/*.json                  # shields.io endpoint payloads, committed by CI
+│   └── workflows/tests.yml            # Linux/macOS/Windows + py3.9
+│   └── workflows/badges.yml           # refreshes + commits the badge payloads
+├── CHANGELOG.md      # Keep a Changelog / SemVer
 ├── examples/celox-health-report.example.py   # server health report template, NOT packaged
 ├── pyproject.toml    # metadata + [project.scripts] termstats = "termstats.cli:main"
 └── termstats.png     # README hero image (raw.githubusercontent URL)
@@ -60,24 +87,40 @@ layer; keep it that way unless the file outgrows ~600 lines.
 
 ## Version bumps
 
-The version lives in **two** places and both must move together:
+The version lives in **two** places and both must move together, and two more artefacts
+have to follow:
 
 - `pyproject.toml` → `version = "X.Y.Z"`
 - `termstats/__init__.py` → `__version__ = "X.Y.Z"`
+- `CHANGELOG.md` → a new `## [X.Y.Z] - YYYY-MM-DD` heading above the previous one
+- `python tools/badges.py` → rewrites `.github/badges/version.json`
+
+All four are pinned by `test_packaging.py` / `test_badges.py`, so a half-finished bump is a
+red test, not a stale badge. Tag the release `vX.Y.Z`.
 
 The dashboard header and `--version` read `__init__.py`; packaging reads `pyproject.toml`. A
-mismatch used to be invisible until someone read the header — `test_packaging.py` now fails
-on it, and on a stale README version badge or `# -> termstats X.Y.Z` line. **The unit-test
-count in the README badge is NOT checked** (parametrised cases make an exact pin brittle);
-update `unit%20tests-<n>` by hand when you add tests.
+mismatch used to be invisible until someone read the header.
+
+**The three headline README badges are generated, never typed.** `tools/badges.py` writes
+`.github/badges/{version,loc,tests}.json` in the shields.io *endpoint* schema, the README
+points shields at those raw URLs, and `.github/workflows/badges.yml` re-runs the script on
+every push to `main` and commits the result when a number moved (`[skip ci]` in the message,
+so it cannot retrigger itself). A hard-coded `shields.io/badge/version-…` in the README is
+now a **failing test** — that is what used to go stale.
+
+⚠️ `tools/badges.py` **refuses to emit a zero test count.** Run it with an interpreter that
+has pytest (`~/.local/pipx/venvs/termstats/bin/python tools/badges.py` on this Mac); the
+system python3 has no psutil and the collection fails loudly rather than publishing "0 unit
+tests". `--check` exits 1 when the files are stale and writes nothing.
 
 ## Local install / running
 
 ```bash
 pipx install --editable .    # dev: edits take effect immediately, no reinstall
-termstats                    # snapshot
-termstats -l                 # live
-python -m termstats -l       # same, needs deps importable in that interpreter
+termstats                    # live (in a terminal)
+termstats --once             # single snapshot
+termstats -i 2               # live, slower refresh
+python -m termstats          # same, needs deps importable in that interpreter
 ```
 
 Installed on this Mac via `pipx install --editable /Users/martin/claude/termstats`
@@ -89,7 +132,8 @@ live in the pipx venv, not in Homebrew's Python. That is expected, not a bug.
 
 ## Testing
 
-**159 pytest tests** in `tests/`, all pure unit tests — no sleeps, no live terminal, no
+**281 pytest tests** in `tests/` (the badge is generated; this number is prose and may lag),
+all pure unit tests — no sleeps, no live terminal, no
 network, well under a second:
 
 ```bash
@@ -105,11 +149,21 @@ autouse and resets the four history deques, the two `_steal_last_*` globals and 
 `_last_io`/`_last`/`_last_time` function attributes.** Rate state survives between calls by
 design, so without it a collector test passes or fails depending on what ran before it.
 
-⚠️ **Mutation-test every new pin.** Thirteen mutations were run against this suite
+⚠️ **Mutation-test every new pin.** Nineteen mutations have been run against this suite
 (dropping `-live`, silencing the unknown-option error, narrowing the chart `except`, relaxing
-the plotext pin, re-adding a `stats` alias, desyncing the two version strings, …) and all
-thirteen were caught. A test you have not watched fail is not a guarantee — this repo's
-sibling projects have shipped grün-blind pins more than once.
+the plotext pin, re-adding a `stats` alias, desyncing the two version strings, making the
+terminal check always say yes, removing `--once`, dropping the live/once conflict, handing
+charts to rich as a bare string, widening the chart by one column, hard-coding the chart
+title, removing the scheduler resync, sleeping a flat interval, publishing a zero test count,
+counting comments as code, staling the version badge, drifting the changelog, claiming
+Production/Stable at 0.x). All are caught **now** — one was not at first:
+
+**the PayPal pin was green-blind.** The README carries two donate links (headline badge and
+Support section) and the test used `re.search`, so it validated whichever it found first;
+breaking the *other* one changed nothing. It now checks that *every* `paypal.com/donate` URL
+carries the account, that no unchecked PayPal URL exists, and that the Support section holds
+one of its own. Four separate mutations confirm it. A test you have not watched fail is not
+a guarantee.
 
 ⚠️ Two traps hit while writing these: an anchor string whose indentation did not match
 reports "ANCHOR MISSING" and quietly proves nothing, and `f"p{i}" in output` matched `p2`
@@ -129,7 +183,7 @@ COLUMNS=150 LINES=45 termstats | head -60   # renders all panels non-interactive
 
 ⚠️ Snapshot mode does **not** exercise the chart code — both charts short-circuit to
 `Collecting data...`. The `clear_figure` crash of 2026-08-30 lived entirely in a path that
-`termstats | head` never reaches. To actually cover it, either drive live mode under a real
+`termstats | head` never reaches, and so did the `Text.from_ansi` layout bug above. To actually cover it, either drive live mode under a real
 pty (rich renders nothing to a plain pipe, so a `subprocess.PIPE` run proves nothing) or
 prime the deques and call the collectors directly:
 
@@ -139,6 +193,20 @@ for i in range(60):
     cli.cpu_history.append(i); cli.net_sent_history.append(1.0); cli.net_recv_history.append(2.0)
 print(cli.get_cpu_chart(70, 12))
 ```
+
+⚠️ A `pty.fork()` window starts at **80×24 whatever `$COLUMNS` says**, and plotext clamps to
+the real window size. Set it explicitly or the charts come back narrow and the titles look
+truncated when they are not:
+
+```python
+fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+```
+
+⚠️ Do not assert on **line widths** from a pty capture either: `Live(screen=True)` repositions
+the cursor instead of emitting newlines, so consecutive frames concatenate and every line
+looks 300 characters wide. Measure widths against a fixed-width `rich.Console` (which is what
+`test_dashboard.py` does); use the pty only for behaviour — refresh cadence, alternate screen,
+Ctrl+C, exit status.
 
 ⚠️ When driving live mode under a pty, **keep draining the master fd while waiting for the
 child to exit**. Stop reading and the pty buffer fills; the child then blocks in `write()`
@@ -199,6 +267,28 @@ snapshot only takes one after priming. That is correct behaviour; do not "fix" i
   anything not in a tuple is now a hard error, which is the point.
 - **The header string is `" TERMSTATS "`** plus the `(bottled 🍻 by Martin Pfeffer - celox.io)`
   branding — the branding is deliberate, don't strip it as noise.
+- **`isatty()` decides the mode, and that must stay true.** A bare `termstats` runs live in a
+  terminal and prints one snapshot anywhere else. The CI smoke step passes `--once`
+  explicitly *on purpose*: a bare invocation would also snapshot there, but relying on that
+  would make the step hang forever the day the terminal check regresses. Screen recorders and
+  `script(1)` allocate a pty, so they get the live view — that is correct, use `--once`.
+- **`HISTORY_LEN` is a sample count and the chart titles say the real window.** 60 samples
+  at 0.5 s is `last 30s`; `_window_label()` computes it and flips to minutes above 90 s. The
+  old hard-coded "last 60s" was true for exactly one interval value.
+- **Frames are scheduled on a grid, not with a flat sleep.** `_schedule_tick()` returns
+  `interval − render time`, and resyncs to *now* if a render overran — otherwise the loop
+  banks a backlog and fires a burst of instant redraws to "catch up". A flat sleep drifts by
+  the render cost, ~6% at the default interval.
+- ⚠️ **plotext output must reach rich as `Text.from_ansi`, never as a plain `str`.** This was
+  a live bug for the whole life of the project, found only by rendering into a real pty while
+  verifying the new titles. plotext embeds ~190 escape bytes per line; rich counts those as
+  printable cells, so a 70-column chart measured 259 wide, got re-wrapped into ragged
+  fragments, the axis broke apart and the title was cut mid-word (`CPU Usage (last`). It is
+  invisible in the unit tests unless you assert on *line widths* — `test_dashboard.py` now
+  does, at five terminal widths.
+- **The chart width must leave room for the panel chrome**: `(tw - 1) // 2 - 4` — two columns
+  of border, two of padding, and one column of grid gap shared between the pair. `tw // 2 - 4`
+  is one too many and triggers the rewrap above even with `from_ansi`.
 
 ## Deploy
 

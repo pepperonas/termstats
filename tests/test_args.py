@@ -1,8 +1,14 @@
-"""Argument parsing.
+"""Argument parsing and mode selection.
 
-Regression cover for the 1.1.2 defect: the parser matched only the exact spellings and
-silently ignored everything else, so `termstats -live` ran a *snapshot* — which shows
-"Collecting data..." in both history panels and reads as a broken live dashboard.
+Two behaviours are pinned here.
+
+Historical: the parser once matched only the exact spellings and silently ignored
+everything else, so `termstats -live` ran a *snapshot* — which shows "Collecting data..."
+in both history panels and reads as a broken live dashboard.
+
+Current: a bare `termstats` runs the live dashboard, but only when stdout is a terminal.
+Piped or redirected it must produce one snapshot and exit — otherwise `termstats > out.txt`
+and every CI step that runs the command would hang forever.
 """
 
 import sys
@@ -14,13 +20,22 @@ from termstats import cli, __version__
 
 @pytest.fixture
 def run(monkeypatch):
-    """Call main() with argv and report which mode it entered."""
+    """Call main() with argv and report which mode it entered.
+
+    `tty=` fakes the answer to "is a human watching?" - under pytest stdout is captured,
+    so the real isatty() would always say no and the default-mode tests would all pass
+    for the wrong reason.
+    """
     seen = {}
 
-    monkeypatch.setattr(cli, "run_live", lambda interval=1.0: seen.update(mode="live", interval=interval))
+    monkeypatch.setattr(
+        cli, "run_live",
+        lambda interval=cli.DEFAULT_INTERVAL: seen.update(mode="live", interval=interval),
+    )
     monkeypatch.setattr(cli, "run_once", lambda: seen.update(mode="once"))
 
-    def _run(*args):
+    def _run(*args, tty=True):
+        monkeypatch.setattr(cli, "_stdout_is_interactive", lambda: tty)
         monkeypatch.setattr(sys, "argv", ["termstats", *args])
         cli.main()
         return seen
@@ -36,12 +51,63 @@ def test_every_live_spelling_enters_live_mode(run, flag):
     assert run(flag)["mode"] == "live"
 
 
-def test_no_arguments_is_a_snapshot(run):
-    assert run()["mode"] == "once"
+def test_no_arguments_in_a_terminal_is_live(run):
+    """The headline behaviour: `termstats` updates by itself."""
+    assert run(tty=True)["mode"] == "live"
 
 
-def test_live_defaults_to_one_second(run):
-    assert run("-l")["interval"] == 1.0
+def test_no_arguments_when_piped_is_a_snapshot(run):
+    """`termstats > out.txt` must terminate. A live loop there never would."""
+    assert run(tty=False)["mode"] == "once"
+
+
+def test_live_uses_the_default_interval(run):
+    assert run("-l")["interval"] == cli.DEFAULT_INTERVAL
+
+
+def test_the_default_interval_is_faster_than_a_second():
+    assert 0 < cli.DEFAULT_INTERVAL < 1.0
+
+
+# --- snapshot mode ---------------------------------------------------------------
+
+@pytest.mark.parametrize("flag", ["-1", "--once", "-once"])
+def test_every_once_spelling_forces_a_snapshot(run, flag):
+    assert run(flag, tty=True)["mode"] == "once"
+
+
+@pytest.mark.parametrize("flag", ["-l", "--live", "-live"])
+def test_live_is_forced_even_when_piped(run, flag):
+    """An explicit --live outranks the terminal check - for `termstats -l | tee log`."""
+    assert run(flag, tty=False)["mode"] == "live"
+
+
+@pytest.mark.parametrize("args", [("--live", "--once"), ("--once", "--live"),
+                                  ("-1", "-l"), ("-l", "-i", "2", "-1")])
+def test_live_and_once_together_are_rejected(run, capsys, args):
+    """Silently picking one would make the other flag a lie."""
+    with pytest.raises(SystemExit) as excinfo:
+        run(*args)
+    assert excinfo.value.code == 2
+    assert "mutually exclusive" in capsys.readouterr().err
+    assert run.seen == {}
+
+
+@pytest.mark.parametrize("flag", ["-l", "--live", "-1", "--once"])
+def test_repeating_the_same_mode_flag_is_harmless(run, flag):
+    """Only *conflicting* modes are an error; `-l -l` is merely redundant."""
+    assert run(flag, flag)["mode"] in {"live", "once"}
+
+
+def test_once_ignores_the_interval_but_still_validates_it(run, capsys):
+    """--interval is the live refresh rate; a snapshot always samples for one second.
+
+    Accepting a value we then ignore is fine - accepting a *bad* value silently is not.
+    """
+    assert run("--once", "-i", "5")["mode"] == "once"
+    with pytest.raises(SystemExit):
+        run("--once", "-i", "-4")
+    assert "positive" in capsys.readouterr().err
 
 
 # --- interval --------------------------------------------------------------------
@@ -171,7 +237,31 @@ def test_help_wins_over_version(run, capsys):
 
 def test_every_documented_flag_tuple_is_reachable():
     """A flag that is in no _*_FLAGS tuple is now a hard error - keep them in sync."""
-    documented = set(cli._HELP_FLAGS + cli._VERSION_FLAGS + cli._LIVE_FLAGS + cli._INTERVAL_FLAGS)
+    documented = set(cli._HELP_FLAGS + cli._VERSION_FLAGS + cli._LIVE_FLAGS
+                     + cli._ONCE_FLAGS + cli._INTERVAL_FLAGS)
     for spelling in ("-h", "--help", "-help", "-V", "--version", "-version",
-                     "-l", "--live", "-live", "-i", "--interval", "-interval"):
+                     "-l", "--live", "-live", "-1", "--once", "-once",
+                     "-i", "--interval", "-interval"):
         assert spelling in documented
+
+
+def test_no_flag_spelling_is_claimed_by_two_options():
+    """A spelling in two tuples would make the first `elif` win at random."""
+    tuples = (cli._HELP_FLAGS, cli._VERSION_FLAGS, cli._LIVE_FLAGS,
+              cli._ONCE_FLAGS, cli._INTERVAL_FLAGS)
+    flat = [flag for group in tuples for flag in group]
+    assert len(flat) == len(set(flat)), "duplicate flag spelling across option groups"
+
+
+def test_help_documents_the_new_defaults(run, capsys):
+    with pytest.raises(SystemExit):
+        run("--help")
+    out = capsys.readouterr().out
+    assert "--once" in out
+    assert "not a terminal" in out, "the piped-means-snapshot rule must be discoverable"
+
+
+def test_stdout_is_interactive_survives_a_stream_without_isatty(monkeypatch):
+    """Some embedded/captured stdouts have no isatty at all; that means 'not a human'."""
+    monkeypatch.setattr(sys, "stdout", object())
+    assert cli._stdout_is_interactive() is False

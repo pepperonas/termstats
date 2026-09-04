@@ -103,6 +103,8 @@ def test_chart_size_is_passed_through(captured_series, primed_history):
 
 
 def test_titles_name_the_history_window(captured_series, primed_history):
+    """The window is computed from the live interval - see tests/test_timing.py."""
+    cli.sample_interval = 1.0
     cli.get_cpu_chart(40, 8)
     cli.get_net_chart(40, 8)
     titles = [c["title"] for c in captured_series]

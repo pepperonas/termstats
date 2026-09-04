@@ -43,7 +43,16 @@ jobs:
         run: pytest
 
       - name: CLI smoke test
+        # --once is explicit on purpose. A bare `termstats` would also print a snapshot
+        # here (the runner's stdout is not a terminal), but relying on that would make
+        # this step hang forever the day the terminal check regresses.
         run: |
           termstats --version
           termstats --help
-          COLUMNS=150 LINES=45 termstats > /dev/null
+          COLUMNS=150 LINES=45 termstats --once > /dev/null
+          COLUMNS=150 LINES=45 termstats > snapshot.txt
+          test -s snapshot.txt
+
+      - name: Badge files are up to date
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
+        run: python tools/badges.py --check || echo "::notice::badge files will be refreshed by the badges job"
