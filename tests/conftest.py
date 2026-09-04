@@ -20,6 +20,8 @@ def clean_module_state():
     # run_live()/run_once() write this; the chart titles read it, so a test that ran a
     # mode would otherwise relabel every later chart test's x-axis.
     cli.sample_interval = cli.DEFAULT_INTERVAL
+    # Capability detection is global; a test that drops to ASCII must not leak that.
+    cli.UNICODE = True
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),
         (cli.get_network_section, ("_last", "_last_time")),
@@ -31,6 +33,15 @@ def clean_module_state():
     for dq in (cli.cpu_history, cli.steal_history, cli.net_sent_history, cli.net_recv_history):
         dq.clear()
     cli.sample_interval = cli.DEFAULT_INTERVAL
+    cli.UNICODE = True
+
+
+@pytest.fixture
+def ascii_mode():
+    """Pretend stdout cannot carry the drawing glyphs."""
+    cli.UNICODE = False
+    yield
+    cli.UNICODE = True
 
 
 @pytest.fixture
@@ -48,9 +59,8 @@ def captured_series(monkeypatch):
     """Intercept _render_chart so a test can inspect what the chart was asked to draw."""
     calls = []
 
-    def fake(series, title, ylim, width, height):
-        calls.append({"series": series, "title": title, "ylim": ylim,
-                      "width": width, "height": height})
+    def fake(series, ylim, width, height):
+        calls.append({"series": series, "ylim": ylim, "width": width, "height": height})
         return "<chart>"
 
     monkeypatch.setattr(cli, "_render_chart", fake)

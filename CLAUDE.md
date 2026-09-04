@@ -8,9 +8,47 @@ Guidance for Claude Code when working in this repository.
 processes, live 60-sample history charts). Pure Python, no server, no config file, no state on
 disk. Repo `pepperonas/termstats` (public, MIT).
 
+**The rendering layer was rewritten in 0.2.0** (see the Layout section below). `cli.py` is
+still one flat module, but it now has four distinct layers: capability detection → colour
+ramp → meters/charts → a height-aware `rich.Layout`. Collectors take a **width** and return
+rich renderables; they no longer return preformatted strings.
+
 **A bare `termstats` runs the LIVE dashboard** (0.5 s refresh) — but only when stdout is a
 terminal. Piped, redirected or under cron it prints one snapshot and exits, because a live
 loop there never terminates. `--once/-1` forces the snapshot, `--live/-l` forces the loop.
+
+## Layout: the dashboard must fit the terminal
+
+This is the invariant the 0.2.0 rewrite exists to hold, and the one to re-check after any
+change to a panel:
+
+> The rendered dashboard is never taller than the terminal, never wider, has no blank lines,
+> and draws no panel it cannot fill.
+
+Before the rewrite `render_dashboard` composed a fixed grid with no idea how tall the screen
+was — 79 lines on a 40-line terminal — and rich's alternate screen silently cropped the
+overflow, so **the charts and the process list were never on screen** at ordinary sizes.
+`tests/test_dashboard.py` sweeps thirteen geometries for all four properties.
+
+How the height is spent, in order: header (1) → CPU row and the memory/network/disk stack →
+charts (only with ≥13 spare lines) → processes (only with ≥5). Two rules make it hold:
+
+- **Height is decided before the core columns are.** The CPU panel would rather be one tall
+  column of wide bars than two short ones with a hole underneath, so `cpu_wanted` is computed
+  first and `core_columns()` then fits the cores into it. Doing it the other way round leaves
+  four blank lines in the CPU box on a ten-core machine.
+- **The last section on screen takes `ratio=1`, not a fixed size.** Otherwise a dropped
+  process panel leaves its lines as a blank strip (measured: 15 lines used out of 18).
+
+`disk_in_stack` moves the disk panel out of the right-hand stack and across the full width
+when the CPU column would otherwise be much shorter than the stack — same total height, no
+hole. Panels are dropped **whole**; a bordered box with no room for content costs three lines
+to say nothing.
+
+⚠️ Every `*_section_rows()` helper must predict exactly what its `get_*_section()` draws.
+`render_dashboard` sizes the row from the prediction before the panel exists, so a
+disagreement clips content or opens a gap. `test_cpu_height_prediction_matches_what_is_drawn`
+pins this.
 
 ## Version reset to 0.1.0 (2026-09-04) — read this first
 
@@ -70,6 +108,7 @@ termstats/
 │   ├── test_formatting.py   # bar_horizontal, _fmt_bytes_rate boundaries
 │   ├── test_packaging.py    # version/changelog sync, pins, README claims, PayPal link
 │   └── test_timing.py       # window label, frame scheduling, run_live/run_once
+│   └── helpers.py           # plain(): render a renderable and strip the styling
 ├── tools/badges.py   # generates .github/badges/*.json (version, LOC, test count)
 ├── .github/
 │   ├── badges/*.json                  # shields.io endpoint payloads, committed by CI
@@ -149,6 +188,15 @@ autouse and resets the four history deques, the two `_steal_last_*` globals and 
 `_last_io`/`_last`/`_last_time` function attributes.** Rate state survives between calls by
 design, so without it a collector test passes or fails depending on what ran before it.
 
+⚠️ **Two test-writing traps from the 0.2.0 round, both mine:**
+
+- `re.search(r"proc \d+\S", head)` to catch "proc 7080.5s" **always matches**, because `\S`
+  happily matches the number's own digits. The character after the run has to be excluded
+  explicitly: `proc \d+[^\d\s]`.
+- `"x" * 200` is the wrong probe for "does a long process name wrap": rich truncates an
+  unbroken run anyway. Real process names contain **spaces**, and those wrap the row onto
+  five lines without `no_wrap`. Two mutations passed against the x-string version.
+
 ⚠️ **Mutation-test every new pin.** Nineteen mutations have been run against this suite
 (dropping `-live`, silencing the unknown-option error, narrowing the chart `except`, relaxing
 the plotext pin, re-adding a `stats` alias, desyncing the two version strings, making the
@@ -156,7 +204,13 @@ terminal check always say yes, removing `--once`, dropping the live/once conflic
 charts to rich as a bare string, widening the chart by one column, hard-coding the chart
 title, removing the scheduler resync, sleeping a flat interval, publishing a zero test count,
 counting comments as code, staling the version badge, drifting the changelog, claiming
-Production/Stable at 0.x). All are caught **now** — one was not at first:
+Production/Stable at 0.x). The 0.2.0 rewrite added twenty-two more (height budget, the
+process-panel guard, the trailing `ratio`, the `nobrowse` filter, the macOS Data
+substitution, a flat-coloured bar, the eighth-blocks, the sliced annotation, the braille
+marker, the black chart background, the time axis, the ASCII path, the one-line ASCII chart,
+the core-column preference, blind mountpoint cutting, the header collision, charts as a bare
+string, the chart width, the heat strip, name wrapping, the inline bar, and a lying height
+prediction). All are caught **now** — several were not at first:
 
 **the PayPal pin was green-blind.** The README carries two donate links (headline badge and
 Support section) and the test used `re.search`, so it validated whichever it found first;
@@ -265,6 +319,32 @@ snapshot only takes one after priming. That is correct behaviour; do not "fix" i
   one dash too (`-live`, `-interval`, `-version`, `-help`), and bad input goes to stderr with
   exit code 2 via `_fail()`. If you add a flag, add it to the matching `_*_FLAGS` tuple —
   anything not in a tuple is now a hard error, which is the point.
+- **The header carries a wall clock.** Without it a frozen dashboard and an idle machine look
+  identical. Its absence after the rewrite was found by watching the live view in a pty, not
+  by any unit test — the clock is now pinned.
+- ⚠️ **`Text(no_wrap=True, overflow="crop")` is DISCARDED by `Console.print` for a bare
+  Text.** `Console._collect_renderables` pushes loose Text objects through `Text.join`, which
+  builds a fresh Text and drops both attributes. Inside a `Panel` or `Layout` —
+  the only way the dashboard ever renders them — `__rich_console__` is called directly and
+  honours them. A test that prints a meter on its own will show it wrapping when it does not;
+  `tests/helpers.py::plain` passes the attributes explicitly for that reason.
+- ⚠️ **`overflow="crop"` hides an over-wide chart instead of wrapping it.** That makes the
+  "one column too wide" defect invisible to any line-width assertion — the plot frame is
+  simply cut off the right edge. `test_the_chart_is_sized_to_fit_inside_its_panel` pins the
+  arithmetic directly, and a counter-check looks for plotext's own closing corner.
+- **plotext has no pure-ASCII mode.** Its markers include `dot`, `at`, `dollar` and single
+  characters, but the *axes* are always box-drawing glyphs. There is therefore no marker
+  choice that yields ASCII, which is why `_ascii_chart()` draws columns by hand rather than
+  the fallback dropping the charts.
+- **plotext's `theme("clear")`, not `"dark"`.** "dark" fills the plot with a black rectangle
+  that sits inside the panel whatever the terminal's own background is. Check for it on the
+  parsed **styles**, not on raw escape text — rich re-encodes the colour for the target
+  terminal, so matching a literal `\x1b[48;5;0m` passes by accident.
+- **Colour quantisation is rich's job, not ours.** `ramp()` returns truecolor hex and rich
+  converts it to the nearest 256- or 16-colour value. ⚠️ Verifying that is easy to get wrong:
+  `Style.parse` is `lru_cache`d and `Style.render` caches `self._ansi` from the **first**
+  colour system it sees, so a loop over colour systems reusing one Style reports truecolor
+  every time. Build a fresh `Style(color=...)` per system.
 - **The header string is `" TERMSTATS "`** plus the `(bottled 🍻 by Martin Pfeffer - celox.io)`
   branding — the branding is deliberate, don't strip it as noise.
 - **`isatty()` decides the mode, and that must stay true.** A bare `termstats` runs live in a

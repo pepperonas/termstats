@@ -3,7 +3,7 @@
 termstats - Beautiful terminal server dashboard with real-time charts.
 
 Cross-platform system monitoring: CPU, RAM, Swap, Disk, Network,
-Top Processes, and live history graphs — all in your terminal.
+Top Processes, and live history graphs - all in your terminal.
 """
 
 import math
@@ -14,12 +14,13 @@ import shutil
 import psutil
 import plotext as plt
 from collections import deque
-from rich.console import Console
-from rich.table import Table
+from rich import box
+from rich.console import Console, Group
+from rich.layout import Layout
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 from rich.live import Live
-from rich import box
 
 from termstats import __version__
 
@@ -55,16 +56,154 @@ _PLOTEXT_5 = all(hasattr(plt, name) for name in ("clear_figure", "plot", "ylim",
 _CHART_NEEDS_PLOTEXT_5 = "  Charts need plotext 5.x  (pip install 'plotext<6')"
 
 
-def bar_horizontal(label, percent, width=40, color="green"):
-    if percent > 90:
-        color = "red"
-    elif percent > 70:
-        color = "yellow"
-    filled = int(width * percent / 100)
-    empty = width - filled
-    bar = f"[{color}]{'█' * filled}[/{color}][dim]{'░' * empty}[/dim]"
-    return f"{label:>12s} {bar} {percent:5.1f}%"
+# ---------------------------------------------------------------------------------
+# Terminal capabilities
+#
+# Everything below degrades on its own. Colour depth is rich's problem - it quantises a
+# truecolor hex down to 256 or 16 by itself - but the *glyphs* are ours: a stream that
+# cannot encode a block character must not be handed one.
+# ---------------------------------------------------------------------------------
 
+# Every non-ASCII character the dashboard draws with. Add to this when you add a glyph.
+_GLYPH_PROBE = "█░╭\U0001f37b▏╌⠀"
+
+UNICODE = True
+
+
+def _stream_can_draw(stream):
+    try:
+        _GLYPH_PROBE.encode(stream.encoding or "")
+    except (AttributeError, LookupError, TypeError, UnicodeEncodeError):
+        return False
+    return True
+
+
+def detect_capabilities():
+    """Decide once whether the drawing glyphs are safe on this stdout."""
+    global UNICODE
+    UNICODE = _stream_can_draw(sys.stdout)
+    return UNICODE
+
+
+# ---------------------------------------------------------------------------------
+# One colour ramp for everything
+#
+# btop's design rule, and the reason it reads as one instrument rather than a pile of
+# widgets: every meter, graph and value maps onto the SAME three stops. Cool and idle at
+# the bottom, warm in the middle, hot and saturated at the top.
+# ---------------------------------------------------------------------------------
+
+RAMP = (
+    (0.00, (0x5A, 0xD8, 0xC8)),   # teal   - idle
+    (0.55, (0xF0, 0xBE, 0x5A)),   # amber  - working
+    (1.00, (0xF0, 0x6E, 0x78)),   # rose   - saturated
+)
+
+MUTED = "grey42"
+DIM = "grey54"
+FAINT = "grey30"
+
+
+def ramp(t):
+    """Colour at position t (0..1) on the shared ramp, as a hex string.
+
+    Returned as truecolor; rich quantises it to 256 or 16 colours on terminals that
+    need it, so there is deliberately no palette table here.
+    """
+    t = 0.0 if t != t else max(0.0, min(1.0, t))          # t != t catches NaN
+    for (lo, c_lo), (hi, c_hi) in zip(RAMP, RAMP[1:]):
+        if t <= hi:
+            k = 0.0 if hi == lo else (t - lo) / (hi - lo)
+            r, g, b = (round(c_lo[i] + (c_hi[i] - c_lo[i]) * k) for i in range(3))
+            return f"#{r:02x}{g:02x}{b:02x}"
+    r, g, b = RAMP[-1][1]
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# ---------------------------------------------------------------------------------
+# Meters
+# ---------------------------------------------------------------------------------
+
+BAR_FULL = "█"
+BAR_PARTIALS = "▏▎▍▌▋▊▉"   # 1/8 .. 7/8 of a cell
+BAR_EMPTY = "╌"
+ASCII_FULL = "#"
+ASCII_EMPTY = "-"
+
+
+def bar(pct, width):
+    """A gradient meter, accurate to an eighth of a character cell.
+
+    Each cell is tinted by its own position on the ramp rather than the bar carrying one
+    flat colour, which is what makes a long bar read as a scale instead of a block.
+    """
+    full_ch = BAR_FULL if UNICODE else ASCII_FULL
+    empty_ch = BAR_EMPTY if UNICODE else ASCII_EMPTY
+    partials = BAR_PARTIALS if UNICODE else ""
+
+    text = Text(no_wrap=True, overflow="crop")
+    if width <= 0:
+        return text
+    pct = 0.0 if pct != pct else max(0.0, min(100.0, pct))
+    span = max(width - 1, 1)
+    cells = width * pct / 100.0
+    filled = int(cells)
+    for i in range(filled):
+        text.append(full_ch, style=ramp(i / span))
+    if partials and filled < width:
+        eighths = int((cells - filled) * 8)
+        if eighths:
+            text.append(partials[eighths - 1], style=ramp(filled / span))
+            filled += 1
+    text.append(empty_ch * (width - filled), style=FAINT)
+    return text
+
+
+MIN_BAR_W = 6
+
+
+def meter(label, pct, total, value=None, note="", label_w=9, value_w=7):
+    """`label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line, budgeted so it never wraps.
+
+    The old two-line form (bar, then "6.1G / 16.0G" underneath) doubled the height of
+    every panel for information that fits beside the bar.
+
+    When the line is too narrow for everything, the annotation is dropped rather than
+    sliced: a cut-off "421.4G/460." is worse than no annotation at all, because it still
+    looks like a number.
+    """
+    if value is None:
+        value = f"{pct:.1f}%"
+    if note and total - label_w - value_w - (len(note) + 2) < MIN_BAR_W:
+        note = ""
+    note_w = len(note) + 2 if note else 0
+    bar_w = max(total - label_w - value_w - note_w, 3)
+
+    text = Text(no_wrap=True, overflow="crop")
+    text.append(f"{label[:label_w - 1]:>{label_w - 1}} ", style=DIM)
+    text.append_text(bar(pct, bar_w))
+    text.append(f"{value:>{value_w}}", style=f"bold {ramp(pct / 100)}")
+    if note:
+        text.append(f"  {note}", style=MUTED)
+    return text
+
+
+def heat_strip(values, width):
+    """One cell per value, coloured by the ramp - for machines with too many cores to list."""
+    text = Text(no_wrap=True, overflow="crop")
+    if not values:
+        return text
+    step = max(1, math.ceil(len(values) / width))
+    for i in range(0, len(values), step):
+        chunk = values[i:i + step]
+        avg = sum(chunk) / len(chunk)
+        text.append(BAR_FULL if UNICODE else ASCII_FULL, style=ramp(avg / 100))
+    return text
+
+
+# ---------------------------------------------------------------------------------
+# Collectors
+# ---------------------------------------------------------------------------------
 
 def _read_steal_pct():
     global _steal_last_total, _steal_last_steal
@@ -88,70 +227,167 @@ def _read_steal_pct():
         return 0.0
 
 
-def get_cpu_section():
+def core_columns(ncores, max_rows):
+    """How many columns to lay the per-core meters out in, so they fit `max_rows`.
+
+    Returns 0 when even four columns would not fit - the caller then draws a heat strip
+    instead of a list, because 64 core meters are not information, they are wallpaper.
+    """
+    # One column first: wider bars, and it fills a panel that would otherwise sit next to
+    # a taller neighbour with a hole in it. Only split when the list would not fit.
+    if ncores <= max_rows:
+        return 1
+    for cols in (2, 3, 4):
+        if math.ceil(ncores / cols) <= max_rows:
+            return cols
+    return 0
+
+
+def get_cpu_section(width, max_rows=99):
     percents = psutil.cpu_percent(percpu=True)
-    lines = []
-    for i, p in enumerate(percents):
-        lines.append(bar_horizontal(f"Core {i}", p))
     total = psutil.cpu_percent()
-    lines.append("")
-    lines.append(bar_horizontal("Total", total, color="cyan"))
-
     steal_pct = _read_steal_pct()
+
+    cols = core_columns(len(percents), max_rows)
+    if cols == 0:
+        rows = [Text("      cores ", style=DIM).append_text(heat_strip(percents, width - 14))]
+    elif cols == 1:
+        rows = [meter(f"cpu{i}", p, width) for i, p in enumerate(percents)]
+    else:
+        grid = Table.grid(expand=True, padding=(0, 2))
+        col_w = (width - 2 * (cols - 1)) // cols
+        for _ in range(cols):
+            grid.add_column(width=col_w)
+        per_col = math.ceil(len(percents) / cols)
+        for r in range(per_col):
+            cells = []
+            for c in range(cols):
+                i = c * per_col + r
+                cells.append(meter(f"cpu{i}", percents[i], col_w) if i < len(percents) else Text(""))
+            grid.add_row(*cells)
+        rows = [grid]
+
+    rows.append(meter("TOTAL", total, width))
     if IS_LINUX:
-        lines.append(bar_horizontal("Steal", steal_pct, color="red"))
+        rows.append(meter("steal", steal_pct, width))
+    return Group(*rows), total, steal_pct
 
-    return "\n".join(lines), total, steal_pct
+
+def cpu_section_rows(ncores, max_rows=99):
+    """Height in lines that get_cpu_section() will occupy for this core count."""
+    cols = core_columns(ncores, max_rows)
+    core_rows = 1 if cols == 0 else (ncores if cols == 1 else math.ceil(ncores / cols))
+    return core_rows + 1 + (1 if IS_LINUX else 0)
 
 
-def get_memory_section():
+def get_memory_section(width):
     mem = psutil.virtual_memory()
-    lines = [
-        bar_horizontal("RAM used", mem.percent),
-        f"{'':>12s} {mem.used / 1024**3:.1f}G / {mem.total / 1024**3:.1f}G  (avail {mem.available / 1024**3:.1f}G)",
-    ]
+    rows = [meter("ram", mem.percent, width,
+                  note=f"{mem.used / 1024**3:.1f}G/{mem.total / 1024**3:.1f}G")]
     swap = psutil.swap_memory()
     if swap.total > 0:
-        lines.append("")
-        lines.append(bar_horizontal("Swap", swap.percent))
-        lines.append(f"{'':>12s} {swap.used / 1024**3:.1f}G / {swap.total / 1024**3:.1f}G")
-    return "\n".join(lines)
+        rows.append(meter("swap", swap.percent, width,
+                          note=f"{swap.used / 1024**3:.1f}G/{swap.total / 1024**3:.1f}G"))
+    return Group(*rows)
 
 
-def get_disk_section():
-    lines = []
-    skip_fs = {"tmpfs", "devtmpfs", "squashfs", "overlay", "devfs"}
-    seen = set()
+def memory_section_rows():
+    return 1 + (1 if psutil.swap_memory().total > 0 else 0)
+
+
+SKIP_FS = {"tmpfs", "devtmpfs", "squashfs", "overlay", "devfs", "autofs"}
+# macOS marks its own internal volumes "nobrowse"/"dontbrowse" - Finder hides them and so
+# should we. Without this filter a stock Mac lists nine partitions for one physical disk
+# (Preboot, Update, VM, xarts, iSCPreboot, Hardware, ...), four of them reporting the same
+# total because APFS shares space across a container.
+HIDDEN_MOUNT_OPTS = ("dontbrowse", "nobrowse")
+MACOS_DATA_VOLUME = "/System/Volumes/Data"
+
+
+def disk_entries():
+    """The partitions worth showing, as (label, usage) pairs."""
+    entries, seen = [], set()
     for part in psutil.disk_partitions(all=False):
-        if part.fstype in skip_fs or part.mountpoint in seen:
+        if part.fstype in SKIP_FS or part.mountpoint in seen:
             continue
-        seen.add(part.mountpoint)
+        opts = (part.opts or "").lower()
+        if any(hidden in opts for hidden in HIDDEN_MOUNT_OPTS):
+            continue
         try:
             usage = psutil.disk_usage(part.mountpoint)
         except (PermissionError, OSError):
             continue
-        label = part.mountpoint
-        if len(label) > 12:
-            label = "..." + label[-9:]
-        lines.append(bar_horizontal(label, usage.percent))
-        lines.append(f"{'':>12s} {usage.used / 1024**3:.1f}G / {usage.total / 1024**3:.1f}G")
+        seen.add(part.mountpoint)
+        entries.append((part.mountpoint, usage))
 
+    # On macOS "/" is a sealed read-only system snapshot; every byte the user owns lives in
+    # the Data volume of the same APFS group, which the filter above just removed. Reporting
+    # "/" verbatim would show 11G used on a disk that is 98% full.
+    if IS_MACOS:
+        try:
+            data = psutil.disk_usage(MACOS_DATA_VOLUME)
+        except (PermissionError, OSError):
+            data = None
+        if data is not None:
+            entries = [(label, data if label == "/" else usage) for label, usage in entries]
+    return entries
+
+
+DISK_LABEL_W = 12
+
+
+def short_mount(label, width=DISK_LABEL_W):
+    """Shorten a mountpoint from the left, keeping the part that identifies it.
+
+    Cutting blindly turns "/Volumes/Untitled" into "…umes/Un", which names nothing. The
+    last path component is the part a human recognises.
+    """
+    if len(label) <= width:
+        return label
+    ellipsis = "…" if UNICODE else "~"
+    tail = label.rstrip("/").rsplit("/", 1)[-1]
+    if tail and len(tail) + 1 <= width:
+        return ellipsis + tail
+    return ellipsis + label[-(width - 1):]
+
+
+def get_disk_section(width):
+    rows = []
+    for label, usage in disk_entries():
+        rows.append(meter(short_mount(label), usage.percent, width, label_w=DISK_LABEL_W + 1,
+                          note=f"{usage.used / 1024**3:.1f}G/{usage.total / 1024**3:.1f}G"))
+    io_line = _disk_io_line()
+    if io_line is not None:
+        rows.append(io_line)
+    if not rows:
+        return Group(Text("  No disks found", style=MUTED))
+    return Group(*rows)
+
+
+def _disk_io_line():
     try:
         io = psutil.disk_io_counters()
-        if io and hasattr(get_disk_section, '_last_io'):
-            dt = time.time() - get_disk_section._last_time
-            if dt > 0:
-                read_s = (io.read_bytes - get_disk_section._last_io.read_bytes) / dt
-                write_s = (io.write_bytes - get_disk_section._last_io.write_bytes) / dt
-                lines.append("")
-                lines.append(f"{'Read':>12s}  {read_s / 1024**2:6.1f} MB/s")
-                lines.append(f"{'Write':>12s}  {write_s / 1024**2:6.1f} MB/s")
-        if io:
-            get_disk_section._last_io = io
-            get_disk_section._last_time = time.time()
     except Exception:
-        pass
-    return "\n".join(lines) if lines else "  No disks found"
+        return None
+    if not io:
+        return None
+    line = None
+    if hasattr(get_disk_section, "_last_io"):
+        dt = time.time() - get_disk_section._last_time
+        if dt > 0:
+            read_s = (io.read_bytes - get_disk_section._last_io.read_bytes) / dt
+            write_s = (io.write_bytes - get_disk_section._last_io.write_bytes) / dt
+            line = Text(no_wrap=True, overflow="crop")
+            line.append(f"{'io':>{DISK_LABEL_W}} ", style=DIM)
+            line.append(f"read {_fmt_bytes_rate(read_s):>10}", style=MUTED)
+            line.append(f"    write {_fmt_bytes_rate(write_s):>10}", style=MUTED)
+    get_disk_section._last_io = io
+    get_disk_section._last_time = time.time()
+    return line
+
+
+def disk_section_rows():
+    return max(len(disk_entries()), 1) + (1 if hasattr(get_disk_section, "_last_io") else 0)
 
 
 def _fmt_bytes_rate(b):
@@ -162,7 +398,7 @@ def _fmt_bytes_rate(b):
     return f"{b:.0f} B/s"
 
 
-def get_network_section():
+def get_network_section(width):
     net = psutil.net_io_counters()
     if hasattr(get_network_section, '_last'):
         dt = time.time() - get_network_section._last_time
@@ -178,16 +414,30 @@ def get_network_section():
     except psutil.AccessDenied:
         conns = -1
 
-    lines = [
-        f"  {'TX':>6s}  {_fmt_bytes_rate(sent_s):>12s}   (total {net.bytes_sent / 1024**3:.2f} GB)",
-        f"  {'RX':>6s}  {_fmt_bytes_rate(recv_s):>12s}   (total {net.bytes_recv / 1024**3:.2f} GB)",
+    peak = max(list(net_sent_history) + list(net_recv_history) + [sent_s, recv_s, 1.0])
+    rows = [
+        meter("tx", 100 * sent_s / peak, width, value=_fmt_bytes_rate(sent_s).replace(" ", ""),
+              note=f"Σ {net.bytes_sent / 1024**3:.2f}G" if UNICODE else f"tot {net.bytes_sent / 1024**3:.2f}G"),
+        meter("rx", 100 * recv_s / peak, width, value=_fmt_bytes_rate(recv_s).replace(" ", ""),
+              note=f"Σ {net.bytes_recv / 1024**3:.2f}G" if UNICODE else f"tot {net.bytes_recv / 1024**3:.2f}G"),
     ]
     if conns >= 0:
-        lines.append(f"  {'Conns':>6s}  {conns:>12d}")
-    return "\n".join(lines), sent_s, recv_s
+        line = Text(no_wrap=True, overflow="crop")
+        line.append("    conns ", style=DIM)
+        line.append(str(conns), style="grey70")
+        rows.append(line)
+    return Group(*rows), sent_s, recv_s
 
 
-def get_top_processes(n=8):
+def network_section_rows():
+    try:
+        psutil.net_connections()
+        return 3
+    except psutil.AccessDenied:
+        return 2
+
+
+def get_top_processes(width, n=8):
     procs = []
     for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'memory_info']):
         try:
@@ -199,48 +449,39 @@ def get_top_processes(n=8):
 
     procs.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
 
-    table = Table(box=box.SIMPLE_HEAVY, show_header=True, header_style="bold cyan", expand=True)
-    table.add_column("PID", justify="right", width=7)
-    table.add_column("Name", width=24)
-    table.add_column("CPU%", justify="right", width=7)
-    table.add_column("MEM%", justify="right", width=7)
-    table.add_column("RSS", justify="right", width=9)
+    # The inline bar earns the empty space the name column used to leave behind, and puts
+    # the shape of the load next to the number - btop's trick.
+    bar_w = 14 if width >= 86 else 0
+    table = Table(box=None, show_header=True, header_style=MUTED, expand=True,
+                  pad_edge=False, padding=(0, 1))
+    table.add_column("pid", justify="right", width=6, style=MUTED)
+    table.add_column("process", ratio=1, no_wrap=True, overflow="ellipsis")
+    if bar_w:
+        table.add_column("", width=bar_w)
+    table.add_column("cpu%", justify="right", width=6)
+    table.add_column("mem%", justify="right", width=6)
+    table.add_column("rss", justify="right", width=7)
 
     for proc in procs[:n]:
         cpu_pct = proc['cpu_percent'] or 0
         mem_pct = proc['memory_percent'] or 0
         rss = proc['memory_info'].rss / 1024**2 if proc['memory_info'] else 0
-        cpu_style = "red" if cpu_pct > 50 else "yellow" if cpu_pct > 10 else ""
-        table.add_row(
-            str(proc['pid']),
-            (proc['name'] or "?")[:24],
-            f"[{cpu_style}]{cpu_pct:.1f}[/{cpu_style}]" if cpu_style else f"{cpu_pct:.1f}",
-            f"{mem_pct:.1f}",
-            f"{rss:.0f}M",
-        )
+        # The ellipsis comes from the column, not from here - see the no_wrap column above.
+        cells = [str(proc['pid']), Text(proc['name'] or "?")]
+        if bar_w:
+            cells.append(bar(cpu_pct, bar_w - 1))
+        cells += [
+            Text(f"{cpu_pct:.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
+            Text(f"{mem_pct:.1f}", style=ramp(mem_pct / 25)),
+            Text(f"{rss:.0f}M", style="grey62"),
+        ]
+        table.add_row(*cells)
     return table
 
 
-def _render_chart(series, title, ylim, width, height):
-    """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
-
-    series: list of (values, label, color).
-    """
-    if not _PLOTEXT_5:
-        return _CHART_NEEDS_PLOTEXT_5
-    try:
-        plt.clear_figure()
-        for values, label, color in series:
-            plt.plot(values, label=label, color=color)
-        if ylim is not None:
-            plt.ylim(*ylim)
-        plt.title(title)
-        plt.theme("dark")
-        plt.plotsize(width, height)
-        return plt.build()
-    except Exception:
-        return "  Chart unavailable"
-
+# ---------------------------------------------------------------------------------
+# Charts
+# ---------------------------------------------------------------------------------
 
 def _window_label(interval=None):
     """Wall-clock span of a full history buffer, e.g. "last 30s" / "last 3m".
@@ -255,125 +496,268 @@ def _window_label(interval=None):
     return f"last {minutes}m"
 
 
+def _time_ticks(n):
+    """x-axis labels in seconds-ago, which is what the axis actually measures.
+
+    plotext labels the x axis with sample indices by default (1.0, 15.8, 30.5, ...) - a
+    number nobody reading a live dashboard has any use for.
+    """
+    span = HISTORY_LEN * sample_interval
+    positions = [0, n // 2, max(n - 1, 0)]
+    labels = [f"-{span:.0f}s", f"-{span / 2:.0f}s", "now"]
+    return positions, labels
+
+
+def _ascii_chart(values, ylim, width, height):
+    """Chart fallback for terminals that cannot draw plotext's box characters.
+
+    plotext frames every plot in box-drawing glyphs, so no marker choice yields pure
+    ASCII - the chart has to be drawn by hand or dropped, and dropping it would remove
+    the feature the tool is named for. This draws real columns, so it fills the panel
+    the braille version would have filled.
+    """
+    if not values or width <= 0 or height <= 0:
+        return Text("")
+    lo, hi = ylim if ylim else (min(values), max(values) or 1.0)
+    span = (hi - lo) or 1.0
+    axis_w = max(len(f"{hi:.0f}"), len(f"{lo:.0f}")) + 1
+    plot_w = max(width - axis_w, 1)
+
+    step = max(1, math.ceil(len(values) / plot_w))
+    levels = [max(0.0, min(1.0, (sum(values[i:i + step]) / len(values[i:i + step]) - lo) / span))
+              for i in range(0, len(values), step)]
+
+    rows, plot_h = [], max(height - 1, 1)
+    for r in range(plot_h):
+        top = (plot_h - r) / plot_h
+        bottom = (plot_h - r - 1) / plot_h
+        label = f"{hi:.0f}" if r == 0 else (f"{lo:.0f}" if r == plot_h - 1 else "")
+        line = Text(f"{label:>{axis_w - 1}} ", style=MUTED, no_wrap=True, overflow="crop")
+        for t in levels:
+            if t >= top:
+                line.append("#", style=ramp(t))
+            elif t > bottom:
+                line.append("=", style=ramp(t))
+            else:
+                line.append(" ")
+        rows.append(line)
+    span_s = HISTORY_LEN * sample_interval
+    footer = Text(" " * axis_w, no_wrap=True, overflow="crop")
+    footer.append(f"-{span_s:.0f}s".ljust(max(plot_w - 3, 1))[:max(plot_w - 3, 1)] + "now", style=MUTED)
+    rows.append(footer)
+    return Group(*rows)
+
+
+def _render_chart(series, ylim, width, height):
+    """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
+
+    series: list of (values, label, color).
+    """
+    if not UNICODE:
+        return _ascii_chart(series[0][0], ylim, width, height)
+    if not _PLOTEXT_5:
+        return Text(_CHART_NEEDS_PLOTEXT_5, style=MUTED)
+    try:
+        plt.clear_figure()
+        for values, _label, color in series:
+            # braille packs 2x4 dots into one cell - four times the vertical resolution of
+            # the block markers, and the same trick btop uses. "clear" keeps plotext from
+            # painting its own black background over the terminal's.
+            plt.plot(values, marker="braille", color=color)
+        if ylim is not None:
+            plt.ylim(*ylim)
+            lo, hi = ylim
+            plt.yticks([lo, (lo + hi) / 2, hi], [f"{lo:g}", f"{(lo + hi) / 2:g}", f"{hi:g}"])
+        plt.theme("clear")
+        plt.plotsize(width, height)
+        positions, labels = _time_ticks(len(series[0][0]))
+        plt.xticks(positions, labels)
+        return Text.from_ansi(plt.build(), no_wrap=True, overflow="crop")
+    except Exception:
+        return Text("  Chart unavailable", style=MUTED)
+
+
 def get_cpu_chart(width, height):
     if len(cpu_history) < 2:
-        return "  Collecting data..."
+        return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
     series = [(list(cpu_history), "CPU %", "cyan")]
     if IS_LINUX and any(s > 0 for s in steal_history):
         series.append((list(steal_history), "Steal %", "red"))
-    return _render_chart(series, f"CPU Usage ({_window_label()})", (0, 100), width, height)
+    return _render_chart(series, (0, 100), width, height)
 
 
 def get_net_chart(width, height):
     if len(net_sent_history) < 2:
-        return "  Collecting data..."
+        return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
     series = [
         ([x / 1024 for x in net_sent_history], "TX KB/s", "green"),
         ([x / 1024 for x in net_recv_history], "RX KB/s", "blue"),
     ]
-    return _render_chart(series, f"Network ({_window_label()})", None, width, height)
+    return _render_chart(series, None, width, height)
 
 
-def get_load_info():
+# ---------------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------------
+
+def _panel(renderable, title, colour, subtitle=""):
+    head = f"[b]{title}[/b]"
+    if subtitle:
+        head += f" [{MUTED}]· {subtitle}[/{MUTED}]" if UNICODE else f" [{MUTED}]- {subtitle}[/{MUTED}]"
+    return Panel(renderable, title=head, title_align="left", border_style=colour,
+                 box=box.ROUNDED if UNICODE else box.ASCII, padding=(0, 1))
+
+
+C_CPU, C_MEM, C_NET, C_DISK, C_PROC = "#4a6fa5", "#4a9575", "#4a6fa5", "#a5904a", "#7a5a95"
+
+
+def header_line(width, load_colour_source=None):
     load1, load5, load15 = psutil.getloadavg()
-    ncpu = psutil.cpu_count()
-    boot = psutil.boot_time()
-    uptime_s = time.time() - boot
-    days = int(uptime_s // 86400)
-    hours = int((uptime_s % 86400) // 3600)
-    mins = int((uptime_s % 3600) // 60)
+    ncpu = psutil.cpu_count() or 1
+    uptime_s = time.time() - psutil.boot_time()
+    days, rest = int(uptime_s // 86400), uptime_s % 86400
+    up = f"{days}d {int(rest // 3600)}h" if days else f"{int(rest // 3600)}h {int((rest % 3600) // 60)}m"
+    os_name = {"Linux": "Linux", "Darwin": "macOS", "Windows": "Windows"}.get(
+        platform.system(), platform.system())
 
-    load_color = "green"
-    if load1 > ncpu * 2:
-        load_color = "red"
-    elif load1 > ncpu:
-        load_color = "yellow"
+    text = Text(no_wrap=True, overflow="crop")
+    text.append(" TERMSTATS ", style="bold white on #2d6cdf")
+    text.append(f"  {platform.node()[:24]}", style="bold white")
+    text.append(f" {os_name}", style=MUTED)
+    text.append("   load ", style=MUTED)
+    text.append(f"{load1:.2f}", style=f"bold {ramp(load1 / (ncpu * 2))}")
+    text.append(f" {load5:.2f} {load15:.2f}", style=DIM)
+    text.append(f"   {ncpu} cpu", style=MUTED)
+    text.append("   up ", style=MUTED)
+    text.append(up, style="grey70")
+    text.append("   proc ", style=MUTED)
+    text.append(str(len(psutil.pids())), style="grey70")
 
-    hostname = platform.node()
-    os_name = {"Linux": "Linux", "Darwin": "macOS", "Windows": "Windows"}.get(platform.system(), platform.system())
+    tail = Text(no_wrap=True)
+    # The wall clock is the liveness signal: a frozen dashboard and a quiet machine look
+    # identical without it. It sits in the tail because the head is the identity.
+    tail.append(time.strftime("%H:%M:%S") + "  ", style="grey70")
+    tail.append(f"{sample_interval:g}s  ", style=MUTED)
+    tail.append(f"v{__version__} ", style=FAINT)
+    # Only right-align the tail when there is actually room; otherwise it collides with the
+    # process count and the two run together into one unreadable number.
+    pad = width - text.cell_len - tail.cell_len
+    if pad >= 2:
+        text.append(" " * pad)
+        text.append_text(tail)
+    return text
 
-    return (
-        f"  [{load_color}]{hostname}[/{load_color}] ({os_name})    "
-        f"Load: [{load_color}]{load1:.2f}[/{load_color}] / {load5:.2f} / {load15:.2f}  "
-        f"({ncpu} CPUs)    "
-        f"Up: {days}d {hours}h {mins}m    "
-        f"Procs: {len(psutil.pids())}"
-    )
 
+def render_dashboard(width=None, height=None):
+    """Compose the whole dashboard for a terminal of this size.
 
-def _as_renderable(chart):
-    """Hand plotext output to rich as parsed ANSI, not as a bare string.
-
-    A plain str goes through rich's normal text path, which counts the escape bytes as
-    printable cells. plotext emits ~190 of them per line, so rich thought a 71-column
-    chart was 259 wide and wrapped it into ragged fragments - the axis broke apart and the
-    title was cut off mid-word ("CPU Usage (last"). from_ansi turns them into real styles,
-    so the measured width is the visible width.
+    Explicitly size-aware: the layout has to know the height to decide what fits. The old
+    grid had no idea and produced 79 lines on a 40-line terminal, which meant the charts
+    and the process list - the reason the tool exists - were simply never on screen.
     """
-    return Text.from_ansi(chart, no_wrap=True, overflow="crop")
+    size = console.size
+    tw = max(width or size.width, 40)
+    th = max(height or size.height, 8)
 
+    narrow = tw < 92
+    right_w = 0 if narrow else max(36, min(tw * 2 // 5, 52))
+    left_w = tw - right_w
 
-def render_dashboard():
-    tw = shutil.get_terminal_size().columns
-    th = shutil.get_terminal_size().lines
+    # --- collect (widths are panel interiors: minus border and padding) --------------
+    cpu_body_w = (left_w if not narrow else tw) - 4
+    right_body_w = (right_w if not narrow else tw) - 4
 
-    cpu_text, cpu_total, steal_pct = get_cpu_section()
-    mem_text = get_memory_section()
-    disk_text = get_disk_section()
-    net_text, sent_s, recv_s = get_network_section()
-    top_table = get_top_processes()
-    load_text = get_load_info()
+    mem_h = memory_section_rows() + 2
+    net_h = network_section_rows() + 2
+    disk_h = disk_section_rows() + 2
+
+    # Height is decided before the columns are, not after: the CPU panel would rather be
+    # one tall column of wide bars than two short ones with a hole underneath, so first
+    # work out how tall the row wants to be, then fit the cores into it.
+    ncores = psutil.cpu_count() or 1
+    extra_rows = 1 + (1 if IS_LINUX else 0)          # TOTAL, plus steal on Linux
+    cpu_wanted = min(ncores + extra_rows + 2, max(8, th // 2))
+
+    # A short CPU panel next to a tall stack is exactly the hole this rewrite exists to
+    # remove. When that happens the disk panel leaves the stack and takes the full width -
+    # same total height, no dead space.
+    disk_in_stack = cpu_wanted + 2 >= mem_h + net_h + disk_h
+    stack_h = mem_h + net_h + (disk_h if disk_in_stack else 0)
+    top_h = max(cpu_wanted, stack_h) if not narrow else cpu_wanted + stack_h
+
+    core_rows = max(top_h - 2 - extra_rows, 1)
+    cpu_body, cpu_total, steal_pct = get_cpu_section(cpu_body_w, max_rows=core_rows)
+    mem_body = get_memory_section(right_body_w)
+    net_body, sent_s, recv_s = get_network_section(right_body_w)
+    disk_body = get_disk_section(right_body_w if disk_in_stack else tw - 4)
 
     cpu_history.append(cpu_total)
     steal_history.append(steal_pct)
     net_sent_history.append(sent_s)
     net_recv_history.append(recv_s)
 
-    # Two panels side by side: each loses 2 columns to its border, 2 to the padding, and
-    # the pair shares 1 column of grid gap. Asking plotext for one column more than that
-    # makes rich re-wrap the chart and the axis falls apart.
-    chart_w = max((tw - 1) // 2 - 4, 30)
-    chart_h = max(th // 4 - 2, 6)
-    cpu_chart = _as_renderable(get_cpu_chart(chart_w, chart_h))
-    net_chart = _as_renderable(get_net_chart(chart_w, chart_h))
+    # --- height budget ---------------------------------------------------------------
+    remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
+    charts_h = 0
+    if remaining >= 13:
+        charts_h = min(12, remaining - 5)
+    proc_h = remaining - charts_h
 
-    header = Text(" TERMSTATS ", style="bold white on blue")
-    header_line = Text.assemble(
-        header,
-        ("  " + time.strftime("%Y-%m-%d %H:%M:%S"), "dim"),
-        (f"  v{__version__}", "dim italic"),
-        ("  (bottled 🍻 by Martin Pfeffer - celox.io)", "dim"),
-    )
+    sections = [Layout(header_line(tw), name="head", size=1)]
 
-    grid = Table.grid(expand=True, padding=(0, 1))
-    grid.add_column(ratio=1)
-    grid.add_column(ratio=1)
-    grid.add_row(
-        Panel(cpu_text, title="[bold]CPU[/bold]", border_style="cyan", expand=True),
-        Panel(mem_text, title="[bold]Memory[/bold]", border_style="green", expand=True),
-    )
-    grid.add_row(
-        Panel(disk_text, title="[bold]Disk[/bold]", border_style="yellow", expand=True),
-        Panel(net_text, title="[bold]Network[/bold]", border_style="blue", expand=True),
-    )
+    stack_panels = [(_panel(mem_body, "memory", C_MEM), mem_h),
+                    (_panel(net_body, "network", C_NET), net_h)]
+    if disk_in_stack:
+        stack_panels.append((_panel(disk_body, "disk", C_DISK), disk_h))
 
-    chart_grid = Table.grid(expand=True, padding=(0, 1))
-    chart_grid.add_column(ratio=1)
-    chart_grid.add_column(ratio=1)
-    chart_grid.add_row(
-        Panel(cpu_chart, title="[bold]CPU History[/bold]", border_style="cyan"),
-        Panel(net_chart, title="[bold]Network History[/bold]", border_style="blue"),
-    )
+    if narrow:
+        top = Layout(Group(_panel(cpu_body, "cpu", C_CPU),
+                           *(panel for panel, _ in stack_panels)), name="top", size=top_h)
+    else:
+        # The last card takes ratio instead of a fixed size, so whatever line the CPU column
+        # is taller by is absorbed by a border rather than left as a gap.
+        stack = Layout(name="right")
+        stack.split_column(*[Layout(panel, size=h) for panel, h in stack_panels[:-1]],
+                           Layout(stack_panels[-1][0], ratio=1))
+        top = Layout(name="top", size=top_h)
+        top.split_row(Layout(_panel(cpu_body, "cpu", C_CPU), name="cpu"),
+                      Layout(stack, name="rightcol", size=right_w))
+    sections.append(top)
 
-    output = Table.grid(expand=True)
-    output.add_column()
-    output.add_row(header_line)
-    output.add_row(load_text)
-    output.add_row(grid)
-    output.add_row(chart_grid)
-    output.add_row(Panel(top_table, title="[bold]Top Processes[/bold]", border_style="magenta"))
-    return output
+    if not disk_in_stack:
+        sections.append(Layout(_panel(disk_body, "disk", C_DISK), name="disk", size=disk_h))
 
+    if charts_h:
+        chart_w = (tw - 1) // 2 - 4
+        chart_h = charts_h - 2
+        window = _window_label()
+        charts = Layout(name="charts", size=charts_h)
+        charts.split_row(
+            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", C_CPU, window), name="c1"),
+            Layout(_panel(get_net_chart(chart_w, chart_h), "network", C_NET,
+                          "tx/rx KB/s"), name="c2"),
+        )
+        sections.append(charts)
+
+    # A panel needs its two borders, a header row and at least two rows of content before
+    # it is worth drawing; below that it is a stump, and a stump is worse than the space.
+    if proc_h >= 5:
+        procs = get_top_processes(tw - 4, n=max(proc_h - 3, 1))
+        sections.append(Layout(_panel(procs, "processes", C_PROC, "by cpu"), name="proc"))
+
+    # Whatever section ends up last takes the remaining height instead of a fixed size, so
+    # a dropped panel leaves its lines to its neighbour rather than to a blank strip.
+    sections[-1].size = None
+    sections[-1].ratio = 1
+
+    root = Layout()
+    root.split_column(*sections)
+    return root
+
+
+# ---------------------------------------------------------------------------------
+# Run modes
+# ---------------------------------------------------------------------------------
 
 def _prime_measurements():
     psutil.cpu_percent(percpu=True)
@@ -433,6 +817,10 @@ def run_live(interval=DEFAULT_INTERVAL):
         pass
 
 
+# ---------------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------------
+
 # Long options are accepted with one dash too ("-live"). The hand-rolled parser used to
 # match only "-l"/"--live" and SILENTLY ignore everything else, so "termstats -live" ran a
 # snapshot - which shows "Collecting data..." in both history panels and looks like live
@@ -476,21 +864,17 @@ def print_help():
 # therefore died with UnicodeEncodeError on Windows (found by CI on its first run, 1.1.4).
 # A real console is fine - rich talks to it through the win32 API - so only widen a stream
 # that demonstrably cannot carry the output.
-_GLYPH_PROBE = "\u2588\u2591\u256d\U0001f37b"
-
-
 def _ensure_console_encoding():
     for stream in (sys.stdout, sys.stderr):
+        if _stream_can_draw(stream):
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
         try:
-            _GLYPH_PROBE.encode(stream.encoding or "")
-        except (AttributeError, LookupError, TypeError, UnicodeEncodeError):
-            reconfigure = getattr(stream, "reconfigure", None)
-            if reconfigure is None:
-                continue
-            try:
-                reconfigure(encoding="utf-8", errors="replace")
-            except Exception:
-                pass
+            reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 
 def _stdout_is_interactive():
@@ -513,6 +897,7 @@ def _fail(message):
 
 def main():
     _ensure_console_encoding()
+    detect_capabilities()
     args = sys.argv[1:]
 
     if any(a in _HELP_FLAGS for a in args):

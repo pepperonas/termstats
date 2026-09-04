@@ -8,6 +8,7 @@ frames (a flat sleep drifts by the render time), and rich's refresh rate.
 import pytest
 
 from termstats import cli
+from helpers import plain
 
 
 # --- how much time the history actually covers ------------------------------------
@@ -36,14 +37,21 @@ def test_window_label_never_prints_a_trailing_zero():
         assert ".0m" not in cli._window_label(interval)
 
 
-def test_chart_titles_are_not_hard_coded(primed_history, captured_series):
-    """The bug this guards: both titles said "last 60s" whatever the interval was."""
+def test_the_window_label_reaches_the_panel_title(primed_history):
+    """The bug this guards: both charts claimed "last 60s" whatever the interval was.
+
+    The label now lives in the panel header rather than inside the plot, where plotext
+    used to draw it on top of the data.
+    """
     cli.sample_interval = 0.5
-    cli.get_cpu_chart(60, 10)
-    cli.get_net_chart(60, 10)
-    titles = [call["title"] for call in captured_series]
-    assert titles == ["CPU Usage (last 30s)", "Network (last 30s)"]
-    assert not any("60s" in t for t in titles)
+    out = plain(cli.render_dashboard(140, 50), width=140, height=50)
+    assert "last 30s" in out
+    assert "last 60s" not in out
+
+
+def test_a_slower_interval_relabels_the_panel(primed_history):
+    cli.sample_interval = 3.0
+    assert "last 3m" in plain(cli.render_dashboard(140, 50), width=140, height=50)
 
 
 def test_history_length_is_a_sample_count_not_a_duration():

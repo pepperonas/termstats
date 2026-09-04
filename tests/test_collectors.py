@@ -1,4 +1,4 @@
-"""Collector resilience.
+"""Collector resilience and the data decisions each one makes.
 
 House rule: a collector may return less, it may not raise. A dashboard that dies on one
 unreadable mountpoint is worse than one missing a line.
@@ -10,82 +10,147 @@ from unittest.mock import mock_open, patch
 import pytest
 
 from termstats import cli
+from helpers import plain
 
 
 def usage(percent, used_gb=1.0, total_gb=10.0):
     return SimpleNamespace(percent=percent, used=used_gb * 1024 ** 3, total=total_gb * 1024 ** 3)
 
 
-def partition(mountpoint, fstype="ext4"):
-    return SimpleNamespace(device="/dev/fake", mountpoint=mountpoint, fstype=fstype, opts="")
+def partition(mountpoint, fstype="ext4", opts=""):
+    return SimpleNamespace(device="/dev/fake", mountpoint=mountpoint, fstype=fstype, opts=opts)
 
 
-# --- disks ------------------------------------------------------------------------
+# --- disks --------------------------------------------------------------------------
 
 @pytest.fixture
 def fake_disks(monkeypatch):
-    def install(partitions, usage_for):
+    def install(partitions, usage_for, macos=False):
         monkeypatch.setattr(cli.psutil, "disk_partitions", lambda all=False: partitions)
         monkeypatch.setattr(cli.psutil, "disk_usage", usage_for)
         monkeypatch.setattr(cli.psutil, "disk_io_counters", lambda: None)
+        monkeypatch.setattr(cli, "IS_MACOS", macos)
     return install
 
 
 def test_unreadable_partition_is_skipped_not_fatal(fake_disks):
     def usage_for(mount):
-        if mount == "/locked":
-            raise PermissionError("nope")
-        return usage(42.0)
+        if mount == "/boot":
+            raise PermissionError
+        return usage(10.0)
 
-    fake_disks([partition("/"), partition("/locked")], usage_for)
-    out = cli.get_disk_section()
-    assert "/locked" not in out
-    assert "42.0%" in out
+    fake_disks([partition("/"), partition("/boot")], usage_for)
+    out = plain(cli.get_disk_section(60), width=60)
+    assert "/boot" not in out and "10.0%" in out
 
 
 def test_oserror_on_a_partition_is_skipped(fake_disks):
     def usage_for(mount):
-        raise OSError("device not ready")
+        raise OSError("gone")
 
-    fake_disks([partition("/broken")], usage_for)
-    assert cli.get_disk_section() == "  No disks found"
+    fake_disks([partition("/")], usage_for)
+    assert "No disks found" in plain(cli.get_disk_section(60), width=60)
 
 
-@pytest.mark.parametrize("fstype", ["tmpfs", "devtmpfs", "squashfs", "overlay", "devfs"])
+@pytest.mark.parametrize("fstype", ["tmpfs", "devtmpfs", "squashfs", "overlay", "devfs", "autofs"])
 def test_pseudo_filesystems_are_filtered_out(fake_disks, fstype):
-    fake_disks([partition("/run", fstype)], lambda m: usage(1.0))
-    assert cli.get_disk_section() == "  No disks found"
+    fake_disks([partition("/x", fstype=fstype)], lambda m: usage(50.0))
+    assert "No disks found" in plain(cli.get_disk_section(60), width=60)
 
 
 def test_duplicate_mountpoints_appear_once(fake_disks):
     fake_disks([partition("/data"), partition("/data")], lambda m: usage(50.0))
-    assert cli.get_disk_section().count("/data") == 1
+    assert plain(cli.get_disk_section(60), width=60).count("/data") == 1
 
 
-def test_long_mountpoints_are_truncated_from_the_left(fake_disks):
-    long_mount = "/Volumes/Some/Very/Long/Mount/Point"
-    fake_disks([partition(long_mount)], lambda m: usage(3.0))
-    out = cli.get_disk_section()
-    assert "...unt/Point" in out          # "..." + the last 9 characters
-    assert long_mount not in out
+@pytest.mark.parametrize("opts", ["rw,dontbrowse,journaled", "rw,nobrowse", "NOBROWSE"])
+def test_volumes_the_os_hides_from_the_user_are_hidden_here_too(fake_disks, opts):
+    """A stock Mac lists nine partitions for one physical disk. Seven of them carry
+    Apple's own "not for the user" flag, and four report the same total because APFS
+    shares space across a container."""
+    fake_disks([partition("/"), partition("/System/Volumes/Preboot", opts=opts)],
+               lambda m: usage(50.0))
+    out = plain(cli.get_disk_section(60), width=60)
+    assert "Preboot" not in out
+    assert "50.0%" in out
+
+
+def test_a_normal_volume_is_not_hidden(fake_disks):
+    """Counter-check: the filter must not swallow real mounts."""
+    fake_disks([partition("/Volumes/Backup", opts="rw,local,journaled")], lambda m: usage(50.0))
+    assert "Backup" in plain(cli.get_disk_section(60), width=60)
+
+
+def test_macos_root_reports_the_data_volume_not_the_sealed_snapshot(fake_disks):
+    """On macOS "/" is a read-only system snapshot; every byte the user owns lives in the
+    Data volume, which the nobrowse filter just removed. Reporting "/" verbatim shows 11G
+    used on a disk that is 98% full."""
+    def usage_for(mount):
+        if mount == cli.MACOS_DATA_VOLUME:
+            return usage(98.5, used_gb=418.0, total_gb=460.0)
+        return usage(3.2, used_gb=11.0, total_gb=460.0)
+
+    fake_disks([partition("/", opts="ro,rootfs"),
+                partition(cli.MACOS_DATA_VOLUME, opts="rw,dontbrowse")], usage_for, macos=True)
+    out = plain(cli.get_disk_section(70), width=70)
+    assert "98.5%" in out and "3.2%" not in out
+    assert "418.0G" in out
+
+
+def test_a_missing_data_volume_leaves_root_alone(fake_disks):
+    def usage_for(mount):
+        if mount == cli.MACOS_DATA_VOLUME:
+            raise OSError("no such volume")
+        return usage(42.0)
+
+    fake_disks([partition("/", opts="ro,rootfs")], usage_for, macos=True)
+    assert "42.0%" in plain(cli.get_disk_section(60), width=60)
+
+
+def test_the_data_substitution_is_macos_only(fake_disks):
+    def usage_for(mount):
+        return usage(98.5) if mount == cli.MACOS_DATA_VOLUME else usage(3.2)
+
+    fake_disks([partition("/")], usage_for, macos=False)
+    assert "3.2%" in plain(cli.get_disk_section(60), width=60)
+
+
+@pytest.mark.parametrize("mount,expected", [
+    ("/", "/"),
+    ("/data", "/data"),
+    ("/Volumes/Untitled", "…Untitled"),
+    ("/System/Volumes/Data", "…Data"),
+])
+def test_mountpoints_are_shortened_to_the_part_a_human_recognises(mount, expected):
+    """Cutting blindly turned "/Volumes/Untitled" into "…umes/Un", which names nothing."""
+    assert cli.short_mount(mount) == expected
+
+
+def test_a_single_very_long_component_falls_back_to_a_left_cut():
+    assert cli.short_mount("/" + "x" * 40).endswith("x")
+    assert len(cli.short_mount("/" + "x" * 40)) <= cli.DISK_LABEL_W
+
+
+def test_ascii_mode_uses_an_ascii_ellipsis(ascii_mode):
+    assert cli.short_mount("/Volumes/Untitled").isascii()
 
 
 def test_disk_io_needs_a_baseline_before_it_reports(fake_disks, monkeypatch):
-    io = SimpleNamespace(read_bytes=0, write_bytes=0)
+    io = SimpleNamespace(read_bytes=1000, write_bytes=2000)
     fake_disks([partition("/")], lambda m: usage(10.0))
     monkeypatch.setattr(cli.psutil, "disk_io_counters", lambda: io)
-    assert "Read" not in cli.get_disk_section()   # first call: nothing to diff against
-    assert "Read" in cli.get_disk_section()       # second call: a delta exists
+    assert "read" not in plain(cli.get_disk_section(70), width=70)     # nothing to diff against
+    assert "read" in plain(cli.get_disk_section(70), width=70)         # a delta exists
 
 
 def test_failing_disk_io_does_not_lose_the_partition_list(fake_disks, monkeypatch):
     fake_disks([partition("/")], lambda m: usage(10.0))
     monkeypatch.setattr(cli.psutil, "disk_io_counters",
-                        lambda: (_ for _ in ()).throw(RuntimeError("no counters")))
-    assert "10.0%" in cli.get_disk_section()
+                        lambda: (_ for _ in ()).throw(RuntimeError("nope")))
+    assert "10.0%" in plain(cli.get_disk_section(60), width=60)
 
 
-# --- memory -----------------------------------------------------------------------
+# --- memory -------------------------------------------------------------------------
 
 @pytest.fixture
 def fake_memory(monkeypatch):
@@ -97,23 +162,25 @@ def fake_memory(monkeypatch):
     return install
 
 
-def test_memory_reports_used_and_available(fake_memory):
+def test_memory_reports_used_and_total(fake_memory):
     fake_memory(0)
-    out = cli.get_memory_section()
-    assert "61.0%" in out and "8.0G / 16.0G" in out and "avail 6.0G" in out
+    out = plain(cli.get_memory_section(60), width=60)
+    assert "61.0%" in out and "8.0G/16.0G" in out
 
 
 def test_swap_row_is_omitted_when_there_is_no_swap(fake_memory):
     fake_memory(0)
-    assert "Swap" not in cli.get_memory_section()
+    assert "swap" not in plain(cli.get_memory_section(60), width=60)
+    assert cli.memory_section_rows() == 1
 
 
 def test_swap_row_appears_when_swap_exists(fake_memory):
     fake_memory(4)
-    assert "Swap" in cli.get_memory_section()
+    assert "swap" in plain(cli.get_memory_section(60), width=60)
+    assert cli.memory_section_rows() == 2
 
 
-# --- network ----------------------------------------------------------------------
+# --- network ------------------------------------------------------------------------
 
 @pytest.fixture
 def fake_net(monkeypatch):
@@ -130,30 +197,76 @@ def test_connection_count_is_omitted_when_access_is_denied(fake_net):
         raise cli.psutil.AccessDenied()
 
     fake_net(denied)
-    text, _, _ = cli.get_network_section()
-    assert "Conns" not in text
-    assert "0" != text
+    body, _, _ = cli.get_network_section(60)
+    assert "conns" not in plain(body, width=60)
+    assert cli.network_section_rows() == 2
 
 
 def test_connection_count_is_shown_when_available(fake_net):
     fake_net(lambda: [object()] * 7)
-    text, _, _ = cli.get_network_section()
-    assert "Conns" in text and "7" in text
+    body, _, _ = cli.get_network_section(60)
+    out = plain(body, width=60)
+    assert "conns" in out and "7" in out
+    assert cli.network_section_rows() == 3
 
 
 def test_network_rates_need_a_baseline(fake_net):
     fake_net(lambda: [])
-    _, sent, recv = cli.get_network_section()
+    _, sent, recv = cli.get_network_section(60)
     assert (sent, recv) == (0, 0)
 
 
 def test_network_totals_are_reported_in_gigabytes(fake_net):
     fake_net(lambda: [])
-    text, _, _ = cli.get_network_section()
-    assert "10.00 GB" in text and "20.00 GB" in text
+    body, _, _ = cli.get_network_section(70)
+    out = plain(body, width=70)
+    assert "10.00G" in out and "20.00G" in out
 
 
-# --- processes --------------------------------------------------------------------
+# --- cpu ------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("ncores,max_rows,expected", [
+    (4, 20, 1),      # fits in one column - wider bars, fills a tall panel
+    (10, 12, 1),
+    (10, 6, 2),      # too tall for one column
+    (32, 9, 4),
+    (128, 9, 0),     # not even four columns fit -> heat strip
+])
+def test_core_layout_prefers_one_tall_column_then_splits(ncores, max_rows, expected):
+    assert cli.core_columns(ncores, max_rows) == expected
+
+
+def test_many_cores_collapse_to_a_heat_strip(monkeypatch):
+    """256 per-core meters are not information, they are wallpaper."""
+    monkeypatch.setattr(cli.psutil, "cpu_percent",
+                        lambda percpu=False: [50.0] * 256 if percpu else 50.0)
+    body, _, _ = cli.get_cpu_section(60, max_rows=8)
+    out = plain(body, width=60)
+    assert "cores" in out
+    assert "cpu100" not in out
+
+
+def test_per_core_rows_are_listed_when_they_fit(monkeypatch):
+    monkeypatch.setattr(cli.psutil, "cpu_percent",
+                        lambda percpu=False: [50.0] * 4 if percpu else 50.0)
+    out = plain(cli.get_cpu_section(60, max_rows=20)[0], width=60)
+    for i in range(4):
+        assert f"cpu{i}" in out
+    assert "TOTAL" in out
+
+
+def test_cpu_height_prediction_matches_what_is_drawn(monkeypatch):
+    """render_dashboard sizes the row from this number before the panel exists; if the
+    two disagree the layout either clips the TOTAL bar or leaves a gap."""
+    for ncores, max_rows in ((4, 20), (10, 12), (10, 6), (32, 9), (128, 9)):
+        monkeypatch.setattr(cli.psutil, "cpu_percent",
+                            lambda percpu=False, n=ncores: [50.0] * n if percpu else 50.0)
+        predicted = cli.cpu_section_rows(ncores, max_rows)
+        drawn = plain(cli.get_cpu_section(60, max_rows=max_rows)[0], width=60).rstrip("\n")
+        assert len(drawn.split("\n")) == predicted, f"{ncores} cores in {max_rows} rows"
+
+
+# --- processes -------------------------------------------------------------------------
 
 class FakeProc:
     def __init__(self, info=None, raises=None):
@@ -172,88 +285,100 @@ def proc_info(pid, name, cpu, mem=1.0, rss_mb=100):
             "memory_info": SimpleNamespace(rss=rss_mb * 1024 ** 2)}
 
 
-def render_table(table, width=100):
-    from rich.console import Console
-    console = Console(width=width, file=None, record=True)
-    with console.capture() as cap:
-        console.print(table)
-    return cap.get()
-
-
 def test_vanished_and_forbidden_processes_are_skipped(monkeypatch):
     procs = [
         FakeProc(raises=cli.psutil.NoSuchProcess(1)),
         FakeProc(raises=cli.psutil.AccessDenied()),
-        FakeProc(proc_info(42, "survivor", 9.0)),
+        FakeProc(info=proc_info(3, "survivor", 5.0)),
     ]
     monkeypatch.setattr(cli.psutil, "process_iter", lambda attrs: procs)
-    assert "survivor" in render_table(cli.get_top_processes())
+    assert "survivor" in plain(cli.get_top_processes(100), width=100)
 
 
 def test_processes_without_a_cpu_reading_are_dropped(monkeypatch):
-    procs = [FakeProc(proc_info(1, "unmeasured", None)), FakeProc(proc_info(2, "measured", 5.0))]
+    procs = [FakeProc(info=proc_info(1, "nocpu", None)), FakeProc(info=proc_info(2, "ok", 1.0))]
     monkeypatch.setattr(cli.psutil, "process_iter", lambda attrs: procs)
-    out = render_table(cli.get_top_processes())
-    assert "measured" in out and "unmeasured" not in out
+    out = plain(cli.get_top_processes(100), width=100)
+    assert "ok" in out and "nocpu" not in out
 
 
 def test_processes_are_sorted_by_cpu_descending(monkeypatch):
-    procs = [FakeProc(proc_info(i, f"p{i}", cpu)) for i, cpu in enumerate([3.0, 90.0, 40.0])]
+    procs = [FakeProc(info=proc_info(i, f"proc{i}", float(i))) for i in (1, 9, 5)]
     monkeypatch.setattr(cli.psutil, "process_iter", lambda attrs: procs)
-    out = render_table(cli.get_top_processes())
-    assert out.index("p1") < out.index("p2") < out.index("p0")
+    out = plain(cli.get_top_processes(100), width=100)
+    assert out.index("proc9") < out.index("proc5") < out.index("proc1")
 
 
 def test_only_n_processes_are_shown(monkeypatch):
-    procs = [FakeProc(proc_info(i, f"p{i}", float(i))) for i in range(30)]
+    procs = [FakeProc(info=proc_info(i, f"p{i}", float(i))) for i in range(30)]
     monkeypatch.setattr(cli.psutil, "process_iter", lambda attrs: procs)
-    # Count rows, not name substrings: "p2" is also inside "p29".
-    assert cli.get_top_processes(n=3).row_count == 3
-    assert cli.get_top_processes(n=8).row_count == 8
+    assert cli.get_top_processes(100, n=3).row_count == 3
+    assert cli.get_top_processes(100, n=8).row_count == 8
 
 
 def test_a_nameless_process_still_renders(monkeypatch):
     monkeypatch.setattr(cli.psutil, "process_iter",
-                        lambda attrs: [FakeProc(proc_info(7, None, 1.0))])
-    assert "?" in render_table(cli.get_top_processes())
+                        lambda attrs: [FakeProc(info=proc_info(1, None, 1.0))])
+    assert "?" in plain(cli.get_top_processes(100), width=100)
 
 
-# --- steal time -------------------------------------------------------------------
+def test_the_inline_bar_is_dropped_on_a_narrow_terminal(monkeypatch):
+    """Below ~86 columns the bar would squeeze the process name into nothing."""
+    monkeypatch.setattr(cli.psutil, "process_iter",
+                        lambda attrs: [FakeProc(info=proc_info(1, "proc", 50.0))])
+    assert len(cli.get_top_processes(120).columns) == 6
+    assert len(cli.get_top_processes(70).columns) == 5
 
-PROC_STAT_1 = "cpu  100 0 100 700 0 0 0 100 0 0\ncpu0 1 2 3 4 5 6 7 8 9 10\n"
-PROC_STAT_2 = "cpu  200 0 200 1400 0 0 0 200 0 0\ncpu0 1 2 3 4 5 6 7 8 9 10\n"
 
+@pytest.mark.parametrize("name", [
+    "Google Chrome Helper (Renderer) --type=renderer --enable-features=x",
+    "/usr/local/bin/some very long command --with --flags " * 3,
+    "x" * 200,
+])
+def test_a_long_process_name_is_ellipsised_not_wrapped(monkeypatch, name):
+    """One row per process, whatever the name.
+
+    ⚠️ A name of 200 unbroken characters is the wrong probe here - rich truncates that
+    one anyway. Real process names contain SPACES, and those wrap the row onto five
+    lines without no_wrap; the first two cases are what actually pins this.
+    """
+    monkeypatch.setattr(cli.psutil, "process_iter",
+                        lambda attrs: [FakeProc(info=proc_info(1, name, 1.0))])
+    rows = plain(cli.get_top_processes(100), width=100).rstrip("\n").split("\n")
+    assert len(rows) == 2, f"the row wrapped onto {len(rows) - 1} lines"
+
+
+# --- steal time (Linux) -----------------------------------------------------------------
 
 def test_steal_is_zero_off_linux(monkeypatch):
     monkeypatch.setattr(cli, "IS_LINUX", False)
-    with patch("builtins.open", mock_open(read_data=PROC_STAT_1)) as opened:
-        assert cli._read_steal_pct() == 0.0
-    opened.assert_not_called()
+    assert cli._read_steal_pct() == 0.0
 
 
 def test_first_linux_reading_has_no_baseline(monkeypatch):
     monkeypatch.setattr(cli, "IS_LINUX", True)
-    with patch("builtins.open", mock_open(read_data=PROC_STAT_1)):
+    with patch("builtins.open", mock_open(read_data="cpu 100 0 0 0 0 0 0 10\n")):
         assert cli._read_steal_pct() == 0
 
 
 def test_second_linux_reading_is_a_delta(monkeypatch):
+    """Fields 1..n sum to the total, field 8 is steal: 100 ticks pass, 10 of them stolen."""
     monkeypatch.setattr(cli, "IS_LINUX", True)
-    with patch("builtins.open", mock_open(read_data=PROC_STAT_1)):
+    with patch("builtins.open", mock_open(read_data="cpu 90 0 0 0 0 0 0 10\n")):
         cli._read_steal_pct()
-    with patch("builtins.open", mock_open(read_data=PROC_STAT_2)):
+    with patch("builtins.open", mock_open(read_data="cpu 180 0 0 0 0 0 0 20\n")):
         assert cli._read_steal_pct() == pytest.approx(10.0)
 
 
 def test_a_standstill_reports_zero_not_a_division_error(monkeypatch):
     monkeypatch.setattr(cli, "IS_LINUX", True)
     for _ in range(2):
-        with patch("builtins.open", mock_open(read_data=PROC_STAT_1)):
+        with patch("builtins.open", mock_open(read_data="cpu 100 0 0 0 0 0 0 10\n")):
             result = cli._read_steal_pct()
     assert result == 0
 
 
-@pytest.mark.parametrize("content", ["", "cpu\n", "cpu 1 2\n", "cpu a b c d e f g h\n"])
+@pytest.mark.parametrize("content", ["cpu\n", "cpu 1 2 3\n", "garbage\n", ""])
 def test_malformed_proc_stat_returns_zero(monkeypatch, content):
     monkeypatch.setattr(cli, "IS_LINUX", True)
     with patch("builtins.open", mock_open(read_data=content)):

@@ -91,13 +91,15 @@ snapshot instead, so `termstats > report.txt` still terminates.
 
 ## Features
 
-- **CPU** — per-core usage bars + total + steal time (Linux)
-- **Memory** — RAM & swap with used/total/available
-- **Disk** — partition usage bars + read/write throughput
+- **CPU** — per-core gradient meters + total + steal time (Linux); many-core machines get a heat strip
+- **Memory** — RAM & swap with used/total beside the bar
+- **Disk** — usage per *real* mountpoint + read/write throughput
 - **Network** — TX/RX throughput + total transferred + connections
-- **Top Processes** — sorted by CPU, with color-coded thresholds
-- **Live Charts** — CPU & network history as terminal line graphs, labelled with the window they actually cover
-- **Cross-Platform** — Linux, macOS, Windows
+- **Top Processes** — sorted by CPU, with an inline load bar per process
+- **Braille Charts** — CPU & network history at 2×4 dots per cell, on a time-labelled axis
+- **Fits Your Terminal** — the layout is height-aware; nothing is drawn off-screen
+- **One Colour Ramp** — cool → warm → hot, shared by every meter, value and chart
+- **Cross-Platform** — Linux, macOS, Windows, with an ASCII fallback when the terminal cannot draw
 - **Live by Default** — no flag needed; snapshot mode kicks in automatically when output is piped
 - **Zero Config** — just install and run
 
@@ -133,7 +135,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.1.0
+termstats --version   # -> termstats 0.2.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -204,15 +206,30 @@ so your scrollback stays intact.
 | Panel | Content |
 |-------|---------|
 | **Header** | Hostname, OS, load average (1/5/15 min), CPU count, uptime, process count. The load figure turns yellow above `1× CPUs` and red above `2× CPUs`. |
-| **CPU** | One bar per logical core, plus a total bar. On Linux an additional **Steal** bar shows hypervisor-stolen time, computed as a delta from `/proc/stat` between refreshes — the single most useful metric on an oversold VPS. |
-| **Memory** | RAM used/total plus *available* (which, unlike "free", accounts for reclaimable cache). Swap is only shown when the machine actually has swap configured. |
-| **Disk** | Usage bar per mounted partition (pseudo filesystems like `tmpfs`, `devtmpfs`, `squashfs`, `overlay` and `devfs` are skipped, duplicate mountpoints collapsed), plus system-wide read/write throughput measured between refreshes. |
+| **CPU** | One meter per logical core, plus a total. They sit in one tall column while they fit, split into up to four when they do not, and collapse to a single-line heat strip on machines with more cores than the panel can list. On Linux an additional **steal** meter shows hypervisor-stolen time, computed as a delta from `/proc/stat` between refreshes — the single most useful metric on an oversold VPS. |
+| **Memory** | RAM and swap, with used/total beside the bar. Swap is only shown when the machine actually has swap configured. |
+| **Disk** | One meter per *real* mountpoint, plus system-wide read/write throughput. Pseudo filesystems (`tmpfs`, `devtmpfs`, `squashfs`, `overlay`, `devfs`, `autofs`) and volumes the OS marks `nobrowse`/`dontbrowse` are skipped, duplicate mountpoints collapsed. On macOS `/` reports the Data volume of its APFS group — see [Disk on macOS](#disk-on-macos). |
 | **Network** | TX/RX throughput measured between refreshes, lifetime totals, and the open connection count. |
-| **CPU History** | Line chart of total CPU over the last 60 samples; the steal series is overlaid whenever it is non-zero. |
-| **Network History** | Line chart of TX/RX in KB/s over the last 60 samples. |
-| **Top Processes** | The 8 hungriest processes by CPU, with RSS. CPU values are tinted yellow above 10% and red above 50%. |
+| **CPU History** | Braille line chart of total CPU over the last 60 samples, on an axis labelled in seconds-ago; the steal series is overlaid whenever it is non-zero. |
+| **Network History** | Braille line chart of TX/RX in KB/s over the last 60 samples. |
+| **Top Processes** | The hungriest processes by CPU — as many as the remaining height allows — each with an inline load bar and RSS. |
 
-All usage bars share one color scale: **green** up to 70%, **yellow** 70–90%, **red** above 90%.
+Everything colour-coded shares **one ramp**: cool at idle, warm under load, hot when
+saturated. Each cell of a bar is tinted by its own position on that ramp, so a long bar
+reads as a scale rather than a block, and the same ramp colours the load average and the
+CPU/memory columns of the process table. Truecolor is emitted and quantised down
+automatically on 256- and 16-colour terminals.
+
+### Disk on macOS
+
+A stock Mac reports **nine** partitions for one physical disk — `/`, `/System/Volumes/VM`,
+`Preboot`, `Update`, `xarts`, `iSCPreboot`, `Hardware`, `Data` and any mounted volume — four
+of which claim the same total, because APFS shares free space across a container.
+
+termstats hides everything Apple itself marks `nobrowse`/`dontbrowse` (the same flag that
+keeps them out of Finder), and reports `/` using the **Data** volume of its APFS group.
+Without that substitution the sealed, read-only system snapshot would show ~11G used on a
+disk that is 98% full.
 
 Throughput and steal are *rates*, so they need two samples. A snapshot primes the counters,
 waits one second, and then prints — which is why `termstats --once` takes about a second. The
@@ -220,9 +237,20 @@ two history charts say `Collecting data...` until the second sample arrives, so 
 empty in snapshot mode by design; the live view fills them in.
 
 The history buffer holds **60 samples**, not 60 seconds. At the 0.5 s default that is a
-30-second window, and the chart titles say so — `last 30s`, or `last 3m` at `-i 3`. They are
+30-second window, and the panel titles say so — `last 30s`, or `last 3m` at `-i 3`. They are
 computed from the interval rather than hard-coded, because "last 60s" was only ever true for
 one particular interval.
+
+### Fitting the terminal
+
+The layout is height-aware. It measures what each panel needs, then spends the remaining
+lines from the top: the CPU row and the memory/network/disk stack first, then the charts,
+then as many processes as are left over. A panel that cannot be drawn with at least two rows
+of content is **dropped whole** rather than reduced to an empty frame, and whichever panel
+ends up last takes the leftover lines so nothing is left blank.
+
+The dashboard therefore looks different on a 24-line terminal than on a 60-line one, by
+design. Widen or lengthen the window and more of it appears.
 
 ## Platform Support
 
@@ -250,6 +278,10 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - [psutil](https://github.com/giampaolo/psutil) — cross-platform system metrics
 - [rich](https://github.com/Textualize/rich) — terminal formatting
 - [plotext](https://github.com/piccolomo/plotext) — terminal plots (**5.x only**, see below)
+
+The charts are drawn in **Unicode braille** (U+2800–U+28FF), which packs 2×4 dots into one
+character cell. Font coverage for that block is near-universal; if yours lacks it the charts
+show replacement boxes while everything else stays readable.
 
 plotext is pinned to `>=5.2,<6`. plotext **6.0.0** (released 2026-08-23, labelled beta
 upstream) is a full rewrite that removed the 5.x top-level API — `clear_figure`, `plot`,
@@ -360,6 +392,10 @@ What it covers:
 | Argument parsing | every flag spelling, unknown options exit 2, `-i` value consumption, `nan`/`inf`/`0`/negative intervals |
 | Mode selection | live in a terminal, snapshot when piped, `--once`/`--live` overrides, the two together rejected |
 | Timing | the computed history window, drift-compensated frame scheduling, the refresh rate tracking the interval |
+| Layout | fits *and* fills the height at thirteen terminal geometries, no line wider than the terminal, no blank lines, no stump panels |
+| Meters | ramp continuity and clamping, exact bar width, eighth-cell fill, the annotation dropped rather than sliced |
+| Charts | braille markers, no painted background, the time axis, and the hand-drawn ASCII chart |
+| Disk | `nobrowse` filtering, the macOS Data substitution and its counter-checks, mountpoint shortening |
 | Badge tooling | the LOC counting rules, the three `pytest --collect-only` output shapes, and the refusal to publish a zero |
 | Charts | the plotext 5.x guard, graceful degradation, byte→KB conversion, the 0–100 CPU axis, Linux-only steal series |
 | Formatting | bar fill and colour thresholds, rate scaling across the B/KB/MB boundaries |
@@ -496,8 +532,20 @@ this note instead of crashing. Same fix as above.
 **Connection count missing on Windows** — `psutil.net_connections()` needs administrator
 rights there. The row is omitted rather than shown as zero.
 
-**Layout looks cramped or wrapped** — widen the terminal; the two-column grid assumes roughly
-120 columns.
+**Panels are missing** — the layout drops what does not fit rather than drawing it
+off-screen. Make the window taller: the charts need about 13 spare lines, the process list
+about 5.
+
+**The charts show boxes instead of a line** — your font has no Unicode braille block
+(U+2800–U+28FF). Almost all modern monospace fonts do; switch font, or redirect the output
+(`termstats --once > out.txt`), which is unaffected.
+
+**Colours look flat or wrong** — the ramp is emitted as truecolor and rich quantises it for
+256- and 16-colour terminals. Inside `tmux`, set `default-terminal "tmux-256color"` and start
+it with `tmux -2`, or export `COLORTERM=truecolor`.
+
+**Layout looks cramped or wrapped** — widen the terminal; the two-column arrangement assumes
+roughly 92 columns and the charts look best from about 110.
 
 **The chart says `last 30s` but I expected 60** — the buffer holds 60 *samples*, and the
 default interval is 0.5 s. Run `-i 1` for a 60-second window; the title always states the
