@@ -11,6 +11,26 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-05
+
+### Fixed
+
+- **A panel could be drawn as a bordered stump on Linux.** The height budget is a plan, not
+  a guarantee: a narrow terminal, several mountpoints, or Linux's extra steal meter can push
+  the fixed section sizes past the height available, and the trailing `ratio` section was
+  then squeezed to two lines — a frame with nothing in it. Sections are now dropped from the
+  bottom until the plan actually fits, and the single-column layout takes only the stack
+  cards that fit, whole. Found by CI on Linux at 60×20; no macOS run could reproduce it.
+- **The single-column layout left blank lines.** A rich `Group` renders its children at
+  their natural height and leaves the remainder empty, so the trailing `ratio` never
+  stretched. The narrow branch nests Layouts now, like the wide one.
+
+### Added
+
+- A geometry sweep across both platforms and 2–128 cores (100 cases), so a Linux-only
+  layout defect fails on a Mac. Tests 411 → 511.
+
+
 ## [0.2.0] - 2026-09-05
 
 A visual rewrite of the rendering layer. The command line is unchanged; what the dashboard
@@ -140,6 +160,7 @@ These releases were tagged only in the commit log; the numbering restarted at 0.
 - Renamed from `stats` to `termstats` (command, package, distribution and repository).
 - Original dashboard: CPU, memory, disk, network, top processes, history charts.
 
-[Unreleased]: https://github.com/pepperonas/termstats/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/pepperonas/termstats/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/pepperonas/termstats/releases/tag/v0.2.1
 [0.2.0]: https://github.com/pepperonas/termstats/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pepperonas/termstats/releases/tag/v0.1.0

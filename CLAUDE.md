@@ -45,6 +45,18 @@ when the CPU column would otherwise be much shorter than the stack — same tota
 hole. Panels are dropped **whole**; a bordered box with no room for content costs three lines
 to say nothing.
 
+⚠️ **The budget is a plan, not a guarantee.** A narrow terminal, a machine with several
+mountpoints or Linux's extra steal row can each push the fixed sizes past the height
+available, and the trailing `ratio` section is then squeezed to two lines and renders as a
+bordered **stump**. `render_dashboard` drops sections from the bottom until the sum fits.
+This was found by CI on Linux at 60×20 and could not be reproduced on macOS at all — the
+sweep in `test_the_layout_holds_on_any_machine` fakes `IS_LINUX` and the core count for
+exactly that reason.
+
+⚠️ **A rich `Group` does not stretch.** It renders its children at their natural height and
+leaves the remainder blank, so a `Group` inside a `ratio` section produces dead space. Both
+the wide and the narrow branch nest `Layout`s instead, with the last card on `ratio=1`.
+
 ⚠️ Every `*_section_rows()` helper must predict exactly what its `get_*_section()` draws.
 `render_dashboard` sizes the row from the prediction before the panel exists, so a
 disagreement clips content or opens a gap. `test_cpu_height_prediction_matches_what_is_drawn`

@@ -135,7 +135,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.2.0
+termstats --version   # -> termstats 0.2.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).

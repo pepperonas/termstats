@@ -683,7 +683,24 @@ def render_dashboard(width=None, height=None):
     # same total height, no dead space.
     disk_in_stack = cpu_wanted + 2 >= mem_h + net_h + disk_h
     stack_h = mem_h + net_h + (disk_h if disk_in_stack else 0)
-    top_h = max(cpu_wanted, stack_h) if not narrow else cpu_wanted + stack_h
+
+    if narrow:
+        # One column: the panels are stacked, so they compete for the same lines the
+        # side-by-side layout would have given them for free. Take only what fits, whole.
+        # (A cap on cpu_wanted itself was tried here and removed: 0 differences across
+        # 13,608 geometries, because the section-drop loop below already covers it.)
+        room = th - 1 - cpu_wanted
+        stack_h = 0
+        kept_stack = 0
+        for height in ([mem_h, net_h] + ([disk_h] if disk_in_stack else [])):
+            if stack_h + height > room:
+                break
+            stack_h += height
+            kept_stack += 1
+        top_h = cpu_wanted + stack_h
+    else:
+        kept_stack = 3 if disk_in_stack else 2
+        top_h = max(cpu_wanted, stack_h)
 
     core_rows = max(top_h - 2 - extra_rows, 1)
     cpu_body, cpu_total, steal_pct = get_cpu_section(cpu_body_w, max_rows=core_rows)
@@ -709,22 +726,30 @@ def render_dashboard(width=None, height=None):
                     (_panel(net_body, "network", C_NET), net_h)]
     if disk_in_stack:
         stack_panels.append((_panel(disk_body, "disk", C_DISK), disk_h))
+    stack_panels = stack_panels[:kept_stack]
 
-    if narrow:
-        top = Layout(Group(_panel(cpu_body, "cpu", C_CPU),
-                           *(panel for panel, _ in stack_panels)), name="top", size=top_h)
+    cpu_panel = _panel(cpu_body, "cpu", C_CPU)
+    top = Layout(name="top", size=top_h)
+
+    # ⚠️ The last card everywhere takes ratio instead of a fixed size, so slack is absorbed
+    # by a panel that stretches rather than left as a blank strip. A rich Group does NOT
+    # stretch - it renders its children at their natural height and leaves the remainder
+    # empty - so the narrow branch nests Layouts too, rather than stacking a Group.
+    if not stack_panels:
+        top = Layout(cpu_panel, name="top", size=top_h)
+    elif narrow:
+        top.split_column(Layout(cpu_panel, size=cpu_wanted),
+                         *[Layout(panel, size=h) for panel, h in stack_panels[:-1]],
+                         Layout(stack_panels[-1][0], ratio=1))
     else:
-        # The last card takes ratio instead of a fixed size, so whatever line the CPU column
-        # is taller by is absorbed by a border rather than left as a gap.
         stack = Layout(name="right")
         stack.split_column(*[Layout(panel, size=h) for panel, h in stack_panels[:-1]],
                            Layout(stack_panels[-1][0], ratio=1))
-        top = Layout(name="top", size=top_h)
-        top.split_row(Layout(_panel(cpu_body, "cpu", C_CPU), name="cpu"),
+        top.split_row(Layout(cpu_panel, name="cpu"),
                       Layout(stack, name="rightcol", size=right_w))
     sections.append(top)
 
-    if not disk_in_stack:
+    if not disk_in_stack and kept_stack:
         sections.append(Layout(_panel(disk_body, "disk", C_DISK), name="disk", size=disk_h))
 
     if charts_h:
@@ -744,6 +769,14 @@ def render_dashboard(width=None, height=None):
     if proc_h >= 5:
         procs = get_top_processes(tw - 4, n=max(proc_h - 3, 1))
         sections.append(Layout(_panel(procs, "processes", C_PROC, "by cpu"), name="proc"))
+
+    # ⚠️ The budget above is a plan, not a guarantee: a narrow terminal, a machine with
+    # several mountpoints or Linux's extra steal row can all push the fixed sizes past the
+    # height available. Drop sections from the bottom until the plan actually fits -
+    # otherwise the trailing ratio section is squeezed to two lines and renders as a
+    # bordered stump. (Found by CI on Linux, where the steal row tips the balance.)
+    while len(sections) > 2 and sum(s.size or 0 for s in sections) > th:
+        sections.pop()
 
     # Whatever section ends up last takes the remaining height instead of a fixed size, so
     # a dropped panel leaves its lines to its neighbour rather than to a blank strip.

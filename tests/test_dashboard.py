@@ -98,6 +98,33 @@ def test_a_dropped_panel_leaves_its_lines_to_its_neighbour(width, height):
     assert len(lines(width, height)) == height
 
 
+# --- the full geometry sweep -----------------------------------------------------------
+#
+# ⚠️ The parametrised tests above run with THIS machine's core count and platform. CI caught
+# a stump on Linux at 60x20 that no macOS run could reproduce: Linux draws an extra steal
+# meter, which tips the CPU panel over the height the budget assumed. This sweep fakes both
+# axes so a Linux-only layout bug fails on a Mac.
+
+@pytest.mark.parametrize("is_linux", [True, False])
+@pytest.mark.parametrize("ncores", [2, 4, 10, 32, 128])
+@pytest.mark.parametrize("width,height", [(40, 10), (60, 16), (60, 20), (70, 18), (80, 24),
+                                          (92, 20), (100, 30), (120, 14), (120, 40), (200, 60)])
+def test_the_layout_holds_on_any_machine(monkeypatch, is_linux, ncores, width, height):
+    monkeypatch.setattr(cli, "IS_LINUX", is_linux)
+    monkeypatch.setattr(cli.psutil, "cpu_percent",
+                        lambda percpu=False: [30.0] * ncores if percpu else 30.0)
+    monkeypatch.setattr(cli.psutil, "cpu_count", lambda: ncores)
+
+    body = lines(width, height)
+    assert len(body) <= height, "taller than the terminal"
+    assert all(len(line) <= width for line in body), "wider than the terminal"
+    assert not [line for line in body if not line.strip()], "blank line"
+    for i, line in enumerate(body):
+        if line.lstrip().startswith("╭"):
+            assert i + 1 < len(body) and not body[i + 1].lstrip().startswith("╰"), \
+                f"stump panel at line {i}"
+
+
 # --- the header -------------------------------------------------------------------------
 
 def test_header_carries_the_brand_and_version():
