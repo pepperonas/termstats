@@ -1777,6 +1777,27 @@ def audio_hud(an, now, width):
     return t
 
 
+def _band_of(edges, freq, bands):
+    """Which band a frequency belongs to, CLAMPED at both ends.
+
+    40 Hz and 16 kHz are the outermost edges themselves, and whether `edges[0] <= 40.0`
+    holds depends on how the numpy at hand rounded `logspace` - 39.999999999999993 on one
+    machine, 40.000000000000007 on the next. A plain search then finds no band for the
+    label, falls back to the last one, and "40" is drawn on top of "16k" (which is how the
+    frequency axis lost its labels on Linux while passing on macOS).
+    """
+    if not edges:
+        return 0
+    if freq <= edges[0]:
+        return 0
+    if freq >= edges[-1]:
+        return bands - 1
+    for i in range(bands):
+        if edges[i] <= freq < edges[i + 1]:
+            return i
+    return bands - 1
+
+
 def _eq_labels(an, columns, left, width):
     """The frequency axis under the bars: a few round numbers at the column they fall in."""
     edges = getattr(getattr(an, "spectrum", None), "edges", None)
@@ -1785,7 +1806,7 @@ def _eq_labels(an, columns, left, width):
     for freq, label in EQ_LABELS:
         if not edges:
             break
-        k = next((i for i in range(bands) if edges[i] <= freq < edges[i + 1]), bands - 1)
+        k = _band_of(edges, freq, bands)
         col = min(columns - 1, (k * columns) // bands)
         x = left + col * (EQ_BAR_W + EQ_GAP)
         if x + len(label) > width or any(ch != " " for ch in row[max(0, x - 1):x + len(label) + 1]):

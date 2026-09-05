@@ -418,3 +418,34 @@ def test_the_headline_digits_are_the_shown_value(played):
     expected = cli.big_digits(f"{audio.spl(cli.readout('audio.db', cli.shown_level(an.db), now)):.1f}")
     drawn = [l.strip() for l in text.splitlines() if set(l) <= {cli.GLYPHS.bar_full, " "} and l.strip()]
     assert [row.strip() for row in expected] == drawn[:len(expected)], (expected, drawn[:5])
+
+
+@pytest.mark.parametrize("freq", [40.0, 100.0, 1000.0, 10000.0, 16000.0])
+def test_every_axis_label_lands_in_a_real_band(freq, played):
+    """The band lookup must CLAMP at both ends.
+
+    40 Hz and 16 kHz are the outermost band edges, and whether `edges[0] <= 40.0` holds is
+    a matter of float noise in whatever numpy built the edges: on one machine it is exactly
+    40.0, on another 40.000000000000007. Without clamping the search finds nothing, falls
+    back to the last band, and "40" lands on top of "16k" - which is exactly how the axis
+    lost its labels on Linux while passing on macOS.
+    """
+    an, _ = played
+    k = cli._band_of(an.spectrum.edges, freq, len(an.levels))
+    assert 0 <= k < len(an.levels)
+    if freq == 40.0:
+        assert k == 0
+    if freq == 16000.0:
+        assert k == len(an.levels) - 1
+
+
+def test_the_axis_survives_edges_that_miss_the_ends_by_a_hair(played):
+    an, now = played
+    nudged = [e + 1e-9 for e in an.spectrum.edges]          # what another numpy hands back
+    original = an.spectrum.edges
+    try:
+        an.spectrum.edges = nudged
+        out = render("eq", an, now, 120, 36)
+        assert "40" in out and "16k" in out and "1k" in out
+    finally:
+        an.spectrum.edges = original

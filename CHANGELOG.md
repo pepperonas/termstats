@@ -62,6 +62,10 @@ line will be 1.0.0.
   floor now and labelled in the caller's units; a 0-based chart is unchanged.
 - **A history chart's x axis showed the dashboard's window**, `-30s`, whatever the data
   actually spanned. `_render_chart` takes the span it is drawing.
+- **The equalizer's frequency axis could lose its labels**, depending on how the installed
+  numpy rounded the band edges: 40 Hz and 16 kHz are the outermost edges themselves, and an
+  unclamped lookup found no band for them, fell back to the last one and drew "40" on top of
+  "16k". Green on macOS, red on Linux until `_band_of` clamped both ends.
 
 ### Tests
 
