@@ -101,6 +101,23 @@ termstats --demo        # a scripted, repeatable machine - for screenshots and t
 Running it with no arguments gives you the live view. Redirect or pipe it and you get one
 snapshot instead, so `termstats > report.txt` still terminates.
 
+## Contents
+
+- [Features](#features)
+- [Installation](#installation) — pipx, pip, from source, Windows, the `ts` alias
+- [Usage](#usage) — options, themes, environment, choosing the mode, fallbacks, exit
+- [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
+- [Platform Support](#platform-support)
+- [Requirements](#requirements)
+- [Health Report (optional)](#health-report-optional)
+- [How It Works](#how-it-works) — collectors, cadence, the theme file, project layout
+- [Compared with other dashboards](#compared-with-other-dashboards)
+- [Development](#development) — tests, mutation testing, screenshots, releasing, badges
+- [Naming & history](#naming--history)
+- [Troubleshooting](#troubleshooting)
+- [Support this project](#support-this-project)
+- [Changelog](#changelog) · [License](#license) · [Author](#author)
+
 ## Features
 
 - **CPU** — per-core gradient meters + total + steal time (Linux); many-core machines get a heat strip
@@ -175,7 +192,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.4.1
+termstats --version   # -> termstats 0.4.2
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -241,6 +258,12 @@ with `--once` is an **error** — message on stderr, exit code 2 — never a sil
 throughput figures need a measurable gap between two reads; passing an interval alongside
 `--once` is accepted and ignored.
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/help.png" alt="the output of termstats --help" width="640"/>
+<br/>
+<sub><code>termstats --help</code> — every option, the single-dash spellings and the environment variables on one screen.</sub>
+</div>
+
 ### Themes
 
 ```bash
@@ -265,6 +288,12 @@ is drawn from four named colours the theme chooses itself.
 
 `--theme` wins over `TERMSTATS_THEME`; an unknown name is an error that lists the valid ones.
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/list-themes.png" alt="termstats --list-themes: every theme with its ramp and band counts" width="560"/>
+<br/>
+<sub><code>termstats --list-themes</code>: each ramp as a swatch, and how many distinct bands survive on 256 and 16 colours.</sub>
+</div>
+
 ### Environment
 
 | Variable | Effect |
@@ -283,6 +312,24 @@ drawing characters. When nothing at all is set on Windows — a bare console win
 Windows build decides: 24-bit colour from Windows 10 1703 on, 16 colours before. Nothing is
 read from a config file; there is none.
 
+### Fallbacks
+
+Both axes degrade **whole**: a glyph level is a complete vocabulary and a colour level a
+complete palette, so the renderer never mixes two. Force any of them to see what a plainer
+terminal gets, or to work around a font:
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/glyphs.png" alt="the same dashboard at the braille, block and ascii glyph levels" width="800"/>
+<br/>
+<sub>Glyph levels, left to right: <code>braille</code> (2×4 dots per chart cell), <code>block</code> (eighth-cell blocks — for fonts without braille), <code>ascii</code> (nothing outside 7-bit; the chart is hand-drawn). <code>TERMSTATS_GLYPHS=…</code> picks one.</sub>
+</div>
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/colours.png" alt="the same dashboard on truecolor, 256, 16 colours and without colour" width="800"/>
+<br/>
+<sub>Colour levels: <code>truecolor</code>, <code>256</code>, <code>16</code> (named colours the theme chooses itself), <code>mono</code> (what <code>NO_COLOR=1</code> prints — the lightness scale alone still reads as a scale). <code>COLORTERM</code>, <code>WT_SESSION</code> and <code>TERM</code> decide; <code>--theme mono</code> keeps greys with colour escapes, <code>NO_COLOR</code> removes every escape.</sub>
+</div>
+
 ### Choosing the mode
 
 | Invocation | What happens | Why |
@@ -294,6 +341,12 @@ read from a config file; there is none.
 
 The terminal check is `sys.stdout.isatty()` — the same rule `ls` uses to decide whether to
 print columns.
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/snapshot.png" alt="the first frame of termstats --once: charts still collecting" width="760"/>
+<br/>
+<sub>What a redirected run prints: the first frame. Rates already have their second sample (the one-second priming pause), the charts show their <code>collecting</code> skeleton — a chart needs history, a snapshot has none.</sub>
+</div>
 
 ### Exit
 
@@ -364,6 +417,18 @@ When columns are what you are short of, `--compact` drops the padding inside eve
 each body, which then runs the full width with a one-column gutter between the two columns.
 Both are additive and both keep every layout invariant: nothing wider than the terminal, no
 blank line inside the picture, every section whole or absent.
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/no-border.png" alt="termstats --no-border in a 120 by 36 terminal" width="760"/>
+<br/>
+<sub><code>--no-border</code> at 120×36: a title rule above each body instead of a frame, one gutter column between the two columns.</sub>
+</div>
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/narrow.png" alt="termstats in a 100 by 26 terminal: one section dropped whole" width="640"/>
+<br/>
+<sub>100×26: not enough lines for everything, so the layout drops a whole section from the bottom instead of squeezing every panel. Nothing is drawn off-screen.</sub>
+</div>
 
 ## Platform Support
 
@@ -475,6 +540,8 @@ termstats/
 ├── tests/               # pytest suite (pure unit tests, psutil stubbed)
 ├── tools/badges.py      # generates .github/badges/*.json for the headline badges
 ├── tools/demo.tape      # VHS recording script for the --demo GIF
+├── tools/screenshots.py # renders every README picture from --demo (SVG + index.html for the browser)
+├── docs/screenshots/    # the rendered PNGs the README embeds
 ├── .github/
 │   ├── badges/          # shields.io endpoint JSON, refreshed by CI
 │   └── workflows/       # test matrix + badge refresh
@@ -545,6 +612,9 @@ What it covers:
 | Frame | one border tone on every panel, bold-accent titles, dim units, `--compact`/`--no-border` layout invariants, process rows ordered = rows shown |
 | Footer & header | dynamic year, hint only in live mode, ASCII `(c)`, the sparkline centred by width alone |
 | Lifecycle | SIGWINCH guard and restore, sliced waits, immediate relayout with cadence resync, cursor always restored, Ctrl+C quiet |
+| Windows | `WT_SESSION` and the conhost build in the colour chain, load-average priming, the docs and CI keep the PowerShell path honest |
+| Docs sync | every parser flag has a README row and a `--help` line, every `TERMSTATS_*` variable and theme is documented, every README image exists and every screenshot is shown, the table of contents matches the headings, the changelog is dated and descending |
+| Screenshot tool | importable, one SVG per view, no window chrome, byte-identical on repeat, the ASCII tile is 7-bit, the mono tile has no colour, the snapshot shows the skeleton |
 | Demo | the psutil surface contract against the source, byte-identical stories per seed, the story's shape, reproducible snapshots |
 | Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes — in-process and, on Linux/macOS, in a fresh process per colour level |
 
@@ -560,6 +630,32 @@ Build distributables:
 pip install build
 python -m build          # -> dist/termstats-<version>-py3-none-any.whl + .tar.gz
 ```
+
+### Mutation testing
+
+Every new pin is mutated once before it counts: the guarded line is broken on purpose, the
+test must go red, then the line is restored (the file is copied first and its checksum
+compared after). A test that has not been seen failing proves nothing — several pins in this
+repository were rewritten because they stayed green on the first try, and a mutation that
+does not compile is not a mutation at all (pytest exits 4, not 1, when `conftest.py` cannot
+import the module).
+
+### Screenshots
+
+Every picture in this README is rendered, not captured:
+
+```bash
+python tools/screenshots.py OUT_DIR                 # every view: SVG per view + index.html
+python tools/screenshots.py OUT_DIR --only hero,help
+```
+
+The tool drives `--demo` (default seed, its own clock pinned to one instant), renders each
+view with a private copy of the CLI module so histories and peak markers start empty, and
+exports rich's SVG without the window chrome. `index.html` lays the SVGs out with one section
+per figure — `#hero`, `#grid`, `#compact`, `#no-border`, `#narrow`, `#snapshot`,
+`#list-themes`, `#glyphs`, `#colours`, `#help` — which a real browser then rasterises to the
+PNGs (`python3 -m http.server` in `OUT_DIR`, Playwright element screenshots). Run it **after**
+a version bump: the header carries the version.
 
 ### Releasing
 
@@ -596,6 +692,26 @@ Uninstall:
 ```bash
 pipx uninstall termstats     # or: pip uninstall termstats
 ```
+
+## Compared with other dashboards
+
+termstats is a **dashboard**, not a process manager: you look at it, you do not act in it.
+That choice is what the rest follows from.
+
+| | termstats | htop | btop | glances |
+|---|---|---|---|---|
+| Kind | dashboard | process manager | dashboard + process manager | dashboard, also web/server |
+| Language | Python | C | C++ | Python |
+| Configuration | none — flags and environment only | `htoprc` | `btop.conf` | `glances.conf` |
+| One-shot output for cron / files | yes, automatic when piped | no | no | yes (`--stdout`, `--export`) |
+| History charts | braille area charts, CPU + network | meters only | braille graphs, several | sparklines + history mode |
+| Themes | 6, OKLab ramps checked on 256/16 | colour schemes | many | few |
+| Acting on processes (kill, renice, tree) | no | yes | yes | limited |
+| Install | `pipx install` from git | distro package | distro package / binary | `pip install glances` |
+
+If you want to kill a process from the screen you are looking at, use htop or btop. If you
+want the state of a machine in one glance, in a file, or on a terminal that only speaks
+16 colours and ASCII, termstats is built for exactly that.
 
 ## Naming & history
 

@@ -1072,7 +1072,7 @@ def header_line(width):
     clock = Text(no_wrap=True)
     # The wall clock is the liveness signal: a frozen dashboard and a quiet machine look
     # identical without it. It sits in the tail because the head is the identity.
-    clock.append(time.strftime("%H:%M:%S") + "  ", style=TEXT)
+    clock.append(time.strftime("%H:%M:%S", time.localtime(_now())) + "  ", style=TEXT)   # demo mode: the demo clock
     clock.append(f"{sample_interval:>4g}s  ", style=MUTED)
     clock.append(f"v{__version__} ", style=FAINT)
 
@@ -1323,11 +1323,19 @@ def _prime_measurements():
             p.cpu_percent()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
-    psutil.net_io_counters()
+    # Seed the rate collectors. A rate is a delta, and they keep the previous sample in
+    # function attributes that only their own calls set - so the single render of a snapshot
+    # was their FIRST call and printed 0.0B/s and n/a despite the priming pause (0.1.0-0.4.1).
+    # The history deques are deliberately left alone: a two-point chart is not a chart.
+    get_network_section._last = psutil.net_io_counters()
+    get_network_section._last_time = _now()
     try:
-        psutil.disk_io_counters()
+        io = psutil.disk_io_counters()
     except Exception:
-        pass
+        io = None
+    if io:
+        get_disk_section._last_io = io
+        get_disk_section._last_time = _now()
     try:
         # Windows emulates the load average with a sampler that reads 0.00 for its first
         # five seconds; asking now starts that clock before the first frame, not with it.
@@ -1496,7 +1504,7 @@ def print_help():
     print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
     print()
     print("Environment:")
-    print(f"  {T.THEME_ENV}=NAME      Default theme (the flag wins)")
+    print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
     print("  TERMSTATS_GLYPHS=LEVEL   braille | block | ascii (default: detected)")
     print("  TERMSTATS_NERD_FONT=1    Icons in panel titles (needs a Nerd Font)")
     print("  NO_COLOR=1               No colour at all; TERM=dumb also drops to ASCII")

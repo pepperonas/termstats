@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.1**, 988 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.2**, 1033 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -48,8 +48,10 @@ termstats/
 │   ├── cli.py        # collectors, meters, charts, layout budget, run modes, arg parsing, main()
 │   ├── theme.py      # EVERY colour and glyph: GlyphSets, spacing/format tokens, OKLab, 6 themes
 │   └── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
-├── tests/            # 988 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1033 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
+├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
+├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
 ├── tools/demo.tape   # VHS script: `vhs tools/demo.tape` -> termstats-demo.gif
 ├── .github/workflows/tests.yml   # Linux/macOS/Windows + py3.9; badges.yml refreshes the JSON
 ├── examples/celox-health-report.example.py   # server health report template, NOT packaged
@@ -253,6 +255,20 @@ spike 46–74, disk fills, processes react; the first visible frame (63) lands o
 `set_demo(source)` rebinds the module-level `psutil`. A **DEMO** badge sits in the header's
 fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last 60s`).
 
+## Docs sync (0.4.2)
+
+`tests/test_docs_sync.py` ties README, `--help` and CHANGELOG to the code: every `--long`
+flag in the `_*_FLAGS` tuples has an Options-table row and a help line (and every table row
+names a real flag); every `TERMSTATS_*` name in the source and every key `_color_from_env`
+reads is in the README; every theme has a table row, a Features mention and a place on the
+`--theme` help line; every README `<img>` exists on disk and every PNG under `docs/screenshots/`
+plus the root is shown (orphans are red); the `## Contents` TOC lists every h2 and every link
+resolves (GitHub slug rule: lowercase, drop punctuation, spaces to hyphens — "Naming &
+history" is `naming--history`); the changelog's released headings carry ISO dates, are unique
+and descending, `[Unreleased]` comes first and `###` sections use Keep a Changelog names (the
+folded 1.1.x history's version sub-headings are allowed). Adding a flag, env var, theme,
+heading or picture without its documentation is a red test, not a reader's discovery.
+
 ## Windows (0.4.1)
 
 Windows was "supported" by CI and never looked at in PowerShell. Two things came out of it:
@@ -282,26 +298,55 @@ Pins: `tests/test_windows.py` (7 mutations caught on the first run).
 
 ## Screenshots
 
-`termstats.png` (hero, 140×42), `termstats-themes.png` (six themes, 100×16 each — 16 rows fill the tile without empty panels, and the 2×3 grid keeps roughly the hero's 5:3 aspect for the website stage) and
-`docs/screenshots/{compact,help}.png` (80×24, `--help` at its natural width) all come from
-**`tools/screenshots.py OUT_DIR`** (run with the pipx venv python): `--demo` with the default
-seed → `_prime_measurements()` + `_prefill_history()` (so the first visible frame sits on the
-CPU spike) → rich `export_svg` without window chrome, background = the theme's `bg` →
-`OUT_DIR/index.html` with `#hero / #grid / #compact / #help`. Rasterise that page in a real
-browser: `python3 -m http.server 8901` in OUT_DIR, then Playwright element screenshots
-(`locator('#hero').screenshot({scale:'css'})`); `file://` is blocked in the MCP browser, and
-ImageMagick's SVG renderer is not to be trusted with these. Each frame reloads `cli` so
-histories, smoother and peak markers start empty. ⚠️ Run it AFTER the version bump — the
+Every README picture is rendered from `--demo`, never captured. **`tools/screenshots.py OUT_DIR
+[--only view,view]`** (run with the pipx venv python) is importable — `render(out_dir, names)`,
+`write_index(out_dir)`, `main(argv)` — and `tests/test_screenshots_tool.py` drives it. Views:
+`hero` (140×42), `theme-<name>` (100×16 tiles — 16 rows fill the tile without empty panels
+and the 2×3 grid keeps roughly the hero's 5:3 aspect), `compact` (80×24), `no-border` and
+`snapshot` (120×36; the snapshot is the un-prefilled first frame with the collecting skeleton,
+sampled at 1 s like `run_once`), `narrow` (100×26 — the charts are dropped whole),
+`list-themes`, `glyph-{braille,block,ascii}` (100×34 — the glyph levels differ in the CHARTS,
+which the budget only fits from 32 rows on), `color-{truecolor,256,16,mono}` (100×16) and
+`help` (at its natural width). `write_index` lays them out under `#hero #grid #compact
+#no-border #narrow #snapshot #list-themes #glyphs #colours #help`.
+
+Rasterise that page in a real browser: `python3 -m http.server 8901` in OUT_DIR, then Playwright
+element screenshots (`locator('#hero').screenshot({scale:'css'})`); `file://` is blocked in the
+MCP browser, and ImageMagick's SVG renderer is not to be trusted with these. PNG destinations:
+`termstats.png` (hero), `termstats-themes.png` (grid), `docs/screenshots/{compact,no-border,
+narrow,snapshot,list-themes,glyphs,colours,help}.png`. `test_docs_sync` requires every README
+image to exist AND every PNG on disk to be shown — an orphan or a dangling link is red.
+
+Three things the tool had to learn (all found by its tests):
+- **Each frame comes from a PRIVATE copy of `termstats.cli`** (`spec_from_file_location`), not
+  `importlib.reload` — reloading re-executes the module the whole test suite holds.
+- **The header clock is the demo clock** (`time.localtime(_now())` in `header_line`, 0.4.1+),
+  and the tool pins `source.T0 = SHOT_T0`. Before, the header read wall time and two renders
+  straddling a second boundary differed — the "reproducible" claim was false by one field.
+- **The `mono` tile is recorded from plain text.** rich strips colour at the terminal, but
+  `export_svg` reads the *recorded* styles, colours and all — a `color_system=None` console
+  exported a fully coloured picture. Render to a plain console first, record THAT.
+- The tool's demo interval and `cli.sample_interval` must agree (0.5 live, 1.0 snapshot) or the
+  header says `0.5s` under a chart titled `last 60s`.
+
+⚠️ Testing SVG text: rich writes spaces as `&#160;` and escapes `<>&`, so `"last 30s" in svg`
+is ALWAYS false — a pin built on it passed vacuously. `svg_text()` in the tool tests joins the
+`<text>` nodes, unescapes, and maps NBSP to space. ⚠️ Run the tool AFTER the version bump — the
 header carries the version, and a stale one shipped once. The celox.io project page consumes
-the same four PNGs (`website/scripts/projekt-bilder.sh termstats`). Remove `.playwright-mcp/`
-before committing.
+the four original PNGs (`website/scripts/projekt-bilder.sh termstats`). Remove
+`.playwright-mcp/` before committing.
 
 ## Gotchas (older, still true)
 
 - **Windows redirects stdout as cp1252 — widen it before printing.** `_ensure_console_encoding()`
   runs first in `main()` and reconfigures only a stream that cannot carry `GLYPH_PROBE`.
-- **Rates need two samples.** First call always yields 0 — hence `_prime_measurements()` plus
-  a 1 s sleep (snapshot) / 0.5 s (live) before the first render. `HISTORY_LEN = 60` is a sample
+- **Rates need two samples — and the collectors keep the previous one in FUNCTION ATTRIBUTES**
+  (`get_network_section._last/_last_time`, `get_disk_section._last_io/_last_time`).
+  `_prime_measurements()` seeds exactly those (0.4.2) and then the snapshot sleeps 1 s / live
+  0.5 s before the first render. Until 0.4.1 priming only *read* the counters, so the single
+  render of a snapshot was the collectors' first call: every `--once` printed `0.0B/s` and
+  `n/a` — found only because the screenshot tool rendered a first frame and the caption
+  claimed otherwise. Seeding must NOT touch the history deques (a 2-point chart is not a chart). `HISTORY_LEN = 60` is a sample
   count; the chart title computes the window from the interval.
 - **Steal time is Linux-only** (`/proc/stat` field 8 delta); elsewhere the bar is not drawn.
 - **Never let a collector raise.** An unreadable partition is skipped; `AccessDenied` on

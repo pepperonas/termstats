@@ -239,3 +239,32 @@ def test_the_tape_records_the_demo_and_says_so():
     tape = (Path(__file__).resolve().parent.parent / "tools" / "demo.tape").read_text(encoding="utf-8")
     assert 'Type "termstats --demo"' in tape
     assert "Nothing real is measured" in tape
+
+
+# --- the header clock belongs to the demo clock too --------------------------------------
+
+def test_header_clock_follows_the_demo_clock_not_the_wall():
+    import time
+    source = demo.DemoSource(demo.DEFAULT_SEED, 1.0)
+    source.T0 = 1_000_000_000.0          # 2001-09-09, an instant no wall clock will hit
+    cli.set_demo(source)
+    cli._prime_measurements()
+    expected = time.strftime("%H:%M:%S", time.localtime(source.now()))
+    text = cli.header_line(160).plain
+    assert expected in text, f"header shows the wall clock, expected the demo's {expected}: {text!r}"
+
+
+def test_two_demo_renders_of_the_same_frame_are_identical():
+    from rich.console import Console
+    import io
+    frames = []
+    for _ in range(2):
+        source = demo.DemoSource(demo.DEFAULT_SEED, 1.0)
+        source.T0 = 1_000_000_000.0
+        cli.set_demo(source)
+        cli._prime_measurements()
+        con = Console(file=io.StringIO(), width=160, height=40, force_terminal=True, color_system="truecolor",
+                      no_color=False, legacy_windows=False)
+        con.print(cli.header_line(160))
+        frames.append(con.file.getvalue())
+    assert frames[0] == frames[1]

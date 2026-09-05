@@ -445,3 +445,26 @@ def test_rss_column_scales_to_gigabytes(monkeypatch):
     monkeypatch.setattr(cli.psutil, "process_iter",
                         lambda attrs: [FakeProc(info=proc_info(1, "big", 1.0, rss_mb=2560))])
     assert "2.5G" in plain(cli.get_top_processes(100), width=100)
+
+
+# --- priming must seed the rate collectors -------------------------------------------------
+
+def test_priming_seeds_the_rate_collectors_so_the_first_frame_has_rates():
+    """A rate is a delta. The snapshot path primes, waits a second and renders ONCE - that
+    render is the collectors' first call, so without a seeded previous sample it printed
+    0.0B/s and n/a for every rate (0.1.0 - 0.4.1) despite the pause."""
+    from termstats import demo
+    cli.set_demo(demo.DemoSource(demo.DEFAULT_SEED, 1.0))
+    cli._prime_measurements()
+    cli.psutil.cpu_percent(percpu=True)          # the one-second pause: one demo frame later
+    _, sent_s, recv_s = cli.get_network_section(80)
+    assert sent_s > 0 and recv_s > 0, (sent_s, recv_s)
+    disk = plain(cli.get_disk_section(60), width=60)
+    assert "n/a" not in disk, disk
+
+
+def test_priming_does_not_seed_the_chart_history():
+    from termstats import demo
+    cli.set_demo(demo.DemoSource(demo.DEFAULT_SEED, 1.0))
+    cli._prime_measurements()
+    assert len(cli.net_sent_history) == 0 and len(cli.cpu_history) == 0

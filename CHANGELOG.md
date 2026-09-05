@@ -11,6 +11,57 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-05
+
+### Fixed
+
+- **A snapshot never showed a rate.** `termstats --once` (and every redirected run) printed
+  `0.0B/s` for the network and `n/a` for disk I/O, in every version since 0.1.0. The priming
+  step read the counters but did not hand them to the collectors, whose "previous sample" lives
+  in function attributes — so the one render after the one-second pause was their first call
+  and had nothing to subtract. Priming now seeds those attributes (and only those: the chart
+  history stays empty, the collecting skeleton is still correct for a snapshot).
+- In `--demo` mode the header clock showed the wall clock while every other number came from
+  the demo's own clock; two renders of the same frame could differ by one field, which made the
+  "reproducible" screenshots reproducible only within the same second. The header now reads the
+  demo clock (`time.localtime(_now())`); outside demo mode nothing changes.
+- `--help`: the Environment block's descriptions start in one column again (`TERMSTATS_THEME`
+  was one cell off).
+
+### Documentation
+
+- README: a table of contents; seven new rendered pictures — `--help`, `--list-themes`, the
+  first frame of a redirected run (charts still collecting), `--no-border` at 120×36, a 100×26
+  terminal dropping a section whole, and two fallback galleries (glyph levels braille / block /
+  ascii, colour levels truecolor / 256 / 16 / mono); a "Compared with other dashboards" section
+  (htop, btop, glances — dashboard vs process manager, config file, one-shot output, charts);
+  "Mutation testing" and "Screenshots" under Development; the tests table lists every suite.
+
+### Tools
+
+- `tools/screenshots.py` is importable: `render(out_dir, names)`, `write_index(out_dir)`,
+  `main(argv)` with `--only view,view`. Fourteen named views plus one per theme. Each frame
+  comes from a private copy of the CLI module (the shared one is never touched), the demo clock
+  is pinned to one instant so a render is byte-identical on repeat, and the `mono` tile is
+  recorded from plain text — an SVG export reads recorded styles, so rich's own colour
+  stripping never reached the picture.
+
+### Tests
+
+- `tests/test_docs_sync.py`: every parser flag has a README row and a `--help` line and every
+  README row names a real flag; every `TERMSTATS_*` variable and every key the colour chain
+  reads is documented; every theme has a table row, a features mention and a place on the
+  `--theme` help line; every README image exists and every screenshot on disk is shown; the
+  table of contents matches the `##` headings and every link resolves; the changelog is dated,
+  unique, descending, Unreleased first, and uses Keep a Changelog section names; the help
+  columns are aligned.
+- `tests/test_screenshots_tool.py`: importing renders nothing, one SVG per view, unknown views
+  refused, the hero carries the version, no window chrome, byte-identical on repeat, the ASCII
+  tile is 7-bit, the braille tile has braille and the block tile none, colour levels degrade
+  in distinct fill counts, the snapshot shows the skeleton and the hero does not, `--no-border`
+  has no box corners, the narrow view is missing something the hero has, the index page has a
+  section per figure, the script entry point renders a selection.
+
 ## [0.4.1] - 2026-09-05
 
 ### Fixed
