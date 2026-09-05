@@ -389,3 +389,55 @@ def test_unreadable_proc_stat_returns_zero(monkeypatch):
     monkeypatch.setattr(cli, "IS_LINUX", True)
     with patch("builtins.open", side_effect=PermissionError):
         assert cli._read_steal_pct() == 0.0
+
+
+# --- 0.3.0: the memory bar shows the cache as its own segment --------------------------
+
+@pytest.fixture
+def fake_memory_with_cache(monkeypatch):
+    """16 GB: 5.2 used, 3.9 available -> 6.9 in the kernel's cache, percent 75.6."""
+    G = 1024 ** 3
+    monkeypatch.setattr(cli.psutil, "virtual_memory", lambda: SimpleNamespace(
+        percent=75.6, used=int(5.2 * G), total=16 * G, available=int(3.9 * G)))
+    monkeypatch.setattr(cli.psutil, "swap_memory", lambda: SimpleNamespace(
+        percent=0.0, used=0, total=0))
+
+
+def test_memory_prints_psutils_percent_not_the_used_share(fake_memory_with_cache):
+    """75.6% is what "how full" means to everyone; 32.5% would be a surprise."""
+    out = plain(cli.get_memory_section(70), width=70)
+    assert "75.6%" in out and "32.5%" not in out
+
+
+def test_memory_bar_splits_used_from_cache(fake_memory_with_cache):
+    out = plain(cli.get_memory_section(70), width=70)
+    assert cli.BAR_FULL in out and cli.BAR_SECONDARY in out
+    assert out.index(cli.BAR_SECONDARY) > out.rindex(cli.BAR_FULL)
+
+
+def test_memory_names_the_cache_when_there_is_room(fake_memory_with_cache):
+    assert "+6.9G cache" in plain(cli.get_memory_section(70), width=70)
+
+
+def test_memory_keeps_the_short_note_on_a_narrow_panel(fake_memory_with_cache):
+    """Below 44 columns the cache suffix is left off so that the used/total figure still
+    fits - appending it regardless would make meter() drop the WHOLE note."""
+    out = plain(cli.get_memory_section(40), width=40)
+    assert "cache" not in out
+    assert "5.2G/16.0G" in out, "the short note must survive, not be dropped with the suffix"
+    assert "75.6%" in out
+
+
+def test_a_machine_without_cache_shows_no_secondary_segment(monkeypatch):
+    G = 1024 ** 3
+    monkeypatch.setattr(cli.psutil, "virtual_memory", lambda: SimpleNamespace(
+        percent=50.0, used=8 * G, total=16 * G, available=8 * G))
+    monkeypatch.setattr(cli.psutil, "swap_memory", lambda: SimpleNamespace(percent=0.0, used=0, total=0))
+    out = plain(cli.get_memory_section(70), width=70)
+    assert cli.BAR_SECONDARY not in out and "cache" not in out
+
+
+def test_rss_column_scales_to_gigabytes(monkeypatch):
+    monkeypatch.setattr(cli.psutil, "process_iter",
+                        lambda attrs: [FakeProc(info=proc_info(1, "big", 1.0, rss_mb=2560))])
+    assert "2.5G" in plain(cli.get_top_processes(100), width=100)

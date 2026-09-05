@@ -184,3 +184,134 @@ def test_heat_strip_of_nothing_is_empty():
 def test_rate_scaling_across_the_boundaries(value, expected):
     """Both comparisons are strict >, so 1024 and 1 MiB sit in the lower unit."""
     assert cli._fmt_bytes_rate(value) == expected
+
+
+# --- 0.3.0: rgb helpers, the secondary segment, the sparkline, memory formatting -----
+
+def test_ramp_rgb_and_ramp_hex_agree():
+    for t in (0.0, 0.3, 0.55, 0.8, 1.0):
+        r, g, b = cli.ramp_rgb(t)
+        assert cli.ramp(t) == f"#{r:02x}{g:02x}{b:02x}"
+
+
+def test_ramp_rgb_returns_integers_in_range():
+    for t in (0.0, 0.5, 1.0, float("nan")):
+        assert all(isinstance(c, int) and 0 <= c <= 255 for c in cli.ramp_rgb(t))
+
+
+def test_dim_rgb_keeps_the_hue_and_lowers_the_brightness():
+    dimmed = cli.dim_rgb((200, 100, 50), 0.5)
+    assert dimmed == "#643219"
+    assert HEX.match(dimmed)
+
+
+def test_secondary_segment_is_drawn_after_the_primary():
+    drawn = cells(cli.bar(30.0, 20, secondary=50.0))
+    assert drawn.count(cli.BAR_FULL) == 6
+    assert drawn.count(cli.BAR_SECONDARY) == 10
+    assert drawn.count(cli.BAR_EMPTY) == 4
+    assert drawn.index(cli.BAR_SECONDARY) > drawn.rindex(cli.BAR_FULL)
+
+
+def test_secondary_segment_never_pushes_the_bar_past_its_width():
+    """Used 80% plus a claimed 50% cache: the cache is clamped, the width is not."""
+    drawn = cells(cli.bar(80.0, 20, secondary=50.0))
+    assert len(drawn) == 20
+    assert drawn.count(cli.BAR_EMPTY) == 0
+
+
+def _luma(hex_colour):
+    r, g, b = (int(hex_colour[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def test_secondary_segment_is_dimmer_than_the_ramp_at_the_same_position():
+    """It has to read as related to the bar but clearly not the same thing.
+
+    ⚠️ "Different colour from the primary cells" is NOT the property - a secondary painted
+    with the plain ramp at its own positions is also different, and that mutation passed
+    the first version of this test. The property is: darker than the ramp would be there.
+    """
+    styled = cli.bar(30.0, 20, secondary=50.0)
+    span = 19
+    for sp in styled.spans:
+        if styled.plain[sp.start] == cli.BAR_SECONDARY:
+            position = sp.start
+            assert _luma(str(sp.style)) < 0.6 * _luma(cli.ramp(position / span)), \
+                f"cache cell at {position} is not dimmed"
+
+
+def test_secondary_segment_has_an_ascii_form(ascii_mode):
+    drawn = cells(cli.bar(30.0, 20, secondary=50.0))
+    assert drawn.isascii()
+    assert cli.ASCII_SECONDARY in drawn
+
+
+@pytest.mark.parametrize("bad", [-10.0, float("nan")])
+def test_a_nonsense_secondary_is_treated_as_zero(bad):
+    assert cells(cli.bar(30.0, 20, secondary=bad)) == cells(cli.bar(30.0, 20))
+
+
+def test_meter_value_and_colour_describe_the_whole_occupied_part():
+    """32% used plus 52% cache prints 84% - the figure psutil calls percent."""
+    out = cells(cli.meter("ram", 32.0, 60, secondary=52.0))
+    assert "84.0%" in out
+
+
+def test_meter_value_colour_follows_the_occupied_total_not_the_primary():
+    cool = cli.meter("ram", 32.0, 60)
+    hot = cli.meter("ram", 32.0, 60, secondary=60.0)
+    cool_style = [sp.style for sp in cool.spans if "84.0%" in cool.plain[sp.start:sp.end] or "32.0%" in cool.plain[sp.start:sp.end]]
+    hot_style = [sp.style for sp in hot.spans if "92.0%" in hot.plain[sp.start:sp.end]]
+    assert cool_style and hot_style and cool_style[0] != hot_style[0]
+
+
+def test_sparkline_has_one_cell_per_slice():
+    assert len(cells(cli.sparkline([10.0] * 60, 16))) == 15      # 60 / ceil(60/16)=4
+
+
+def test_sparkline_shows_the_peak_of_each_slice_not_the_mean():
+    """A spike hidden inside a quiet slice is exactly what a sparkline exists to show."""
+    quiet = [0.0] * 3 + [100.0]
+    assert cells(cli.sparkline(quiet, 1)) == cli.SPARK[-1]
+
+
+def test_sparkline_climbs_with_the_value():
+    glyphs = [cells(cli.sparkline([v], 1)) for v in (0.0, 25.0, 50.0, 75.0, 100.0)]
+    assert glyphs == sorted(glyphs, key=cli.SPARK.index)
+    assert glyphs[0] == cli.SPARK[0] and glyphs[-1] == cli.SPARK[-1]
+
+
+def test_sparkline_is_empty_without_history():
+    assert cells(cli.sparkline([], 16)) == ""
+
+
+def test_sparkline_is_absent_in_ascii_mode(ascii_mode):
+    """There is no ASCII glyph set with eight heights; nothing beats a wrong picture."""
+    assert cells(cli.sparkline([50.0] * 60, 16)) == ""
+
+
+def test_every_sparkline_glyph_is_in_the_probe():
+    for glyph in cli.SPARK:
+        assert glyph in cli._GLYPH_PROBE
+
+
+@pytest.mark.parametrize("value,expected", [
+    (0, "0M"), (482 * 1024**2, "482M"), (1023 * 1024**2, "1023M"),
+    (1024**3, "1.0G"), (int(1.25 * 1024**3), "1.2G"), (12 * 1024**3, "12.0G"),
+])
+def test_rss_switches_to_gigabytes_at_one_gigabyte(value, expected):
+    assert cli._fmt_mem(value) == expected
+
+
+@pytest.mark.parametrize("x,expected", [
+    (0, 1.0), (0.4, 0.4), (1, 1), (7, 8), (12, 15), (99, 100), (101, 150), (466.6, 500),
+    (560, 600), (1300, 1500), (2100, 2500), (2600, 3000), (9999, 10000),
+])
+def test_nice_ceiling_lands_on_a_round_number(x, expected):
+    assert cli.nice_ceiling(x) == pytest.approx(expected)
+
+
+def test_nice_ceiling_never_goes_below_its_input():
+    for x in (0.3, 1, 2.2, 47, 560, 1234, 98765):
+        assert cli.nice_ceiling(x) >= x

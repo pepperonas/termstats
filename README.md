@@ -92,11 +92,12 @@ snapshot instead, so `termstats > report.txt` still terminates.
 ## Features
 
 - **CPU** — per-core gradient meters + total + steal time (Linux); many-core machines get a heat strip
-- **Memory** — RAM & swap with used/total beside the bar
+- **Memory** — RAM & swap, with the kernel's cache as its own segment on the bar
 - **Disk** — usage per *real* mountpoint + read/write throughput
 - **Network** — TX/RX throughput + total transferred + connections
 - **Top Processes** — sorted by CPU, with an inline load bar per process
-- **Braille Charts** — CPU & network history at 2×4 dots per cell, on a time-labelled axis
+- **Braille Area Charts** — CPU & network history at 2×4 dots per cell, filled, on a time-labelled axis, with live values in the title
+- **Header Sparkline** — the last 30 s of CPU in sixteen cells, tmux-status-bar style
 - **Fits Your Terminal** — the layout is height-aware; nothing is drawn off-screen
 - **One Colour Ramp** — cool → warm → hot, shared by every meter, value and chart
 - **Cross-Platform** — Linux, macOS, Windows, with an ASCII fallback when the terminal cannot draw
@@ -135,7 +136,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.2.1
+termstats --version   # -> termstats 0.3.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -205,13 +206,13 @@ so your scrollback stays intact.
 
 | Panel | Content |
 |-------|---------|
-| **Header** | Hostname, OS, load average (1/5/15 min), CPU count, uptime, process count. The load figure turns yellow above `1× CPUs` and red above `2× CPUs`. |
+| **Header** | Hostname, OS, load average (1/5/15 min), CPU count, uptime, process count, then a **sixteen-cell CPU sparkline** (each cell the *peak* of its slice, tinted by the ramp), the wall clock, the refresh interval and the version. The 1-minute load is coloured by the ramp against `2× CPUs`. |
 | **CPU** | One meter per logical core, plus a total. They sit in one tall column while they fit, split into up to four when they do not, and collapse to a single-line heat strip on machines with more cores than the panel can list. On Linux an additional **steal** meter shows hypervisor-stolen time, computed as a delta from `/proc/stat` between refreshes — the single most useful metric on an oversold VPS. |
-| **Memory** | RAM and swap, with used/total beside the bar. Swap is only shown when the machine actually has swap configured. |
+| **Memory** | RAM and swap, with used/total beside the bar. The RAM bar has **two segments**: what processes hold (ramp colours) and what the kernel keeps as cache (`▒`, the same hue dimmed). psutil's `percent` counts cache as used, so the number is the sum of both — that is the "how full" everyone means — and the bar shows how it splits; `+5.7G cache` is spelled out in the note when the panel is wide enough. Swap is only shown when the machine actually has swap configured. |
 | **Disk** | One meter per *real* mountpoint, plus system-wide read/write throughput. Pseudo filesystems (`tmpfs`, `devtmpfs`, `squashfs`, `overlay`, `devfs`, `autofs`) and volumes the OS marks `nobrowse`/`dontbrowse` are skipped, duplicate mountpoints collapsed. On macOS `/` reports the Data volume of its APFS group — see [Disk on macOS](#disk-on-macos). |
 | **Network** | TX/RX throughput measured between refreshes, lifetime totals, and the open connection count. |
-| **CPU History** | Braille line chart of total CPU over the last 60 samples, on an axis labelled in seconds-ago; the steal series is overlaid whenever it is non-zero. |
-| **Network History** | Braille line chart of TX/RX in KB/s over the last 60 samples. |
+| **CPU History** | Braille **area** chart of total CPU over the last 60 samples, on an axis labelled in seconds-ago. The fill is tinted by the ramp at the *mean* load of the window, so a chart that has gone amber says the same thing an amber meter does. The steal series is drawn as a line over it whenever it is non-zero. The title states the newest value: `cpu · last 30s · 42%`. |
+| **Network History** | rx as a filled area, tx as a line over it — two overlapping fills turn to mud where they cross. The axis is rounded (`0 / 300 / 600`, never `466.6`) and switches from KB/s to MB/s when the window's peak passes 2 MB/s. The title is a legend that doubles as a readout: `▇ rx 3.1MB/s  ━ tx 1.2MB/s · MB/s` — the filled glyph for the area, the bar for the line. |
 | **Top Processes** | The hungriest processes by CPU — as many as the remaining height allows — each with an inline load bar and RSS. |
 
 Everything colour-coded shares **one ramp**: cool at idle, warm under load, hot when
@@ -393,8 +394,9 @@ What it covers:
 | Mode selection | live in a terminal, snapshot when piped, `--once`/`--live` overrides, the two together rejected |
 | Timing | the computed history window, drift-compensated frame scheduling, the refresh rate tracking the interval |
 | Layout | fits *and* fills the height at thirteen terminal geometries, no line wider than the terminal, no blank lines, no stump panels |
-| Meters | ramp continuity and clamping, exact bar width, eighth-cell fill, the annotation dropped rather than sliced |
-| Charts | braille markers, no painted background, the time axis, and the hand-drawn ASCII chart |
+| Meters | ramp continuity and clamping, exact bar width, eighth-cell fill, the dimmed cache segment, the annotation dropped rather than sliced |
+| Charts | braille markers, area fills (and that only one network series is filled), ramp-derived colours, the rounded and unit-scaled axis, the time axis, live-value subtitles, and the hand-drawn ASCII chart |
+| Header | the sparkline shows peaks not means, appears only with history, never in ASCII mode; the line never collides with itself at any width |
 | Disk | `nobrowse` filtering, the macOS Data substitution and its counter-checks, mountpoint shortening |
 | Badge tooling | the LOC counting rules, the three `pytest --collect-only` output shapes, and the refusal to publish a zero |
 | Charts | the plotext 5.x guard, graceful degradation, byte→KB conversion, the 0–100 CPU axis, Linux-only steal series |

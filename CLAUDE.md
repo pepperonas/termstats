@@ -183,7 +183,7 @@ live in the pipx venv, not in Homebrew's Python. That is expected, not a bug.
 
 ## Testing
 
-**281 pytest tests** in `tests/` (the badge is generated; this number is prose and may lag),
+**582 pytest tests** in `tests/` (the badge is generated; this number is prose and may lag),
 all pure unit tests — no sleeps, no live terminal, no
 network, well under a second:
 
@@ -199,6 +199,17 @@ point, given that the last two bugs were a dependency resolve and an argument pa
 autouse and resets the four history deques, the two `_steal_last_*` globals and the
 `_last_io`/`_last`/`_last_time` function attributes.** Rate state survives between calls by
 design, so without it a collector test passes or fails depending on what ran before it.
+
+⚠️ **Two more from the 0.3.0 round, both mine:**
+
+- "The cache segment uses a different colour from the primary" is NOT the property. A
+  mutation that painted the secondary with the plain ramp at its own positions ALSO gives
+  different colours, and passed. The property is *darker than the ramp would be at that
+  position*, so the test now compares luminance against `ramp(pos)`.
+- "The cache note is absent on a narrow panel" is only half the property: `meter()` drops
+  any note that does not fit, so removing the width guard also made the note absent — and
+  the test stayed green. The other half is that the SHORT note (`5.2G/16.0G`) must survive;
+  the guard exists so the suffix is left off rather than the whole note being lost.
 
 ⚠️ **Two test-writing traps from the 0.2.0 round, both mine:**
 
@@ -234,6 +245,14 @@ a guarantee.
 ⚠️ Two traps hit while writing these: an anchor string whose indentation did not match
 reports "ANCHOR MISSING" and quietly proves nothing, and `f"p{i}" in output` matched `p2`
 inside `p29` — count rows (`Table.row_count`), not name substrings.
+
+⚠️ **One unexplained flake (2026-09-05):** `test_no_line_is_wider_than_the_terminal[120-16]`
+failed exactly once, in the first run after the 0.3.0 header sparkline landed, and could not
+be reproduced afterwards — 15 full-file reruns and 240 direct renders at that size were all
+clean. Every line is produced inside a `Layout`, which crops, so a genuine overflow should be
+impossible; the only time-varying inputs are the load figures, the process count and the
+clock, all of which are in the cropped header. If it recurs, capture the offending line
+(the assertion message prints it) before touching anything.
 
 CI (`.github/workflows/tests.yml`) runs the suite on Linux/macOS/Windows plus Python 3.9, and
 prints the resolved psutil/plotext/rich versions — a fresh resolve is exactly how the
@@ -331,6 +350,20 @@ snapshot only takes one after priming. That is correct behaviour; do not "fix" i
   one dash too (`-live`, `-interval`, `-version`, `-help`), and bad input goes to stderr with
   exit code 2 via `_fail()`. If you add a flag, add it to the matching `_*_FLAGS` tuple —
   anything not in a tuple is now a hard error, which is the point.
+- **Charts are area charts, and only ONE series per chart is filled.** plotext's `fillx=True`
+  works with braille markers and with RGB-tuple colours (tested 2026-09-05). Two overlapping
+  fills turn to mud where they cross; rx is the area, tx the line drawn over it, and the
+  filled series must be plotted FIRST or the line disappears under it. The CPU area is
+  tinted by the ramp at the window's *mean* load — a deliberate tie to the meters, not a
+  fixed colour. Tests spy on `plt.plot` kwargs to pin `fillx` and the colour per series.
+- **The memory bar's second segment is the cache, and the number is psutil's `percent`.**
+  `percent` = everything-not-available, which already includes cache. The bar therefore
+  draws `used/total` as the primary and `percent - used%` as the dimmed secondary; the
+  printed figure and its colour describe the SUM. Drawing `percent` as the primary (the
+  first attempt) left a one-cell sliver of cache and lied about the split.
+- **The header sparkline shows PEAKS per slice, not means.** A mean over four samples
+  flattens exactly the spike a sparkline exists to show. It is omitted in ASCII mode —
+  there is no ASCII glyph set with eight heights, and a wrong picture is worse than none.
 - **The header carries a wall clock.** Without it a frozen dashboard and an idle machine look
   identical. Its absence after the rewrite was found by watching the live view in a pty, not
   by any unit test — the clock is now pinned.

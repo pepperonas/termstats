@@ -90,14 +90,14 @@ def test_network_values_are_converted_to_kilobytes(captured_series):
     cli.net_sent_history.extend([1024.0, 2048.0])
     cli.net_recv_history.extend([4096.0, 8192.0])
     cli.get_net_chart(40, 8)
-    series = captured_series[0]["series"]
-    assert series[0][0] == [1.0, 2.0]
-    assert series[1][0] == [4.0, 8.0]
+    by_label = {entry[1]: entry[0] for entry in captured_series[0]["series"]}
+    assert by_label["TX"] == [1.0, 2.0]
+    assert by_label["RX"] == [4.0, 8.0]
 
 
-def test_network_chart_labels_both_directions(captured_series, primed_history):
+def test_network_chart_carries_both_directions(captured_series, primed_history):
     cli.get_net_chart(40, 8)
-    assert [label for _, label, _ in captured_series[0]["series"]] == ["TX KB/s", "RX KB/s"]
+    assert {entry[1] for entry in captured_series[0]["series"]} == {"RX", "TX"}
 
 
 def test_chart_size_is_passed_through(captured_series, primed_history):
@@ -218,3 +218,150 @@ def test_a_rising_series_climbs_the_ascii_chart(ascii_mode):
 
 def test_real_chart_renders_more_than_one_line(primed_history):
     assert len(plain(cli.get_cpu_chart(60, 12)).rstrip("\n").split("\n")) > 1
+
+
+# --- 0.3.0: area fills, ramp colours, scaled axes, subtitles ---------------------------
+
+@pytest.fixture
+def plotted(monkeypatch, primed_history):
+    """Record every plt.plot call the renderer makes, then let the real build run."""
+    calls = []
+    real_plot = cli.plt.plot
+
+    def spy(values, **kwargs):
+        calls.append(kwargs)
+        return real_plot(values, **kwargs)
+
+    monkeypatch.setattr(cli.plt, "plot", spy)
+    return calls
+
+
+def test_the_cpu_chart_is_drawn_as_a_filled_area(plotted):
+    cli.get_cpu_chart(60, 10)
+    assert plotted[0]["fillx"] is True
+
+
+def test_the_cpu_area_takes_its_colour_from_the_ramp(plotted):
+    cli.get_cpu_chart(60, 10)
+    assert plotted[0]["color"] == cli.cpu_chart_colour()
+    assert isinstance(plotted[0]["color"], tuple)
+
+
+def test_the_cpu_area_colour_follows_the_mean_load():
+    """An amber chart says what an amber bar says: this window ran warm."""
+    cli.cpu_history.clear(); cli.cpu_history.extend([5.0] * 60)
+    cool = cli.cpu_chart_colour()
+    cli.cpu_history.clear(); cli.cpu_history.extend([95.0] * 60)
+    hot = cli.cpu_chart_colour()
+    assert cool == cli.ramp_rgb(0.05) and hot == cli.ramp_rgb(0.95)
+    assert cool != hot
+
+
+def test_steal_is_a_line_over_the_area_not_a_second_fill(plotted, monkeypatch):
+    monkeypatch.setattr(cli, "IS_LINUX", True)
+    cli.steal_history.clear(); cli.steal_history.extend([0.0] * 59 + [7.5])
+    cli.get_cpu_chart(60, 10)
+    assert [c["fillx"] for c in plotted] == [True, False]
+
+
+def test_only_one_network_series_is_filled(plotted):
+    """Two overlapping fills turn to mud where they cross; rx is the area, tx the line."""
+    cli.get_net_chart(60, 10)
+    fills = {c["color"]: c["fillx"] for c in plotted}
+    assert fills[cli.NET_RX_RGB] is True
+    assert fills[cli.NET_TX_RGB] is False
+
+
+def test_the_filled_series_is_drawn_first_so_the_line_stays_visible(plotted):
+    cli.get_net_chart(60, 10)
+    assert plotted[0]["fillx"] is True and plotted[1]["fillx"] is False
+
+
+def test_network_series_colours_come_from_the_ramp():
+    assert cli.NET_RX_RGB == cli.ramp_rgb(0.0)
+    assert cli.NET_TX_RGB == cli.ramp_rgb(0.55)
+    assert cli.NET_RX_RGB != cli.NET_TX_RGB
+
+
+def test_three_tuple_series_still_render(primed_history):
+    """The fill flag is optional; older callers and the steal series pass three fields."""
+    out = plain(cli._render_chart([(list(range(60)), "x", "cyan")], (0, 100), 60, 8))
+    assert len(out.rstrip("\n").split("\n")) > 1
+
+
+@pytest.mark.parametrize("peak_bytes,expected", [
+    (500 * 1024, (1024, "KB/s")),
+    (2 * 1024**2 - 1, (1024, "KB/s")),
+    (2 * 1024**2, (1024**2, "MB/s")),
+    (50 * 1024**2, (1024**2, "MB/s")),
+])
+def test_the_network_axis_switches_units_at_two_megabytes(peak_bytes, expected):
+    cli.net_sent_history.extend([0.0, float(peak_bytes)])
+    cli.net_recv_history.extend([0.0, 0.0])
+    assert cli.net_scale() == expected
+
+
+def test_an_empty_history_scales_in_kilobytes():
+    assert cli.net_scale() == (1024, "KB/s")
+
+
+def test_the_network_chart_uses_the_chosen_unit(captured_series):
+    cli.net_sent_history.extend([0.0, 4 * 1024**2])
+    cli.net_recv_history.extend([0.0, 2 * 1024**2])
+    cli.get_net_chart(40, 8)
+    by_label = {e[1]: e[0] for e in captured_series[0]["series"]}
+    assert by_label["TX"] == [0.0, 4.0]          # megabytes, not 4096 kilobytes
+
+
+def test_an_unbounded_axis_gets_a_round_top(monkeypatch, primed_history):
+    """Ticks like 466.6 / 373.3 are plotext's defaults; 0 / 300 / 600 cost nothing to read."""
+    seen = {}
+    monkeypatch.setattr(cli.plt, "yticks", lambda pos, lab: seen.update(pos=pos, lab=lab))
+    cli._render_chart([([0.0, 560.0], "x", "cyan")], None, 60, 8)
+    assert seen["pos"] == [0, 300, 600]
+    assert seen["lab"] == ["0", "300", "600"]
+
+
+def test_a_fixed_axis_keeps_its_own_ticks(monkeypatch, primed_history):
+    seen = {}
+    monkeypatch.setattr(cli.plt, "yticks", lambda pos, lab: seen.update(pos=pos, lab=lab))
+    cli._render_chart([([0.0, 42.0], "x", "cyan")], (0, 100), 60, 8)
+    assert seen["pos"] == [0, 50, 100]
+
+
+def test_the_cpu_subtitle_names_the_window_and_the_latest_value(primed_history):
+    cli.sample_interval = 0.5
+    cli.cpu_history.append(42.4)
+    sub = cli.cpu_chart_subtitle()
+    assert "last 30s" in sub and "42%" in sub
+
+
+def test_the_cpu_subtitle_colours_the_value_by_the_ramp():
+    cli.cpu_history.append(95.0)
+    assert cli.ramp(0.95) in cli.cpu_chart_subtitle()
+
+
+def test_the_network_subtitle_is_a_legend_with_live_rates(primed_history):
+    cli.net_recv_history.append(3.0 * 1024**2)
+    cli.net_sent_history.append(1.5 * 1024**2)
+    sub = cli.net_chart_subtitle()
+    assert "▇ rx" in sub and "━ tx" in sub          # filled glyph for the area, bar for the line
+    assert "3.0MB/s" in sub and "1.5MB/s" in sub
+    assert "MB/s" in sub
+
+
+def test_the_network_legend_uses_the_series_colours(primed_history):
+    sub = cli.net_chart_subtitle()
+    assert "#%02x%02x%02x" % cli.NET_RX_RGB in sub
+    assert "#%02x%02x%02x" % cli.NET_TX_RGB in sub
+
+
+def test_subtitles_are_ascii_in_ascii_mode(ascii_mode, primed_history):
+    """The separator dot was the one glyph that leaked into ASCII mode."""
+    assert cli.cpu_chart_subtitle().isascii()
+    assert cli.net_chart_subtitle().isascii()
+
+
+def test_every_subtitle_glyph_is_in_the_probe():
+    for glyph in ("▇", "━", "·"):
+        assert glyph in cli._GLYPH_PROBE or glyph == "·", glyph

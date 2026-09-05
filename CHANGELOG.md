@@ -11,6 +11,43 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-05
+
+Second visual pass. Everything here is additive; the command line is unchanged.
+
+### Changed
+
+- **Charts are area charts.** The CPU history is drawn as a filled braille area, tinted by
+  the ramp at the *mean* load of the window — a chart that has gone amber says the same
+  thing an amber meter does. The network chart fills the rx series and draws tx as a line
+  over it: two overlapping fills turn to mud where they cross.
+- **Chart series colours come from the ramp** (RGB tuples handed to plotext) instead of
+  plotext's named `cyan`/`green`/`blue`.
+- **Chart titles carry the live values.** `cpu · last 30s · 42%`, and for network a
+  legend that doubles as a readout: `▇ rx 3.1MB/s  ━ tx 1.2MB/s · MB/s` — the filled
+  glyph for the area, the bar for the line, so the legend shows what you see rather than
+  naming colours.
+- **The network axis is round and scaled.** Ticks at `0 / 300 / 600` instead of plotext's
+  `466.6 / 373.3`, and the unit flips from KB/s to MB/s when the window's peak passes 2 MB/s.
+- **The memory bar shows the kernel's cache as its own dimmed segment.** psutil's `percent`
+  counts cache as used; the bar now splits that into what processes hold (ramp) and what is
+  cached (`▒`, same hue at 45% brightness), with `+5.7G cache` in the note when the panel is
+  wide enough. The number stays psutil's — that is the "how full" everyone means.
+- **A CPU sparkline in the header** — sixteen block cells, tmux-status-bar style, each the
+  *peak* of its slice (a mean would flatten the spike you wanted to see), tinted by the
+  ramp. Omitted in ASCII mode; there is no ASCII glyph set with eight heights.
+- RSS is printed as `1.2G` above a gigabyte instead of `1234M`.
+
+### Fixed
+
+- The subtitle separator leaked a `·` into ASCII mode.
+
+### Added
+
+- Tests 511 → 582, sixteen of them mutation-checked (two of my own pins were green-blind
+  on the first try and were tightened — see CLAUDE.md).
+
+
 ## [0.2.1] - 2026-09-05
 
 ### Fixed
@@ -160,7 +197,8 @@ These releases were tagged only in the commit log; the numbering restarted at 0.
 - Renamed from `stats` to `termstats` (command, package, distribution and repository).
 - Original dashboard: CPU, memory, disk, network, top processes, history charts.
 
-[Unreleased]: https://github.com/pepperonas/termstats/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/pepperonas/termstats/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/pepperonas/termstats/releases/tag/v0.3.0
 [0.2.1]: https://github.com/pepperonas/termstats/releases/tag/v0.2.1
 [0.2.0]: https://github.com/pepperonas/termstats/releases/tag/v0.2.0
 [0.1.0]: https://github.com/pepperonas/termstats/releases/tag/v0.1.0

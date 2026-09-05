@@ -65,7 +65,7 @@ _CHART_NEEDS_PLOTEXT_5 = "  Charts need plotext 5.x  (pip install 'plotext<6')"
 # ---------------------------------------------------------------------------------
 
 # Every non-ASCII character the dashboard draws with. Add to this when you add a glyph.
-_GLYPH_PROBE = "█░╭\U0001f37b▏╌⠀"
+_GLYPH_PROBE = "█░╭\U0001f37b▏╌⠀▁▂▃▄▅▆▇━"
 
 UNICODE = True
 
@@ -104,20 +104,30 @@ DIM = "grey54"
 FAINT = "grey30"
 
 
+def ramp_rgb(t):
+    """Colour at position t (0..1) on the shared ramp, as an (r, g, b) tuple."""
+    t = 0.0 if t != t else max(0.0, min(1.0, t))          # t != t catches NaN
+    for (lo, c_lo), (hi, c_hi) in zip(RAMP, RAMP[1:]):
+        if t <= hi:
+            k = 0.0 if hi == lo else (t - lo) / (hi - lo)
+            return tuple(round(c_lo[i] + (c_hi[i] - c_lo[i]) * k) for i in range(3))
+    return RAMP[-1][1]
+
+
 def ramp(t):
     """Colour at position t (0..1) on the shared ramp, as a hex string.
 
     Returned as truecolor; rich quantises it to 256 or 16 colours on terminals that
     need it, so there is deliberately no palette table here.
     """
-    t = 0.0 if t != t else max(0.0, min(1.0, t))          # t != t catches NaN
-    for (lo, c_lo), (hi, c_hi) in zip(RAMP, RAMP[1:]):
-        if t <= hi:
-            k = 0.0 if hi == lo else (t - lo) / (hi - lo)
-            r, g, b = (round(c_lo[i] + (c_hi[i] - c_lo[i]) * k) for i in range(3))
-            return f"#{r:02x}{g:02x}{b:02x}"
-    r, g, b = RAMP[-1][1]
+    r, g, b = ramp_rgb(t)
     return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def dim_rgb(rgb, factor=0.45):
+    """The same hue at a fraction of the brightness - for a secondary segment that must
+    read as related to the primary but clearly not the same thing."""
+    return f"#{round(rgb[0] * factor):02x}{round(rgb[1] * factor):02x}{round(rgb[2] * factor):02x}"
 
 
 # ---------------------------------------------------------------------------------
@@ -131,20 +141,29 @@ ASCII_FULL = "#"
 ASCII_EMPTY = "-"
 
 
-def bar(pct, width):
+BAR_SECONDARY = "▒"
+ASCII_SECONDARY = "="
+
+
+def bar(pct, width, secondary=0.0):
     """A gradient meter, accurate to an eighth of a character cell.
 
     Each cell is tinted by its own position on the ramp rather than the bar carrying one
     flat colour, which is what makes a long bar read as a scale instead of a block.
+
+    `secondary` is a second percentage drawn after the first in a dimmed tone - used for
+    the memory the kernel holds as cache: not free, not the process's, and worth seeing.
     """
     full_ch = BAR_FULL if UNICODE else ASCII_FULL
     empty_ch = BAR_EMPTY if UNICODE else ASCII_EMPTY
+    second_ch = BAR_SECONDARY if UNICODE else ASCII_SECONDARY
     partials = BAR_PARTIALS if UNICODE else ""
 
     text = Text(no_wrap=True, overflow="crop")
     if width <= 0:
         return text
     pct = 0.0 if pct != pct else max(0.0, min(100.0, pct))
+    secondary = 0.0 if secondary != secondary else max(0.0, min(100.0 - pct, secondary))
     span = max(width - 1, 1)
     cells = width * pct / 100.0
     filled = int(cells)
@@ -155,6 +174,10 @@ def bar(pct, width):
         if eighths:
             text.append(partials[eighths - 1], style=ramp(filled / span))
             filled += 1
+    second = min(int(width * secondary / 100.0), width - filled)
+    for i in range(second):
+        text.append(second_ch, style=dim_rgb(ramp_rgb((filled + i) / span)))
+    filled += second
     text.append(empty_ch * (width - filled), style=FAINT)
     return text
 
@@ -162,7 +185,7 @@ def bar(pct, width):
 MIN_BAR_W = 6
 
 
-def meter(label, pct, total, value=None, note="", label_w=9, value_w=7):
+def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0):
     """`label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line, budgeted so it never wraps.
 
     The old two-line form (bar, then "6.1G / 16.0G" underneath) doubled the height of
@@ -172,8 +195,12 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7):
     sliced: a cut-off "421.4G/460." is worse than no annotation at all, because it still
     looks like a number.
     """
+    # The number and its colour describe the WHOLE occupied part - primary plus secondary.
+    # For memory that is psutil's percent (everything not available), which is what the
+    # reader expects to see; the bar underneath shows how that splits.
+    occupied = min(100.0, pct + max(0.0, secondary))
     if value is None:
-        value = f"{pct:.1f}%"
+        value = f"{occupied:.1f}%"
     if note and total - label_w - value_w - (len(note) + 2) < MIN_BAR_W:
         note = ""
     note_w = len(note) + 2 if note else 0
@@ -181,10 +208,31 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7):
 
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"{label[:label_w - 1]:>{label_w - 1}} ", style=DIM)
-    text.append_text(bar(pct, bar_w))
-    text.append(f"{value:>{value_w}}", style=f"bold {ramp(pct / 100)}")
+    text.append_text(bar(pct, bar_w, secondary))
+    text.append(f"{value:>{value_w}}", style=f"bold {ramp(occupied / 100)}")
     if note:
         text.append(f"  {note}", style=MUTED)
+    return text
+
+
+SPARK = "▁▂▃▄▅▆▇█"
+
+
+def sparkline(values, width):
+    """A width-cell block sparkline, each cell the PEAK of its slice, tinted by the ramp.
+
+    Peaks rather than means: a sparkline exists to show that something spiked, and a mean
+    over four samples flattens exactly the sample you wanted to see.
+    """
+    text = Text(no_wrap=True, overflow="crop")
+    if not values or width <= 0 or not UNICODE:
+        return text
+    values = list(values)
+    step = max(1, math.ceil(len(values) / width))
+    for i in range(0, len(values), step):
+        peak = max(values[i:i + step])
+        t = max(0.0, min(1.0, peak / 100.0))
+        text.append(SPARK[min(int(t * len(SPARK)), len(SPARK) - 1)], style=ramp(t))
     return text
 
 
@@ -280,10 +328,25 @@ def cpu_section_rows(ncores, max_rows=99):
     return core_rows + 1 + (1 if IS_LINUX else 0)
 
 
+def _fmt_gb(n):
+    return f"{n / 1024**3:.1f}G"
+
+
 def get_memory_section(width):
     mem = psutil.virtual_memory()
-    rows = [meter("ram", mem.percent, width,
-                  note=f"{mem.used / 1024**3:.1f}G/{mem.total / 1024**3:.1f}G")]
+    # What is neither in use nor available is the kernel's cache: reclaimable, so not
+    # "used", but not free either. It gets its own dimmed segment on the bar.
+    # psutil's `percent` is everything-not-available, which already counts the cache. The
+    # bar splits that figure into what processes hold (ramp) and what the kernel caches
+    # (dimmed); the number stays psutil's, because that is the "how full" everyone means.
+    cache = max(0, mem.total - mem.used - mem.available)
+    used_pct = 100.0 * mem.used / mem.total if mem.total else 0.0
+    cache_pct = max(0.0, mem.percent - used_pct)
+    note = f"{_fmt_gb(mem.used)}/{_fmt_gb(mem.total)}"
+    if cache and width >= 44:
+        note += f" +{_fmt_gb(cache)} cache"
+    rows = [meter("ram", used_pct, width, value=f"{mem.percent:.1f}%", note=note,
+                  secondary=cache_pct)]
     swap = psutil.swap_memory()
     if swap.total > 0:
         rows.append(meter("swap", swap.percent, width,
@@ -437,6 +500,13 @@ def network_section_rows():
         return 2
 
 
+def _fmt_mem(b):
+    """RSS as 482M or 1.2G - a 1234M column is harder to scan than a 1.2G one."""
+    if b >= 1024**3:
+        return f"{b / 1024**3:.1f}G"
+    return f"{b / 1024**2:.0f}M"
+
+
 def get_top_processes(width, n=8):
     procs = []
     for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'memory_info']):
@@ -465,7 +535,7 @@ def get_top_processes(width, n=8):
     for proc in procs[:n]:
         cpu_pct = proc['cpu_percent'] or 0
         mem_pct = proc['memory_percent'] or 0
-        rss = proc['memory_info'].rss / 1024**2 if proc['memory_info'] else 0
+        rss = proc['memory_info'].rss if proc['memory_info'] else 0
         # The ellipsis comes from the column, not from here - see the no_wrap column above.
         cells = [str(proc['pid']), Text(proc['name'] or "?")]
         if bar_w:
@@ -473,7 +543,7 @@ def get_top_processes(width, n=8):
         cells += [
             Text(f"{cpu_pct:.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
             Text(f"{mem_pct:.1f}", style=ramp(mem_pct / 25)),
-            Text(f"{rss:.0f}M", style="grey62"),
+            Text(_fmt_mem(rss), style="grey62"),
         ]
         table.add_row(*cells)
     return table
@@ -548,10 +618,28 @@ def _ascii_chart(values, ylim, width, height):
     return Group(*rows)
 
 
+def nice_ceiling(x):
+    """The smallest "round" number >= x, for an axis top that does not read as noise.
+
+    plotext's own auto-ticks land on values like 466.6 and 373.3; an axis that says
+    0 / 300 / 600 costs nothing to read.
+    """
+    if x <= 0:
+        return 1.0
+    base = 10.0 ** math.floor(math.log10(x))
+    for m in (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10):
+        if m * base >= x:
+            return m * base
+    return 10 * base
+
+
 def _render_chart(series, ylim, width, height):
     """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
 
-    series: list of (values, label, color).
+    series: list of (values, label, color[, fill]); color may be a name or an RGB tuple.
+    A filled series is drawn as an area under the line - the mass reads far better than a
+    thin braille trace, but two overlapping fills turn to mud where they cross, so callers
+    fill at most one series and draw the others as lines over it.
     """
     if not UNICODE:
         return _ascii_chart(series[0][0], ylim, width, height)
@@ -559,15 +647,19 @@ def _render_chart(series, ylim, width, height):
         return Text(_CHART_NEEDS_PLOTEXT_5, style=MUTED)
     try:
         plt.clear_figure()
-        for values, _label, color in series:
+        for entry in series:
+            values, _label, color = entry[:3]
+            fill = bool(entry[3]) if len(entry) > 3 else False
             # braille packs 2x4 dots into one cell - four times the vertical resolution of
             # the block markers, and the same trick btop uses. "clear" keeps plotext from
             # painting its own black background over the terminal's.
-            plt.plot(values, marker="braille", color=color)
-        if ylim is not None:
-            plt.ylim(*ylim)
-            lo, hi = ylim
-            plt.yticks([lo, (lo + hi) / 2, hi], [f"{lo:g}", f"{(lo + hi) / 2:g}", f"{hi:g}"])
+            plt.plot(values, marker="braille", color=color, fillx=fill)
+        if ylim is None:
+            top = nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0))
+            ylim = (0, top)
+        lo, hi = ylim
+        plt.ylim(lo, hi)
+        plt.yticks([lo, (lo + hi) / 2, hi], [f"{lo:g}", f"{(lo + hi) / 2:g}", f"{hi:g}"])
         plt.theme("clear")
         plt.plotsize(width, height)
         positions, labels = _time_ticks(len(series[0][0]))
@@ -577,21 +669,46 @@ def _render_chart(series, ylim, width, height):
         return Text("  Chart unavailable", style=MUTED)
 
 
+def _collecting():
+    return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
+
+
+def cpu_chart_colour():
+    """The area is tinted by the MEAN load of the window - the same position on the ramp
+    the meters use, so a chart that has gone amber says the same thing an amber bar does."""
+    if not cpu_history:
+        return ramp_rgb(0.0)
+    return ramp_rgb(sum(cpu_history) / len(cpu_history) / 100.0)
+
+
 def get_cpu_chart(width, height):
     if len(cpu_history) < 2:
-        return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
-    series = [(list(cpu_history), "CPU %", "cyan")]
+        return _collecting()
+    series = [(list(cpu_history), "CPU %", cpu_chart_colour(), True)]
     if IS_LINUX and any(s > 0 for s in steal_history):
-        series.append((list(steal_history), "Steal %", "red"))
+        series.append((list(steal_history), "Steal %", ramp_rgb(1.0), False))
     return _render_chart(series, (0, 100), width, height)
+
+
+NET_RX_RGB = ramp_rgb(0.0)     # teal  - the filled series
+NET_TX_RGB = ramp_rgb(0.55)    # amber - the line drawn over it
+
+
+def net_scale():
+    """(divisor, unit) so the network chart reads in KB/s or MB/s, whichever fits the peak."""
+    peak = max(list(net_sent_history) + list(net_recv_history) + [0.0])
+    if peak >= 2 * 1024**2:
+        return 1024**2, "MB/s"
+    return 1024, "KB/s"
 
 
 def get_net_chart(width, height):
     if len(net_sent_history) < 2:
-        return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
+        return _collecting()
+    div, _unit = net_scale()
     series = [
-        ([x / 1024 for x in net_sent_history], "TX KB/s", "green"),
-        ([x / 1024 for x in net_recv_history], "RX KB/s", "blue"),
+        ([x / div for x in net_recv_history], "RX", NET_RX_RGB, True),
+        ([x / div for x in net_sent_history], "TX", NET_TX_RGB, False),
     ]
     return _render_chart(series, None, width, height)
 
@@ -603,7 +720,7 @@ def get_net_chart(width, height):
 def _panel(renderable, title, colour, subtitle=""):
     head = f"[b]{title}[/b]"
     if subtitle:
-        head += f" [{MUTED}]· {subtitle}[/{MUTED}]" if UNICODE else f" [{MUTED}]- {subtitle}[/{MUTED}]"
+        head += f" [{MUTED}]{_sep()} {subtitle}[/{MUTED}]"
     return Panel(renderable, title=head, title_align="left", border_style=colour,
                  box=box.ROUNDED if UNICODE else box.ASCII, padding=(0, 1))
 
@@ -611,7 +728,33 @@ def _panel(renderable, title, colour, subtitle=""):
 C_CPU, C_MEM, C_NET, C_DISK, C_PROC = "#4a6fa5", "#4a9575", "#4a6fa5", "#a5904a", "#7a5a95"
 
 
-def header_line(width, load_colour_source=None):
+def _sep():
+    """The dot that joins subtitle parts - and the one glyph that leaked into ASCII mode."""
+    return "·" if UNICODE else "-"
+
+
+def cpu_chart_subtitle():
+    """`last 30s · 42%` - the window, then the value the newest sample carries."""
+    now = cpu_history[-1] if cpu_history else 0.0
+    return f"{_window_label()} {_sep()} [{ramp(now / 100)}]{now:.0f}%[/]"
+
+
+def net_chart_subtitle():
+    """A legend that also states the current rates: `▇ rx 3.1MB/s  ━ tx 1.2MB/s · KB/s`.
+
+    The filled series gets the block glyph and the line series the bar, so the legend
+    shows what the reader will see rather than naming colours.
+    """
+    _div, unit = net_scale()
+    rx = _fmt_bytes_rate(net_recv_history[-1] if net_recv_history else 0.0).replace(" ", "")
+    tx = _fmt_bytes_rate(net_sent_history[-1] if net_sent_history else 0.0).replace(" ", "")
+    rx_glyph, tx_glyph = ("▇", "━") if UNICODE else ("#", "-")
+    rx_hex = "#%02x%02x%02x" % NET_RX_RGB
+    tx_hex = "#%02x%02x%02x" % NET_TX_RGB
+    return f"[{rx_hex}]{rx_glyph} rx[/] {rx}  [{tx_hex}]{tx_glyph} tx[/] {tx} {_sep()} {unit}"
+
+
+def header_line(width):
     load1, load5, load15 = psutil.getloadavg()
     ncpu = psutil.cpu_count() or 1
     uptime_s = time.time() - psutil.boot_time()
@@ -634,6 +777,12 @@ def header_line(width, load_colour_source=None):
     text.append(str(len(psutil.pids())), style="grey70")
 
     tail = Text(no_wrap=True)
+    # A 16-cell CPU sparkline, tmux-status-bar style: the whole recent history in one
+    # glance without looking down at the chart. Peaks per cell, tinted by the ramp.
+    spark = sparkline(cpu_history, 16)
+    if spark.cell_len:
+        tail.append_text(spark)
+        tail.append("  ")
     # The wall clock is the liveness signal: a frozen dashboard and a quiet machine look
     # identical without it. It sits in the tail because the head is the identity.
     tail.append(time.strftime("%H:%M:%S") + "  ", style="grey70")
@@ -755,12 +904,12 @@ def render_dashboard(width=None, height=None):
     if charts_h:
         chart_w = (tw - 1) // 2 - 4
         chart_h = charts_h - 2
-        window = _window_label()
         charts = Layout(name="charts", size=charts_h)
         charts.split_row(
-            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", C_CPU, window), name="c1"),
+            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", C_CPU,
+                          cpu_chart_subtitle()), name="c1"),
             Layout(_panel(get_net_chart(chart_w, chart_h), "network", C_NET,
-                          "tx/rx KB/s"), name="c2"),
+                          net_chart_subtitle()), name="c2"),
         )
         sections.append(charts)
 

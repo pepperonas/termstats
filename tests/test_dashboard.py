@@ -339,3 +339,44 @@ def test_capability_detection_follows_the_stream(monkeypatch):
 
 def test_priming_does_not_raise():
     cli._prime_measurements()
+
+
+# --- 0.3.0: the header sparkline and the chart subtitles ---------------------------------
+
+def test_header_carries_a_cpu_sparkline_once_there_is_history(primed_history):
+    head = plain(cli.header_line(140), width=140)
+    assert any(g in head for g in cli.SPARK)
+
+
+def test_header_sparkline_is_absent_without_history():
+    head = plain(cli.header_line(140), width=140)
+    assert not any(g in head for g in cli.SPARK)
+
+
+def test_header_sparkline_is_absent_in_ascii_mode(ascii_mode, primed_history):
+    assert plain(cli.header_line(140), width=140).isascii()
+
+
+def test_header_still_fits_with_the_sparkline(primed_history):
+    for width in range(60, 200, 7):
+        head = plain(cli.header_line(width), width=width).rstrip("\n")
+        assert "\n" not in head and len(head) <= width
+
+
+def test_the_chart_panels_state_the_current_values(monkeypatch, primed_history):
+    """The subtitle reads the NEWEST sample - the one this very render just took."""
+    monkeypatch.setattr(cli.psutil, "cpu_percent",
+                        lambda percpu=False: [73.0] * 4 if percpu else 73.0)
+    monkeypatch.setattr(cli.psutil, "cpu_count", lambda: 4)
+    out = dash(140, 50)
+    assert "73%" in out
+    assert "rx" in out and "tx" in out
+
+
+def test_the_memory_panel_shows_the_cache_segment_in_the_dashboard():
+    """Counter-check against the real machine: only asserts when there IS cache."""
+    import psutil
+    mem = psutil.virtual_memory()
+    if mem.total - mem.used - mem.available <= 0:
+        pytest.skip("no cache on this machine")
+    assert cli.BAR_SECONDARY in dash(140, 50)
