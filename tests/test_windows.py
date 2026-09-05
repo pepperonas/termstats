@@ -42,8 +42,10 @@ def test_no_color_and_dumb_still_win_over_wt_session(env):
     assert T.detect(env, stream=utf8_stream()).color == "mono"
 
 
-def test_an_empty_wt_session_is_not_a_windows_terminal():
+def test_an_empty_wt_session_is_not_a_windows_terminal(monkeypatch):
+    monkeypatch.setattr(T, "_windows_build", lambda: None)   # a Unix host: nothing else speaks
     assert T.detect({"WT_SESSION": "", "TERM": ""}, stream=utf8_stream()).color == "16"
+    assert T._color_from_env({"WT_SESSION": "", "TERM": ""}, windows_build=22631) == "truecolor"
 
 
 # --- plain conhost: nothing in the environment, so the build number decides ------------

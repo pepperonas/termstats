@@ -284,7 +284,10 @@ def test_every_theme_renders_a_dashboard(name, primed_history):
     ({"TERM": "xterm", "COLORTERM": ""}, "16"),
     ({"TERM": "", "COLORTERM": ""}, "16"),
 ])
-def test_colour_depth_follows_the_environment(env, expected):
+def test_colour_depth_follows_the_environment(env, expected, monkeypatch):
+    # This table describes a Unix host. On Windows a silent environment is a bare conhost
+    # and the build number decides - pinned separately in test_windows.py.
+    monkeypatch.setattr(T, "_windows_build", lambda: None)
     assert T.detect(env, stream=sys.__stdout__).color == expected
 
 

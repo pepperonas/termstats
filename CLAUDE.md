@@ -122,7 +122,11 @@ run of 0.4.0 went red in all four cells because `set_theme("default")` took the 
 shell exports `COLORTERM`. Reproduce locally with `env -u COLORTERM TERM=dumb pytest`; the
 suite must now pass under `TERM=dumb`, `TERM=xterm`, `TERM=xterm-256color` and `NO_COLOR=1`.
 Any test that reads the real environment (`detect_capabilities()`, `_color_from_env()`)
-sets `TERM` itself via `monkeypatch.setenv`. Two more CI-only lessons: **rich honours
+sets `TERM` itself via `monkeypatch.setenv` — and since 0.4.1 a test that pins a silent
+environment to 16 colours must also pin the platform (`monkeypatch.setattr(T,
+"_windows_build", lambda: None)`): on the Windows runner `detect()` consults the real build
+and a silent environment IS truecolor there. Reproduce locally with a one-file pytest
+plugin that fakes `sys.getwindowsversion`. Two more CI-only lessons: **rich honours
 `NO_COLOR` and `legacy_windows` from the real environment even on a Console built with
 `color_system="truecolor"`** — a test Console that wants colour passes `force_terminal=True,
 no_color=False, legacy_windows=False` (on a Windows pipe rich otherwise renders through the
