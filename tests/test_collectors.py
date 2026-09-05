@@ -139,8 +139,12 @@ def test_disk_io_needs_a_baseline_before_it_reports(fake_disks, monkeypatch):
     io = SimpleNamespace(read_bytes=1000, write_bytes=2000)
     fake_disks([partition("/")], lambda m: usage(10.0))
     monkeypatch.setattr(cli.psutil, "disk_io_counters", lambda: io)
-    assert "read" not in plain(cli.get_disk_section(70), width=70)     # nothing to diff against
-    assert "read" in plain(cli.get_disk_section(70), width=70)         # a delta exists
+    # The line is there from the first frame - a line that appears one frame later
+    # reflows the whole panel - but it says n/a until there is something to diff against.
+    first = plain(cli.get_disk_section(70), width=70)
+    assert "read" in first and "n/a" in first
+    second = plain(cli.get_disk_section(70), width=70)
+    assert "read" in second and "n/a" not in second and "/s" in second
 
 
 def test_failing_disk_io_does_not_lose_the_partition_list(fake_disks, monkeypatch):
@@ -165,7 +169,7 @@ def fake_memory(monkeypatch):
 def test_memory_reports_used_and_total(fake_memory):
     fake_memory(0)
     out = plain(cli.get_memory_section(60), width=60)
-    assert "61.0%" in out and "8.0G/16.0G" in out
+    assert "61.0%" in out and " 8.0G/ 16.0G" in out      # fixed-width gigabyte fields
 
 
 def test_swap_row_is_omitted_when_there_is_no_swap(fake_memory):
@@ -220,7 +224,7 @@ def test_network_totals_are_reported_in_gigabytes(fake_net):
     fake_net(lambda: [])
     body, _, _ = cli.get_network_section(70)
     out = plain(body, width=70)
-    assert "10.00G" in out and "20.00G" in out
+    assert "10.0G" in out and "20.0G" in out
 
 
 # --- cpu ------------------------------------------------------------------------------
@@ -416,7 +420,7 @@ def test_memory_bar_splits_used_from_cache(fake_memory_with_cache):
 
 
 def test_memory_names_the_cache_when_there_is_room(fake_memory_with_cache):
-    assert "+6.9G cache" in plain(cli.get_memory_section(70), width=70)
+    assert "6.9G cache" in plain(cli.get_memory_section(70), width=70)
 
 
 def test_memory_keeps_the_short_note_on_a_narrow_panel(fake_memory_with_cache):
@@ -424,7 +428,7 @@ def test_memory_keeps_the_short_note_on_a_narrow_panel(fake_memory_with_cache):
     fits - appending it regardless would make meter() drop the WHOLE note."""
     out = plain(cli.get_memory_section(40), width=40)
     assert "cache" not in out
-    assert "5.2G/16.0G" in out, "the short note must survive, not be dropped with the suffix"
+    assert " 5.2G/ 16.0G" in out, "the short note must survive, not be dropped with the suffix"
     assert "75.6%" in out
 
 

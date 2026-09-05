@@ -361,9 +361,12 @@ def test_header_carries_a_cpu_sparkline_once_there_is_history(primed_history):
     assert any(g in head for g in cli.SPARK)
 
 
-def test_header_sparkline_is_absent_without_history():
-    head = plain(cli.header_line(140), width=140)
-    assert not any(g in head for g in cli.SPARK)
+def test_header_sparkline_is_a_flat_baseline_without_history():
+    """The FIELD is always there (it used to grow and walk the clock left for 30 s);
+    without history every cell is the lowest glyph, in the track tone."""
+    head = plain(cli.header_line(160), width=160)
+    assert cli.SPARK[0] * cli.T.SPARK_W in head
+    assert not any(g in head for g in cli.SPARK[1:])
 
 
 def test_header_sparkline_is_absent_in_ascii_mode(ascii_mode, primed_history):

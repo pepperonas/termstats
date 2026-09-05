@@ -270,8 +270,13 @@ def test_meter_value_colour_follows_the_occupied_total_not_the_primary():
     assert cool_style and hot_style and cool_style[0] != hot_style[0]
 
 
-def test_sparkline_has_one_cell_per_slice():
-    assert len(cells(cli.sparkline([10.0] * 60, 16))) == 15      # 60 / ceil(60/16)=4
+def test_sparkline_is_always_exactly_its_width():
+    """Sixty samples in sixteen cells is fifteen slices; the sixteenth cell is padding in
+    the track tone. A sparkline that grew from one cell to fifteen while the history
+    filled walked the header's clock left for thirty seconds."""
+    assert len(cells(cli.sparkline([10.0] * 60, 16))) == 16
+    assert len(cells(cli.sparkline([10.0] * 3, 16))) == 16
+    assert len(cells(cli.sparkline([10.0], 16))) == 16
 
 
 def test_sparkline_shows_the_peak_of_each_slice_not_the_mean():
@@ -301,11 +306,12 @@ def test_every_sparkline_glyph_is_in_the_probe():
 
 
 @pytest.mark.parametrize("value,expected", [
-    (0, "0M"), (482 * 1024**2, "482M"), (1023 * 1024**2, "1023M"),
-    (1024**3, "1.0G"), (int(1.25 * 1024**3), "1.2G"), (12 * 1024**3, "12.0G"),
+    (0, "   0M"), (482 * 1024**2, " 482M"), (1023 * 1024**2, "1023M"),
+    (1024**3, " 1.0G"), (int(1.25 * 1024**3), " 1.2G"), (12 * 1024**3, "12.0G"),
 ])
-def test_rss_switches_to_gigabytes_at_one_gigabyte(value, expected):
+def test_rss_switches_to_gigabytes_at_one_gigabyte_in_a_fixed_field(value, expected):
     assert cli._fmt_mem(value) == expected
+    assert len(expected) == 5
 
 
 @pytest.mark.parametrize("x,expected", [

@@ -319,7 +319,9 @@ def test_an_unbounded_axis_gets_a_round_top(monkeypatch, primed_history):
     monkeypatch.setattr(cli.plt, "yticks", lambda pos, lab: seen.update(pos=pos, lab=lab))
     cli._render_chart([([0.0, 560.0], "x", "cyan")], None, 60, 8)
     assert seen["pos"] == [0, 300, 600]
-    assert seen["lab"] == ["0", "300", "600"]
+    # Labels sit in a fixed-width field so the plot never shifts when the top changes.
+    assert [lab.strip() for lab in seen["lab"]] == ["0", "300", "600"]
+    assert len({len(lab) for lab in seen["lab"]}) == 1
 
 
 def test_a_fixed_axis_keeps_its_own_ticks(monkeypatch, primed_history):
@@ -346,7 +348,7 @@ def test_the_network_subtitle_is_a_legend_with_live_rates(primed_history):
     cli.net_sent_history.append(1.5 * 1024**2)
     sub = cli.net_chart_subtitle()
     assert "▇ rx" in sub and "━ tx" in sub          # filled glyph for the area, bar for the line
-    assert "3.0MB/s" in sub and "1.5MB/s" in sub
+    assert "3.0M/s" in sub and "1.5M/s" in sub          # fixed-width rate fields
     assert "MB/s" in sub
 
 

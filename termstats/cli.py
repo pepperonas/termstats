@@ -206,7 +206,52 @@ def bar(pct, width, secondary=0.0):
 MIN_BAR_W = T.MIN_BAR_W
 
 
-def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0):
+class Smoother:
+    """Exponential smoothing for bar POSITIONS in live mode - and nothing else.
+
+    A meter that jumps 30 -> 80 -> 35 between frames is noise the eye has to track; the
+    same values eased over three frames read as movement. Only the drawn fill is eased:
+    the printed number is always the raw sample, and snapshot mode (SMOOTHING off) shows
+    raw fills too, so a report never carries an interpolated value. Keys that were not
+    touched in a frame are dropped, so a process list cannot grow the table forever.
+    """
+
+    def __init__(self, alpha=T.SMOOTH_ALPHA):
+        self.alpha = alpha
+        self._state = {}
+        self._touched = set()
+
+    def value(self, key, raw):
+        self._touched.add(key)
+        prev = self._state.get(key)
+        cur = raw if prev is None else prev + self.alpha * (raw - prev)
+        self._state[key] = cur
+        return cur
+
+    def end_frame(self):
+        for key in list(self._state):
+            if key not in self._touched:
+                del self._state[key]
+        self._touched.clear()
+
+    def reset(self):
+        self._state.clear()
+        self._touched.clear()
+
+
+SMOOTHING = False           # run_live() switches it on; run_once() never does
+_smoother = Smoother()
+
+
+def shown(key, raw):
+    """The fill to draw for `raw`: eased in live mode, raw everywhere else."""
+    if not SMOOTHING:
+        return raw
+    return _smoother.value(key, raw)
+
+
+def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0,
+          note_w=None, fill=None):
     """`label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line, budgeted so it never wraps.
 
     The old two-line form (bar, then "6.1G / 16.0G" underneath) doubled the height of
@@ -221,18 +266,21 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondar
     # reader expects to see; the bar underneath shows how that splits.
     occupied = min(100.0, pct + max(0.0, secondary))
     if value is None:
-        value = f"{occupied:.1f}%"
-    if note and total - label_w - value_w - (len(note) + 2) < MIN_BAR_W:
-        note = ""
-    note_w = len(note) + 2 if note else 0
-    bar_w = max(total - label_w - value_w - note_w, 3)
+        value = T.fmt_pct(occupied)
+    # note_w fixes the annotation FIELD so the bar keeps its length whatever the note
+    # says this frame - "9.8G" and "10.2G" must not move the bar by a cell.
+    field_w = note_w if note_w is not None else (len(note) if note else 0)
+    if field_w and total - label_w - value_w - (field_w + 2) < MIN_BAR_W:
+        note, field_w = "", 0
+    bar_w = max(total - label_w - value_w - (field_w + 2 if field_w else 0), 3)
+    fill_pct = pct if fill is None else fill
 
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"{label[:label_w - 1]:>{label_w - 1}} ", style=DIM)
-    text.append_text(bar(pct, bar_w, secondary))
+    text.append_text(bar(fill_pct, bar_w, secondary))
     text.append(f"{value:>{value_w}}", style=f"bold {ramp(occupied / 100)}")
-    if note:
-        text.append(f"  {note}", style=MUTED)
+    if field_w:
+        text.append(f"  {note:>{field_w}}", style=MUTED)
     return text
 
 
@@ -247,10 +295,17 @@ def sparkline(values, width):
         return text
     values = list(values)
     step = max(1, math.ceil(len(values) / width))
+    cells = []
     for i in range(0, len(values), step):
         peak = max(values[i:i + step])
         t = max(0.0, min(1.0, peak / 100.0))
-        text.append(SPARK[min(int(t * len(SPARK)), len(SPARK) - 1)], style=ramp(t))
+        cells.append((SPARK[min(int(t * len(SPARK)), len(SPARK) - 1)], ramp(t)))
+    # Always `width` cells: while the history is still filling, the missing cells are
+    # drawn as the lowest glyph in the track tone, so the header's tail never moves.
+    for _ in range(width - len(cells)):
+        text.append(SPARK[0], style=TRACK)
+    for glyph, style in cells:
+        text.append(glyph, style=style)
     return text
 
 
@@ -318,7 +373,7 @@ def get_cpu_section(width, max_rows=99):
     if cols == 0:
         rows = [Text("      cores ", style=DIM).append_text(heat_strip(percents, width - 14))]
     elif cols == 1:
-        rows = [meter(f"cpu{i}", p, width) for i, p in enumerate(percents)]
+        rows = [meter(f"cpu{i}", p, width, fill=shown(f"cpu{i}", p)) for i, p in enumerate(percents)]
     else:
         grid = Table.grid(expand=True, padding=(0, 2))
         col_w = (width - 2 * (cols - 1)) // cols
@@ -329,13 +384,14 @@ def get_cpu_section(width, max_rows=99):
             cells = []
             for c in range(cols):
                 i = c * per_col + r
-                cells.append(meter(f"cpu{i}", percents[i], col_w) if i < len(percents) else Text(""))
+                cells.append(meter(f"cpu{i}", percents[i], col_w, fill=shown(f"cpu{i}", percents[i]))
+                             if i < len(percents) else Text(""))
             grid.add_row(*cells)
         rows = [grid]
 
-    rows.append(meter("TOTAL", total, width))
+    rows.append(meter("TOTAL", total, width, fill=shown("cpu.total", total)))
     if IS_LINUX:
-        rows.append(meter("steal", steal_pct, width))
+        rows.append(meter("steal", steal_pct, width, fill=shown("cpu.steal", steal_pct)))
     return Group(*rows), total, steal_pct
 
 
@@ -346,8 +402,7 @@ def cpu_section_rows(ncores, max_rows=99):
     return core_rows + 1 + (1 if IS_LINUX else 0)
 
 
-def _fmt_gb(n):
-    return f"{n / 1024**3:.1f}G"
+_fmt_gb = T.fmt_gb
 
 
 def get_memory_section(width):
@@ -360,15 +415,23 @@ def get_memory_section(width):
     cache = max(0, mem.total - mem.used - mem.available)
     used_pct = 100.0 * mem.used / mem.total if mem.total else 0.0
     cache_pct = max(0.0, mem.percent - used_pct)
-    note = f"{_fmt_gb(mem.used)}/{_fmt_gb(mem.total)}"
-    if cache and width >= 44:
-        note += f" +{_fmt_gb(cache)} cache"
-    rows = [meter("ram", used_pct, width, value=f"{mem.percent:.1f}%", note=note,
-                  secondary=cache_pct)]
+    # The note field is fixed per panel width, not per value: with the cache suffix on a
+    # panel wide enough to hold it NEXT TO a usable bar, without it otherwise - never
+    # appearing and disappearing. (A threshold of 44 once chose the long variant on a
+    # panel that could not fit it, and meter() then dropped the note altogether.)
+    wide = width >= T.LABEL_W + T.VALUE_W + T.NOTE_MEM_W + 2 + T.MIN_BAR_W
+    note = T.fmt_gb_pair(mem.used, mem.total)
+    if wide and cache:
+        note += f" +{min(cache / 1024 ** 3, 99.9):4.1f}G cache"
+    rows = [meter("ram", used_pct, width, value=T.fmt_pct(mem.percent), note=note,
+                  note_w=T.NOTE_MEM_W if wide else T.NOTE_GB_PAIR_W,
+                  secondary=cache_pct, fill=shown("mem.ram", used_pct))]
     swap = psutil.swap_memory()
     if swap.total > 0:
         rows.append(meter("swap", swap.percent, width,
-                          note=f"{swap.used / 1024**3:.1f}G/{swap.total / 1024**3:.1f}G"))
+                          note=T.fmt_gb_pair(swap.used, swap.total),
+                          note_w=T.NOTE_MEM_W if wide else T.NOTE_GB_PAIR_W,
+                          fill=shown("mem.swap", swap.percent)))
     return Group(*rows)
 
 
@@ -436,7 +499,8 @@ def get_disk_section(width):
     rows = []
     for label, usage in disk_entries():
         rows.append(meter(short_mount(label), usage.percent, width, label_w=DISK_LABEL_W + 1,
-                          note=f"{usage.used / 1024**3:.1f}G/{usage.total / 1024**3:.1f}G"))
+                          note=T.fmt_gb_pair(usage.used, usage.total), note_w=T.NOTE_GB_PAIR_W,
+                          fill=shown(f"disk.{label}", usage.percent)))
     io_line = _disk_io_line()
     if io_line is not None:
         rows.append(io_line)
@@ -445,30 +509,42 @@ def get_disk_section(width):
     return Group(*rows)
 
 
+def _disk_io_available():
+    try:
+        return psutil.disk_io_counters() is not None
+    except Exception:
+        return False
+
+
 def _disk_io_line():
+    """Read/write throughput. Present from the FIRST frame, with placeholders until the
+    second sample exists - a line that appears one frame later reflows the whole panel."""
     try:
         io = psutil.disk_io_counters()
     except Exception:
         return None
     if not io:
         return None
-    line = None
+    read_s = write_s = None
     if hasattr(get_disk_section, "_last_io"):
         dt = time.time() - get_disk_section._last_time
         if dt > 0:
             read_s = (io.read_bytes - get_disk_section._last_io.read_bytes) / dt
             write_s = (io.write_bytes - get_disk_section._last_io.write_bytes) / dt
-            line = Text(no_wrap=True, overflow="crop")
-            line.append(f"{'io':>{DISK_LABEL_W}} ", style=DIM)
-            line.append(f"read {_fmt_bytes_rate(read_s):>10}", style=MUTED)
-            line.append(f"    write {_fmt_bytes_rate(write_s):>10}", style=MUTED)
     get_disk_section._last_io = io
     get_disk_section._last_time = time.time()
+    placeholder = f"{'n/a':>{T.RATE_W - 1}}"
+    line = Text(no_wrap=True, overflow="crop")
+    line.append(f"{'io':>{DISK_LABEL_W}} ", style=DIM)
+    line.append("read ", style=MUTED)
+    line.append(T.fmt_rate(read_s) if read_s is not None else placeholder, style=SOFT)
+    line.append("   write ", style=MUTED)
+    line.append(T.fmt_rate(write_s) if write_s is not None else placeholder, style=SOFT)
     return line
 
 
 def disk_section_rows():
-    return max(len(disk_entries()), 1) + (1 if hasattr(get_disk_section, "_last_io") else 0)
+    return max(len(disk_entries()), 1) + (1 if _disk_io_available() else 0)
 
 
 def _fmt_bytes_rate(b):
@@ -496,16 +572,19 @@ def get_network_section(width):
         conns = -1
 
     peak = max(list(net_sent_history) + list(net_recv_history) + [sent_s, recv_s, 1.0])
+    tx_pct, rx_pct = 100 * sent_s / peak, 100 * recv_s / peak
     rows = [
-        meter("tx", 100 * sent_s / peak, width, value=_fmt_bytes_rate(sent_s).replace(" ", ""),
-              note=f"{GLYPHS.sigma} {net.bytes_sent / 1024**3:.2f}G"),
-        meter("rx", 100 * recv_s / peak, width, value=_fmt_bytes_rate(recv_s).replace(" ", ""),
-              note=f"{GLYPHS.sigma} {net.bytes_recv / 1024**3:.2f}G"),
+        meter("tx", tx_pct, width, value=T.fmt_rate(sent_s), value_w=T.RATE_W,
+              note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_sent)}", note_w=T.NOTE_TOTAL_W,
+              fill=shown("net.tx", tx_pct)),
+        meter("rx", rx_pct, width, value=T.fmt_rate(recv_s), value_w=T.RATE_W,
+              note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_recv)}", note_w=T.NOTE_TOTAL_W,
+              fill=shown("net.rx", rx_pct)),
     ]
     if conns >= 0:
         line = Text(no_wrap=True, overflow="crop")
-        line.append("    conns ", style=DIM)
-        line.append(str(conns), style=TEXT)
+        line.append(f"{'conns':>{T.LABEL_W - 1}} ", style=DIM)
+        line.append(T.fmt_count(conns), style=TEXT)
         rows.append(line)
     return Group(*rows), sent_s, recv_s
 
@@ -518,11 +597,7 @@ def network_section_rows():
         return 2
 
 
-def _fmt_mem(b):
-    """RSS as 482M or 1.2G - a 1234M column is harder to scan than a 1.2G one."""
-    if b >= 1024**3:
-        return f"{b / 1024**3:.1f}G"
-    return f"{b / 1024**2:.0f}M"
+_fmt_mem = T.fmt_mem
 
 
 def get_top_processes(width, n=8):
@@ -535,7 +610,9 @@ def get_top_processes(width, n=8):
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
-    procs.sort(key=lambda x: x['cpu_percent'] or 0, reverse=True)
+    # Descending CPU with the PID as tiebreaker: without it, processes at equal CPU swap
+    # rows from frame to frame and the list dances.
+    procs.sort(key=lambda x: (-(x['cpu_percent'] or 0), x['pid']))
 
     # The inline bar earns the empty space the name column used to leave behind, and puts
     # the shape of the load next to the number - btop's trick.
@@ -557,10 +634,10 @@ def get_top_processes(width, n=8):
         # The ellipsis comes from the column, not from here - see the no_wrap column above.
         cells = [str(proc['pid']), Text(proc['name'] or "?")]
         if bar_w:
-            cells.append(bar(cpu_pct, bar_w - 1))
+            cells.append(bar(shown(f"proc.{proc['pid']}", cpu_pct), bar_w - 1))
         cells += [
-            Text(f"{cpu_pct:.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
-            Text(f"{mem_pct:.1f}", style=ramp(mem_pct / 25)),
+            Text(f"{min(cpu_pct, 9999.9):5.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
+            Text(f"{min(mem_pct, 100.0):5.1f}", style=ramp(mem_pct / 25)),
             Text(_fmt_mem(rss), style=SOFT),
         ]
         table.add_row(*cells)
@@ -651,9 +728,11 @@ def nice_ceiling(x):
     return 10 * base
 
 
-def _render_chart(series, ylim, width, height):
+def _render_chart(series, ylim, width, height, axis_w=None):
     """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
 
+    axis_w fixes the y-label field per CHART, not per value: a rate chart whose top
+    happens to be 100 must not narrow its axis and shift the plot two columns left.
     series: list of (values, label, color[, fill]); color may be a name or an RGB tuple.
     A filled series is drawn as an area under the line - the mass reads far better than a
     thin braille trace, but two overlapping fills turn to mud where they cross, so callers
@@ -677,7 +756,12 @@ def _render_chart(series, ylim, width, height):
             ylim = (0, top)
         lo, hi = ylim
         plt.ylim(lo, hi)
-        plt.yticks([lo, (lo + hi) / 2, hi], [f"{lo:g}", f"{(lo + hi) / 2:g}", f"{hi:g}"])
+        # Labels in a fixed field: plotext sizes the axis column to the widest label, so a
+        # "600" that becomes "1000" would shift the whole plot one column to the right.
+        if axis_w is None:
+            axis_w = T.AXIS_W_PCT if hi <= 100 and lo >= 0 and hi - lo <= 100 else T.AXIS_W_RATE
+        plt.yticks([lo, (lo + hi) / 2, hi],
+                   [T.fmt_axis(v, axis_w, top=hi) for v in (lo, (lo + hi) / 2, hi)])
         plt.theme("clear")
         plt.plotsize(width, height)
         positions, labels = _time_ticks(len(series[0][0]))
@@ -705,15 +789,30 @@ def get_cpu_chart(width, height):
     series = [(list(cpu_history), "CPU %", cpu_chart_colour(), True)]
     if IS_LINUX and any(s > 0 for s in steal_history):
         series.append((list(steal_history), "Steal %", ramp_rgb(1.0), False))
-    return _render_chart(series, (0, 100), width, height)
+    return _render_chart(series, (0, 100), width, height, axis_w=T.AXIS_W_PCT)
+
+
+NET_UNITS = ((1024, "KB/s"), (1024 ** 2, "MB/s"), (1024 ** 3, "GB/s"))
+_net_unit = "KB/s"
 
 
 def net_scale():
-    """(divisor, unit) so the network chart reads in KB/s or MB/s, whichever fits the peak."""
+    """(divisor, unit) so the network chart reads in KB/s, MB/s or GB/s, whichever fits.
+
+    With hysteresis: up a unit once the window's peak reaches 2 of the next, back down
+    only when it falls below 1 of the current. A single threshold made the axis and the
+    legend flip back and forth with every sample near it. The top unit keeps the axis
+    label within its five-cell field whatever the numbers do.
+    """
+    global _net_unit
     peak = max(list(net_sent_history) + list(net_recv_history) + [0.0])
-    if peak >= 2 * 1024**2:
-        return 1024**2, "MB/s"
-    return 1024, "KB/s"
+    idx = [u for _, u in NET_UNITS].index(_net_unit)
+    while idx + 1 < len(NET_UNITS) and peak >= 2 * NET_UNITS[idx + 1][0]:
+        idx += 1
+    while idx > 0 and peak < NET_UNITS[idx][0]:
+        idx -= 1
+    _net_unit = NET_UNITS[idx][1]
+    return NET_UNITS[idx]
 
 
 def get_net_chart(width, height):
@@ -724,7 +823,7 @@ def get_net_chart(width, height):
         ([x / div for x in net_recv_history], "RX", NET_RX_RGB, True),
         ([x / div for x in net_sent_history], "TX", NET_TX_RGB, False),
     ]
-    return _render_chart(series, None, width, height)
+    return _render_chart(series, None, width, height, axis_w=T.AXIS_W_RATE)
 
 
 # ---------------------------------------------------------------------------------
@@ -747,7 +846,7 @@ def _sep():
 def cpu_chart_subtitle():
     """`last 30s · 42%` - the window, then the value the newest sample carries."""
     now = cpu_history[-1] if cpu_history else 0.0
-    return f"{_window_label()} {_sep()} [{ramp(now / 100)}]{now:.0f}%[/]"
+    return f"{_window_label()} {_sep()} [{ramp(now / 100)}]{min(now, 999):3.0f}%[/]"
 
 
 def net_chart_subtitle():
@@ -757,54 +856,64 @@ def net_chart_subtitle():
     shows what the reader will see rather than naming colours.
     """
     _div, unit = net_scale()
-    rx = _fmt_bytes_rate(net_recv_history[-1] if net_recv_history else 0.0).replace(" ", "")
-    tx = _fmt_bytes_rate(net_sent_history[-1] if net_sent_history else 0.0).replace(" ", "")
+    rx = T.fmt_rate(net_recv_history[-1] if net_recv_history else 0.0)
+    tx = T.fmt_rate(net_sent_history[-1] if net_sent_history else 0.0)
     rx_glyph, tx_glyph = GLYPHS.legend_fill, GLYPHS.legend_line
     rx_hex = "#%02x%02x%02x" % NET_RX_RGB
     tx_hex = "#%02x%02x%02x" % NET_TX_RGB
-    return f"[{rx_hex}]{rx_glyph} rx[/] {rx}  [{tx_hex}]{tx_glyph} tx[/] {tx} {_sep()} {unit}"
+    return f"[{rx_hex}]{rx_glyph} rx[/] {rx}  [{tx_hex}]{tx_glyph} tx[/] {tx} {_sep()} {unit:>4}"
 
 
 def header_line(width):
     load1, load5, load15 = psutil.getloadavg()
     ncpu = psutil.cpu_count() or 1
     uptime_s = time.time() - psutil.boot_time()
-    days, rest = int(uptime_s // 86400), uptime_s % 86400
-    up = f"{days}d {int(rest // 3600)}h" if days else f"{int(rest // 3600)}h {int((rest % 3600) // 60)}m"
     os_name = {"Linux": "Linux", "Darwin": "macOS", "Windows": "Windows"}.get(
         platform.system(), platform.system())
 
+    # Every field has a fixed width. The load can gain a digit, the uptime a day, the
+    # process count a thousand - none of it may move the fields to its right.
     text = Text(no_wrap=True, overflow="crop")
     text.append(" TERMSTATS ", style=f"bold {THEME.wordmark_fg} on {THEME.wordmark_bg}")
-    text.append(f"  {platform.node()[:24]}", style=f"bold {THEME.wordmark_fg}")
-    text.append(f" {os_name}", style=MUTED)
-    text.append("   load ", style=MUTED)
-    text.append(f"{load1:.2f}", style=f"bold {ramp(load1 / (ncpu * 2))}")
-    text.append(f" {load5:.2f} {load15:.2f}", style=DIM)
-    text.append(f"   {ncpu} cpu", style=MUTED)
-    text.append("   up ", style=MUTED)
-    text.append(up, style=TEXT)
-    text.append("   proc ", style=MUTED)
-    text.append(str(len(psutil.pids())), style=TEXT)
+    text.append(f"  {platform.node()[:12]:12s}", style=f"bold {THEME.wordmark_fg}")
+    text.append(f" {os_name:7s}", style=MUTED)
+    text.append(" load ", style=MUTED)
+    text.append(T.fmt_load(load1), style=f"bold {ramp(load1 / (ncpu * 2))}")
+    text.append(f" {T.fmt_load(load5)} {T.fmt_load(load15)}", style=DIM)
+    text.append(f"  {min(ncpu, 999):3d} cpu", style=MUTED)
+    text.append(" up ", style=MUTED)
+    text.append(T.fmt_uptime(uptime_s), style=TEXT)
+    text.append(" proc ", style=MUTED)
+    text.append(T.fmt_count(len(psutil.pids())), style=TEXT)
 
-    tail = Text(no_wrap=True)
-    # A 16-cell CPU sparkline, tmux-status-bar style: the whole recent history in one
-    # glance without looking down at the chart. Peaks per cell, tinted by the ramp.
-    spark = sparkline(cpu_history, 16)
-    if spark.cell_len:
-        tail.append_text(spark)
-        tail.append("  ")
+    # The tail degrades in fixed steps decided by the WIDTH alone - full, without the
+    # sparkline, none - so what the reader sees at a given width never changes between
+    # frames. (Dropping it whenever the numbers happened to be long made the clock blink.)
+    clock = Text(no_wrap=True)
     # The wall clock is the liveness signal: a frozen dashboard and a quiet machine look
     # identical without it. It sits in the tail because the head is the identity.
-    tail.append(time.strftime("%H:%M:%S") + "  ", style=TEXT)
-    tail.append(f"{sample_interval:g}s  ", style=MUTED)
-    tail.append(f"v{__version__} ", style=FAINT)
-    # Only right-align the tail when there is actually room; otherwise it collides with the
-    # process count and the two run together into one unreadable number.
-    pad = width - text.cell_len - tail.cell_len
-    if pad >= 2:
-        text.append(" " * pad)
-        text.append_text(tail)
+    clock.append(time.strftime("%H:%M:%S") + "  ", style=TEXT)
+    clock.append(f"{sample_interval:>4g}s  ", style=MUTED)
+    clock.append(f"v{__version__} ", style=FAINT)
+
+    full = Text(no_wrap=True)
+    # A SPARK_W-cell CPU sparkline, tmux-status-bar style: the whole recent history in one
+    # glance without looking down at the chart. Peaks per cell, tinted by the ramp - and
+    # always the same width, so the clock never drifts while the history fills.
+    spark = sparkline(cpu_history, T.SPARK_W)
+    if not spark.cell_len:
+        for _ in range(T.SPARK_W):
+            spark.append(SPARK[0] if SPARK else " ", style=TRACK)
+    full.append_text(spark)
+    full.append("  ")
+    full.append_text(clock)
+
+    for tail in (full, clock):
+        pad = width - text.cell_len - tail.cell_len
+        if pad >= 2:
+            text.append(" " * pad)
+            text.append_text(tail)
+            break
     return text
 
 
@@ -872,6 +981,7 @@ def render_dashboard(width=None, height=None):
     steal_history.append(steal_pct)
     net_sent_history.append(sent_s)
     net_recv_history.append(recv_s)
+    _smoother.end_frame()
 
     # --- height budget ---------------------------------------------------------------
     remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
@@ -985,17 +1095,21 @@ def run_once():
 
     Always samples for SNAPSHOT_SAMPLE_S regardless of --interval: rates need a gap
     between two reads, and --interval is the *live refresh rate*, not a sampling window.
+    Never smoothed: a report carries raw samples only.
     """
-    global sample_interval
+    global sample_interval, SMOOTHING
     sample_interval = SNAPSHOT_SAMPLE_S
+    SMOOTHING = False
     _prime_measurements()
     time.sleep(SNAPSHOT_SAMPLE_S)
     console.print(render_dashboard())
 
 
 def run_live(interval=DEFAULT_INTERVAL):
-    global sample_interval
+    global sample_interval, SMOOTHING
     sample_interval = interval
+    SMOOTHING = True
+    _smoother.reset()
     _prime_measurements()
     time.sleep(min(interval, 0.5))
     refresh = max(1, min(10, round(1 / interval)))

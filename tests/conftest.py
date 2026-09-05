@@ -23,6 +23,11 @@ def clean_module_state():
     # Capability detection is global; a test that drops to ASCII must not leak that.
     cli.set_glyph_level("braille")
     cli.set_theme("default")
+    # Display smoothing and the network unit are per-run state; a test that ran live
+    # mode or pushed the unit to MB/s must not leak that into the next one.
+    cli.SMOOTHING = False
+    cli._smoother.reset()
+    cli._net_unit = "KB/s"
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),
         (cli.get_network_section, ("_last", "_last_time")),
@@ -61,8 +66,9 @@ def captured_series(monkeypatch):
     """Intercept _render_chart so a test can inspect what the chart was asked to draw."""
     calls = []
 
-    def fake(series, ylim, width, height):
-        calls.append({"series": series, "ylim": ylim, "width": width, "height": height})
+    def fake(series, ylim, width, height, axis_w=None):
+        calls.append({"series": series, "ylim": ylim, "width": width, "height": height,
+                      "axis_w": axis_w})
         return "<chart>"
 
     monkeypatch.setattr(cli, "_render_chart", fake)

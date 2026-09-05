@@ -152,9 +152,9 @@ VALUE_W = 7                # "  62.5%" - percentage field
 RATE_W = 9                 # " 45.2K/s" - fixed-width transfer rate
 DISK_LABEL_W = 12          # mountpoints get more room than "cpu0"
 MIN_BAR_W = 6              # below this the annotation is dropped, never sliced
-NOTE_GB_PAIR_W = 12        # " 6.2G/ 16.0G"
-NOTE_MEM_W = 24            # " 6.2G/ 16.0G +5.7G cache"
-NOTE_TOTAL_W = 10          # "Σ  1.92G"
+NOTE_GB_PAIR_W = 13        # "  6.2G/ 16.0G" - two six-cell fields and a slash
+NOTE_MEM_W = 26            # "  6.2G/ 16.0G + 5.7G cache"
+NOTE_TOTAL_W = 10          # "tot   1.9G" - the ASCII sigma is three letters wide
 SPARK_W = 16               # header sparkline cells
 PEAK_WINDOW = 30           # samples the peak marker remembers
 SMOOTH_ALPHA = 0.5         # EMA weight of the newest sample for bar positions (live only)
@@ -184,15 +184,15 @@ def fmt_pct(x: float) -> str:
 
 
 def fmt_gb(n: float) -> str:
-    """' 6.2G' .. '999.9G' - five cells, then 'T' above a terabyte."""
-    gb = n / 1024 ** 3
+    """'  6.2G' .. '999.9G' - six cells, then 'T' above a terabyte, still six."""
+    gb = 0.0 if n != n else max(0.0, n / 1024 ** 3)
     if gb >= 1000:
-        return f"{gb / 1024:4.1f}T"
+        return f"{min(gb / 1024, 999.9):5.1f}T"
     return f"{gb:5.1f}G"
 
 
 def fmt_gb_pair(used: float, total: float) -> str:
-    """' 6.2G/ 16.0G' - NOTE_GB_PAIR_W cells."""
+    """'  6.2G/ 16.0G' - NOTE_GB_PAIR_W cells."""
     return f"{fmt_gb(used)}/{fmt_gb(total)}"
 
 
@@ -228,9 +228,15 @@ def fmt_count(n: int, width: int = 5) -> str:
     return f"{min(n, 10 ** width - 1):{width}d}"
 
 
-def fmt_axis(v: float, width: int) -> str:
-    """Axis tick label right-aligned in a fixed field, so the plot never shifts."""
-    return f"{v:{width}.0f}"
+def fmt_axis(v: float, width: int, top: Optional[float] = None) -> str:
+    """Axis tick label right-aligned in a fixed field, so the plot never shifts.
+
+    Small axes (top below 10) keep one decimal - a 1.5 GB/s tick printed as "2" would
+    be wrong, and "  1.5" is exactly as wide as "    2".
+    """
+    if (top if top is not None else v) < 10:
+        return f"{v:{width}.1f}"
+    return f"{min(v, 10 ** width - 1):{width}.0f}"
 
 
 # ---------------------------------------------------------------------------------
