@@ -9,7 +9,9 @@ Top Processes, and live history graphs - all in your terminal.
 import math
 import os
 import platform
+import signal
 import sys
+import threading
 import time
 import shutil
 import psutil
@@ -1299,6 +1301,50 @@ def _schedule_tick(next_tick, now, interval):
     return next_tick, next_tick - now
 
 
+# --- lifecycle ---------------------------------------------------------------------------
+# A resize must not wait for the next tick: the old frame was laid out for the old size and
+# reads as garbage until replaced. SIGWINCH sets a flag; the tick sleep runs in slices and
+# returns early when it is set. Windows has no SIGWINCH - there the flag is simply never set.
+_resized = threading.Event()
+RESIZE_SLICE_S = 0.1
+
+
+def _on_resize(signum=None, frame=None):
+    _resized.set()
+
+
+def _install_resize_handler():
+    """Route SIGWINCH to _on_resize. Returns the previous handler so it can be put back,
+    or None where the signal does not exist or cannot be installed (not the main thread)."""
+    if not hasattr(signal, "SIGWINCH"):
+        return None
+    try:
+        return signal.signal(signal.SIGWINCH, _on_resize)
+    except (ValueError, OSError):
+        return None
+
+
+def _restore_resize_handler(previous):
+    if previous is None or not hasattr(signal, "SIGWINCH"):
+        return
+    try:
+        signal.signal(signal.SIGWINCH, previous)
+    except (ValueError, OSError):
+        pass
+
+
+def _sleep_until(deadline):
+    """Sleep in RESIZE_SLICE_S slices until `deadline`. True when a resize cut it short."""
+    while True:
+        if _resized.is_set():
+            _resized.clear()
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(remaining, RESIZE_SLICE_S))
+
+
 def run_once():
     """One snapshot, then exit.
 
@@ -1322,18 +1368,33 @@ def run_live(interval=DEFAULT_INTERVAL):
     LIVE = True
     _smoother.reset()
     _peaks.reset()
-    _prime_measurements()
-    time.sleep(min(interval, 0.5))
     refresh = max(1, min(10, round(1 / interval)))
+    previous = _install_resize_handler()
+    _resized.clear()
+    # The cursor goes away before the priming pause, not with the alternate screen: half a
+    # second of blinking cursor on an otherwise empty line read as "nothing is happening".
+    # Ctrl+C anywhere in here - priming included, which used to sit outside the try and
+    # print a traceback - ends the session quietly; the finally puts the terminal back
+    # whatever happened, even if a render raised. (Live restores the alternate screen and
+    # the cursor itself on the way out of its `with`; the finally covers what is outside.)
+    console.show_cursor(False)
     try:
+        _prime_measurements()
+        time.sleep(min(interval, 0.5))
         with Live(render_dashboard(), console=console, refresh_per_second=refresh, screen=True) as live:
             next_tick = time.monotonic()
             while True:
-                next_tick, delay = _schedule_tick(next_tick, time.monotonic(), interval)
-                time.sleep(delay)
+                next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
+                if _sleep_until(next_tick):
+                    # Resized: relayout now and resync the cadence from here, rather than
+                    # rendering an extra frame and keeping the old tick.
+                    next_tick = time.monotonic()
                 live.update(render_dashboard(), refresh=True)
     except KeyboardInterrupt:
         pass
+    finally:
+        console.show_cursor(True)
+        _restore_resize_handler(previous)
 
 
 # ---------------------------------------------------------------------------------
@@ -1530,9 +1591,14 @@ def main():
         mode = "live" if _stdout_is_interactive() else "once"
 
     if mode == "live":
-        run_live(interval)
+        run_live(interval)          # Ctrl+C ends it quietly with exit 0 - see run_live
     else:
-        run_once()
+        try:
+            run_once()
+        except KeyboardInterrupt:
+            # An interrupted snapshot is no snapshot: quiet, but not a success either -
+            # 130 is what a shell reports for a SIGINT-terminated command.
+            sys.exit(130)
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ def clean_module_state():
     # mode or pushed the unit to MB/s must not leak that into the next one.
     cli.SMOOTHING = False
     cli.LIVE = False
+    cli._resized.clear()
     cli.set_frame(compact=False, no_border=False)
     cli._smoother.reset()
     cli._peaks.reset()

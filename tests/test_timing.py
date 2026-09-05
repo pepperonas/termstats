@@ -129,9 +129,21 @@ RENDER_COST = 0.03
 
 
 class Sleeps(list):
-    """The recorded sleeps, with the fake clock and the render timestamps alongside."""
+    """The recorded sleeps, with the fake clock and the render timestamps alongside.
+
+    Since S8 the tick wait runs in RESIZE_SLICE_S slices, so one frame is several sleeps;
+    `frames[i]` is the number of renders that had happened when sleeps[i] was taken, and
+    per_frame() adds the slices back up into one wait per frame.
+    """
     clock = None
     renders = None
+    frames = None
+
+    def per_frame(self):
+        totals = {}
+        for frame, seconds in zip(self.frames, self):
+            totals[frame] = totals.get(frame, 0.0) + seconds
+        return [totals[k] for k in sorted(totals)]
 
 
 @pytest.fixture
@@ -148,9 +160,13 @@ def live_harness(monkeypatch):
     sleeps = Sleeps()
     sleeps.clock = clock
     sleeps.renders = renders
+    sleeps.frames = []
 
     def fake_render():
+        if len(renders) >= 5:                    # opening render + four frames, then out -
+            raise KeyboardInterrupt              # raised HERE so every recorded wait is whole
         renders.append(clock["t"])
+        clock["t"] += RENDER_COST                # the frame costs time, once per render
         return "<dashboard>"
 
     def fake_monotonic():
@@ -158,9 +174,8 @@ def live_harness(monkeypatch):
 
     def fake_sleep(seconds):
         sleeps.append(seconds)
-        clock["t"] += seconds + RENDER_COST      # the frame costs time too
-        if len(sleeps) > 4:
-            raise KeyboardInterrupt
+        sleeps.frames.append(len(renders))
+        clock["t"] += seconds
 
     monkeypatch.setattr(cli, "Live", FakeLive)
     monkeypatch.setattr(cli, "_prime_measurements", lambda: None)
@@ -207,12 +222,19 @@ def test_run_live_subtracts_the_render_cost_from_the_sleep(live_harness):
     *after* the opening render, so at that point nothing has been spent yet.
     """
     cli.run_live(0.5)
-    priming, first_frame, *steady = live_harness
+    priming, first_frame, *steady = live_harness.per_frame()
     assert priming == 0.5
     assert first_frame == pytest.approx(0.5)
     assert steady, "not enough frames to observe the steady state"
     for delay in steady:
         assert delay == pytest.approx(0.5 - RENDER_COST)
+
+
+def test_run_live_waits_in_slices_so_a_resize_is_seen_within_a_tenth_of_a_second(live_harness):
+    """S8: one flat sleep per frame would make a resize wait for the whole interval."""
+    cli.run_live(0.5)
+    priming, *ticks = live_harness
+    assert ticks and max(ticks) <= cli.RESIZE_SLICE_S
 
 
 def test_run_live_draws_frames_exactly_one_interval_apart(live_harness):
@@ -243,3 +265,28 @@ def test_run_once_samples_for_a_full_second_regardless_of_interval(monkeypatch):
     assert slept == [cli.SNAPSHOT_SAMPLE_S]
     assert printed == ["<dashboard>"]
     assert cli.sample_interval == cli.SNAPSHOT_SAMPLE_S
+
+
+def test_a_resize_is_drawn_at_once_and_the_cadence_restarts_from_it(live_harness, monkeypatch):
+    """S8. Two properties on the fake clock: the resize frame appears within one slice of
+    the signal, and the next regular frame comes a full interval AFTER it - the cadence
+    is resynced from the resize, not kept from the old tick (which would put two frames
+    a fraction of an interval apart)."""
+    clock = live_harness.clock
+    fired = {}
+    real_sleep = cli.time.sleep
+
+    def sleep_and_resize(seconds):
+        real_sleep(seconds)
+        if "at" not in fired and clock["t"] >= 1001.25:     # mid-way through a tick
+            fired["at"] = clock["t"]
+            cli._on_resize()
+
+    monkeypatch.setattr(cli.time, "sleep", sleep_and_resize)
+    cli.run_live(0.5)
+    renders = live_harness.renders
+    after = [t for t in renders if t >= fired["at"]]
+    assert after, "no frame after the resize"
+    assert after[0] - fired["at"] <= cli.RESIZE_SLICE_S + 1e-9, "the resize waited for the tick"
+    assert len(after) >= 2
+    assert after[1] - after[0] == pytest.approx(0.5), "the cadence must restart from the resize frame"
