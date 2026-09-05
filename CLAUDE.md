@@ -251,12 +251,19 @@ fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last
 
 ## Screenshots
 
-`termstats.png` (hero, 140×42) and `termstats-themes.png` (six themes, 100×30 each) are
-rendered from `--demo`: rich `Console(record=True)` → `export_svg` (background swapped to the
-theme's `bg`) → an HTML page served by `python3 -m http.server 8901` from the scratchpad →
-Playwright MCP element screenshot (`#hero` / `#grid`, `scale: css`). ⚠️ Regenerate the SVGs
-**after** the version bump — the header carries the version, and a stale one shipped once.
-Remove `.playwright-mcp/` before committing.
+`termstats.png` (hero, 140×42), `termstats-themes.png` (six themes, 100×30 each) and
+`docs/screenshots/{compact,help}.png` (80×24, `--help` at its natural width) all come from
+**`tools/screenshots.py OUT_DIR`** (run with the pipx venv python): `--demo` with the default
+seed → `_prime_measurements()` + `_prefill_history()` (so the first visible frame sits on the
+CPU spike) → rich `export_svg` without window chrome, background = the theme's `bg` →
+`OUT_DIR/index.html` with `#hero / #grid / #compact / #help`. Rasterise that page in a real
+browser: `python3 -m http.server 8901` in OUT_DIR, then Playwright element screenshots
+(`locator('#hero').screenshot({scale:'css'})`); `file://` is blocked in the MCP browser, and
+ImageMagick's SVG renderer is not to be trusted with these. Each frame reloads `cli` so
+histories, smoother and peak markers start empty. ⚠️ Run it AFTER the version bump — the
+header carries the version, and a stale one shipped once. The celox.io project page consumes
+the same four PNGs (`website/scripts/projekt-bilder.sh termstats`). Remove `.playwright-mcp/`
+before committing.
 
 ## Gotchas (older, still true)
 

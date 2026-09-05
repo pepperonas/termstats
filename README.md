@@ -80,6 +80,10 @@
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/termstats-themes.png" alt="the six termstats themes" width="800"/>
 <br/>
 <sub>The six themes: default · mono · nord · gruvbox · catppuccin-mocha · viridis</sub>
+<br/><br/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/compact.png" alt="termstats in an 80 by 24 terminal" width="560"/>
+<br/>
+<sub>The same dashboard in an 80×24 terminal: panels are dropped whole, nothing is squeezed. All three pictures come from <code>tools/screenshots.py</code>.</sub>
 </div>
 
 ---
