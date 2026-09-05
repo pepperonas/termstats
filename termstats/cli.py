@@ -249,6 +249,12 @@ class Smoother:
         self._state[key] = cur
         return cur
 
+    def forget(self, key):
+        """Drop a key's history, so the next sample is shown as it is rather than eased
+        towards from a stale one - what a tempo needs when the music stops."""
+        self._state.pop(key, None)
+        self._touched.discard(key)
+
     def end_frame(self):
         for key in list(self._state):
             if key not in self._touched:
@@ -736,19 +742,20 @@ def _window_label(interval=None):
     return f"last {minutes}m"
 
 
-def _time_ticks(n):
+def _time_ticks(n, span_s=None):
     """x-axis labels in seconds-ago, which is what the axis actually measures.
 
     plotext labels the x axis with sample indices by default (1.0, 15.8, 30.5, ...) - a
-    number nobody reading a live dashboard has any use for.
+    number nobody reading a live dashboard has any use for. The dashboard's charts span
+    HISTORY_LEN samples; a caller with its own window (the audio histories) passes span_s.
     """
-    span = HISTORY_LEN * sample_interval
+    span = HISTORY_LEN * sample_interval if span_s is None else span_s
     positions = [0, n // 2, max(n - 1, 0)]
     labels = [f"-{span:.0f}s", f"-{span / 2:.0f}s", "now"]
     return positions, labels
 
 
-def _ascii_chart(values, ylim, width, height):
+def _ascii_chart(values, ylim, width, height, span_s=None):
     """Chart fallback for terminals that cannot draw plotext's box characters.
 
     plotext frames every plot in box-drawing glyphs, so no marker choice yields pure
@@ -784,7 +791,8 @@ def _ascii_chart(values, ylim, width, height):
             else:
                 line.append(" ")
         rows.append(line)
-    span_s = HISTORY_LEN * sample_interval
+    if span_s is None:
+        span_s = HISTORY_LEN * sample_interval
     footer = Text(" " * axis_w, no_wrap=True, overflow="crop")
     footer.append(f"-{span_s:.0f}s".ljust(max(plot_w - 3, 1))[:max(plot_w - 3, 1)] + "now", style=MUTED)
     rows.append(footer)
@@ -806,7 +814,7 @@ def nice_ceiling(x):
     return 10 * base
 
 
-def _render_chart(series, ylim, width, height, axis_w=None):
+def _render_chart(series, ylim, width, height, axis_w=None, span_s=None):
     """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
 
     axis_w fixes the y-label field per CHART, not per value: a rate chart whose top
@@ -817,36 +825,44 @@ def _render_chart(series, ylim, width, height, axis_w=None):
     fill at most one series and draw the others as lines over it.
     """
     if GLYPHS.chart_marker is None:
-        return _ascii_chart(series[0][0], ylim, width, height)
+        return _ascii_chart(series[0][0], ylim, width, height, span_s)
     if not _PLOTEXT_5:
         return Text(_CHART_NEEDS_PLOTEXT_5, style=MUTED)
     try:
         plt.clear_figure()
+        if ylim is None:
+            top = nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0))
+            ylim = (0, top)
+        lo, hi = ylim
         for entry in series:
             values, _label, color = entry[:3]
             fill = bool(entry[3]) if len(entry) > 3 else False
             # braille packs 2x4 dots into one cell - four times the vertical resolution of
             # the block markers, and the same trick btop uses. "clear" keeps plotext from
             # painting its own black background over the terminal's.
-            plt.plot(values, marker=GLYPHS.chart_marker, color=color, fillx=fill)
-        if ylim is None:
-            top = nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0))
-            ylim = (0, top)
-        lo, hi = ylim
-        plt.ylim(lo, hi)
+            # Values are plotted RELATIVE TO THE FLOOR: plotext's fillx fills towards y = 0,
+            # so a dBFS chart with ylim (-80, 0) filled downward from silence at the top.
+            # Shifting puts the baseline at the bottom of every chart; the labels below stay
+            # in the caller's units, and for a 0-based chart nothing changes.
+            plt.plot([v - lo for v in values], marker=GLYPHS.chart_marker, color=color, fillx=fill)
+        plt.ylim(0, hi - lo)
         # Labels in a fixed field: plotext sizes the axis column to the widest label, so a
         # "600" that becomes "1000" would shift the whole plot one column to the right.
         if axis_w is None:
             axis_w = T.AXIS_W_PCT if hi <= 100 and lo >= 0 and hi - lo <= 100 else T.AXIS_W_RATE
-        plt.yticks([lo, (lo + hi) / 2, hi],
+        plt.yticks([0, (hi - lo) / 2, hi - lo],
                    [T.fmt_axis(v, axis_w, top=hi) for v in (lo, (lo + hi) / 2, hi)])
         plt.theme("clear")
         # ticks_color must come AFTER theme(): the theme resets it. Labels sit in the
         # muted tone so the data, not the scaffolding, is what the eye lands on.
         plt.ticks_color(T.rgb_of(MUTED))
         plt.frame(T.CHART_FRAME)
+        # plotext caps a plot at the terminal size IT detects - 80 columns in a pipe, a test or
+        # a screenshot render - and a 116-column chart came back 80 wide. The caller has
+        # already measured the slot; the cap only ever shrinks a chart that fits.
+        plt.limit_size(False, False)
         plt.plotsize(width, height)
-        positions, labels = _time_ticks(len(series[0][0]))
+        positions, labels = _time_ticks(len(series[0][0]), span_s)
         plt.xticks(positions, labels)
         text = Text.from_ansi(plt.build(), no_wrap=True, overflow="crop")
         for entry in series:
@@ -1036,7 +1052,7 @@ def net_chart_subtitle():
     return f"[{rx_hex}]{rx_glyph} rx[/] {rx}  [{tx_hex}]{tx_glyph} tx[/] {tx} {_sep()} {unit:>4}"
 
 
-def header_line(width):
+def header_line(width, badge=None):
     load1, load5, load15 = psutil.getloadavg()
     ncpu = psutil.cpu_count() or 1
     uptime_s = _now() - psutil.boot_time()
@@ -1055,6 +1071,8 @@ def header_line(width):
         # Scripted numbers must never pass for a real machine: the badge is part of the
         # fixed fields, so it is on every frame at every width.
         text.append(" DEMO ", style=f"bold {THEME.wordmark_fg} on {ramp(1.0)}")
+    if badge:                                       # the microphone modes: EQ / BPM / DB
+        text.append(f" {badge} ", style=f"bold {THEME.wordmark_fg} on {ramp(0.55)}")
     text.append(f"  {host[:12]:12s}", style=f"bold {THEME.wordmark_fg}")
     text.append(f" {os_name:7s}", style=MUTED)
     text.append(" load ", style=MUTED)
@@ -1111,7 +1129,7 @@ def footer_line(width):
     right-aligned - the year from the clock, so it is never stale. Both fixed-width;
     the hint goes first when the line cannot hold both."""
     text = Text(no_wrap=True, overflow="crop")
-    hint = " Ctrl+C to exit" if LIVE else ""
+    hint = " Esc or Ctrl+C to exit" if LIVE else ""
     brand = f"{GLYPHS.copyright} {_current_year()} {FOOTER_BRAND} "
     if len(hint) + len(brand) + 2 > width:
         hint = ""
@@ -1389,11 +1407,126 @@ def _restore_resize_handler(previous):
         pass
 
 
+# ---------------------------------------------------------------------------------
+# Ending a live session with a key
+#
+# Ctrl+C has always worked; Esc is what a full-screen program is expected to answer to.
+# The terminal is put into cbreak mode for the session so a single keypress arrives without
+# Enter, and restored in the same `finally` that restores the cursor. When stdin is not a
+# terminal (`termstats --live | tee log`) the watcher stays inactive and nothing is read.
+# ---------------------------------------------------------------------------------
+
+QUIT_KEYS = (b"\x1b", b"q", b"Q")     # Esc, or q for the habit of it
+_ESC_SEQUENCE_STARTS = (b"[", b"O")   # Esc is also the first byte of every arrow/function key
+
+
+def is_quit_key(data):
+    """True when a burst of input from the terminal asks to leave.
+
+    An arrow key sends `Esc [ A`, so a lone Esc means "quit" and an Esc that introduces a
+    sequence does not - the whole burst arrives in one read, which is what makes them
+    distinguishable at all.
+    """
+    if not data:
+        return False
+    if data.startswith(b"\x1b") and len(data) > 1 and data[1:2] in _ESC_SEQUENCE_STARTS:
+        return False
+    return any(key in data for key in QUIT_KEYS)
+
+
+def _set_cbreak(fd):
+    """Put the terminal into cbreak mode and return what it was, or None where it cannot be."""
+    try:
+        import termios
+        import tty
+    except ImportError:                 # Windows: msvcrt polls without changing modes
+        return None
+    try:
+        saved = termios.tcgetattr(fd)
+        tty.setcbreak(fd)
+        return saved
+    except Exception:
+        return None
+
+
+def _restore_tty(fd, saved):
+    if saved is None:
+        return
+    try:
+        import termios
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+    except Exception:
+        pass
+
+
+def _read_ready(fd):
+    """Whatever is waiting on the terminal right now - never blocks, b"" when nothing is."""
+    try:
+        import msvcrt                    # Windows has no select() on a console handle
+    except ImportError:
+        pass
+    else:
+        out = b""
+        while msvcrt.kbhit():
+            out += msvcrt.getch()
+        return out
+    import select
+    ready, _, _ = select.select([fd], [], [], 0)
+    return os.read(fd, 64) if ready else b""
+
+
+class KeyWatcher:
+    """Non-blocking single-key input for the duration of a live session."""
+
+    def __init__(self):
+        self.active = False
+        self._fd = None
+        self._saved = None
+
+    def start(self):
+        stdin = sys.stdin
+        try:
+            if stdin is None or not stdin.isatty():
+                return
+            self._fd = stdin.fileno()
+        except Exception:               # a stream without a real descriptor (pytest, a pipe)
+            self._fd = None
+            return
+        self._saved = _set_cbreak(self._fd)
+        self.active = True
+
+    def stop(self):
+        if not self.active:
+            return
+        self.active = False
+        _restore_tty(self._fd, self._saved)
+        self._saved = None
+
+    def quit_pressed(self):
+        if not self.active:
+            return False
+        try:
+            return is_quit_key(_read_ready(self._fd))
+        except Exception:               # the terminal went away mid-session
+            return False
+
+
+_keys = KeyWatcher()
+_quit = threading.Event()
+
+
 def _sleep_until(deadline):
-    """Sleep in RESIZE_SLICE_S slices until `deadline`. True when a resize cut it short."""
+    """Sleep in RESIZE_SLICE_S slices until `deadline`.
+
+    True when the wait was cut short - by a resize, or by the quit key, which also sets
+    `_quit` so the caller knows to leave rather than draw one more frame.
+    """
     while True:
         if _resized.is_set():
             _resized.clear()
+            return True
+        if _keys.quit_pressed():
+            _quit.set()
             return True
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -1431,6 +1564,8 @@ def run_live(interval=DEFAULT_INTERVAL):
     refresh = max(1, min(10, round(1 / interval)))
     previous = _install_resize_handler()
     _resized.clear()
+    _quit.clear()
+    _keys.start()
     # The cursor goes away before the priming pause, not with the alternate screen: half a
     # second of blinking cursor on an otherwise empty line read as "nothing is happening".
     # Ctrl+C anywhere in here - priming included, which used to sit outside the try and
@@ -1449,6 +1584,8 @@ def run_live(interval=DEFAULT_INTERVAL):
             while True:
                 next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
                 if _sleep_until(next_tick):
+                    if _quit.is_set():
+                        break
                     # Resized: relayout now and resync the cadence from here, rather than
                     # rendering an extra frame and keeping the old tick.
                     next_tick = time.monotonic()
@@ -1456,8 +1593,428 @@ def run_live(interval=DEFAULT_INTERVAL):
     except KeyboardInterrupt:
         pass
     finally:
+        _keys.stop()
         console.show_cursor(True)
         _restore_resize_handler(previous)
+
+
+# ---------------------------------------------------------------------------------
+# Microphone modes: -eq / -bpm / -db
+#
+# The analysis lives in termstats/audio.py (numpy - the optional audio extra), the device in
+# termstats/capture.py. Everything here only DRAWS an Analyzer's levels, peaks, db, bpm and
+# beats at time `now`, so the screens are testable from a synthetic analyzer and screenshots
+# come from --demo without a microphone.
+# ---------------------------------------------------------------------------------
+
+AUDIO_MODES = ("eq", "bpm", "db")
+AUDIO_INTERVAL = 0.05        # 20 frames a second: a spectrum at the dashboard's 0.5 s is a slideshow
+AUDIO_READOUT_S = 0.2        # the big number's own, slower clock - a digit redrawn 20 times a
+                             # second is a blur, while the bars and the beat flash need every frame
+AUDIO_SNAPSHOT_S = 1.5       # --once: listen this long, then print one frame
+AUDIO_DEMO_PREFILL_S = 8.0   # --demo: scripted music played (not in real time) before the first frame
+AUDIO_HINT = "pip install 'termstats[audio]'"
+BEAT_LIT_S = 0.12            # the beat indicator stays lit this long after an onset
+EQ_BAR_W, EQ_GAP = 2, 1      # each bar is two cells wide with one cell between bars
+EQ_MIN_COLUMNS = 4
+EQ_LABELS = ((40.0, "40"), (100.0, "100"), (1000.0, "1k"), (10000.0, "10k"), (16000.0, "16k"))
+AUDIO_CHART_MIN_H = 6        # a level/tempo history chart needs at least this many rows
+
+
+def _load_audio():
+    """The audio module - or ImportError, because numpy is the audio extra, not a dependency."""
+    from termstats import audio
+    return audio
+
+
+def _mic_source(device):
+    from termstats import capture
+    return capture.MicSource(device)
+
+
+def _list_devices():
+    from termstats import capture
+    return capture.list_devices()
+
+
+def eq_columns(width, bands=28):
+    """How many bars fit in `width` (two cells each plus a gap, inside the panel chrome).
+
+    Never more than the bands there are; below that the bands are folded into the columns
+    so a narrow terminal still shows the whole 40 Hz - 16 kHz range, just coarser."""
+    _, cw = chrome()
+    inner = max(0, width - cw)
+    n = (inner + EQ_GAP) // (EQ_BAR_W + EQ_GAP)
+    return max(EQ_MIN_COLUMNS, min(bands, n))
+
+
+def _group_bands(values, n):
+    """Fold `values` into n groups, each the maximum of its members."""
+    values = list(values)
+    k = len(values)
+    if n >= k:
+        return values
+    out = []
+    for g in range(n):
+        lo, hi = (g * k) // n, max(((g + 1) * k) // n, (g * k) // n + 1)
+        out.append(max(values[lo:hi]))
+    return out
+
+
+def _eighths(level, rows):
+    """A 0..1 level as (full cells, eighths of the next cell) over `rows` cells."""
+    cells = max(0.0, min(1.0, level)) * rows
+    full = int(cells)
+    part = int(round((cells - full) * 8))
+    if part == 8:
+        full, part = full + 1, 0
+    return min(full, rows), part
+
+
+def _db_pct(db):
+    floor = _load_audio().DB_FLOOR
+    return max(0.0, min(100.0, (db - floor) / -floor * 100.0))
+
+
+def _shown_db(db):
+    """The number to print for a dBFS value: the positive scale, see audio.SPL_OFFSET."""
+    return _load_audio().spl(db)
+
+
+def level_history(an):
+    """The level history on the scale the chart is labelled in - the same shift the numbers
+    get. Passing the raw dBFS here would plot every point below the axis floor: an empty
+    chart under a correct-looking axis, which no test that reads text can see."""
+    spl = _load_audio().spl
+    return [(t, spl(v)) for t, v in an.db_history]
+
+
+def big_digits(text):
+    """`text` in the five-row font, as a list of equal-length strings of the bar glyph.
+
+    The shapes live in theme.py; here they are only painted, so cli.py still names no glyph.
+    """
+    glyphs = [T.BIG_FONT.get(ch, T.BIG_FONT["?"]) for ch in str(text)]
+    gap = " " * T.BIG_DIGIT_GAP
+    rows = []
+    for r in range(T.BIG_DIGIT_ROWS):
+        row = gap.join(g[r] for g in glyphs)
+        painted = row.replace("#", GLYPHS.bar_full * T.BIG_DIGIT_SCALE).replace(".", " " * T.BIG_DIGIT_SCALE)
+        rows.append(painted)
+    return rows
+
+
+_readouts = {}               # key -> (value shown, when it was taken)
+
+
+def readout(key, value, now):
+    """The value the big font should show: refreshed on its own clock, held in between.
+
+    In a snapshot there is nothing to hold - one frame, one number, always the current one.
+    """
+    if not SMOOTHING:
+        return value
+    shown_value, taken = _readouts.get(key, (None, None))
+    if shown_value is None or now - taken >= AUDIO_READOUT_S:
+        _readouts[key] = (value, now)
+        return value
+    return shown_value
+
+
+def big_number(text, tone, width):
+    """The big font, centred in `width`, in one colour - five Text rows."""
+    rows = big_digits(text)
+    pad = max(0, (width - len(rows[0])) // 2)
+    return [Text(" " * pad + row, style=f"bold {tone}", no_wrap=True, overflow="crop") for row in rows]
+
+
+def centred(text, width, style=MUTED):
+    pad = max(0, (width - len(text)) // 2)
+    return Text(" " * pad + text, style=style, no_wrap=True, overflow="crop")
+
+
+def shown_level(db):
+    """The dB value to draw BIG: eased in live mode, exact in a snapshot.
+
+    The HUD keeps the raw sample either way, so the instantaneous value is always on screen
+    and a redirected run still carries no interpolated number.
+    """
+    return _smoother.value("audio.db.readout", db) if SMOOTHING else db
+
+
+def shown_tempo(bpm):
+    """The tempo to draw BIG. Eased between two tempos - but a tempo that has just been
+    found appears at once rather than counting up from nothing, and a lost one leaves at once."""
+    if not bpm:
+        _smoother.forget("audio.bpm.readout")
+        return 0
+    return _smoother.value("audio.bpm.readout", bpm) if SMOOTHING else bpm
+
+
+def tempo_tone(an, now):
+    """The colour of the big tempo: it flares on every detected beat, so the number itself
+    keeps the pulse instead of only the little dot in the HUD."""
+    return ramp(1.0) if an.beat_age(now) <= BEAT_LIT_S else ramp(0.75)
+
+
+def audio_hud(an, now, width):
+    """One line every microphone screen shares: beat dot, BPM, level, confidence."""
+    lit = an.beat_age(now) <= BEAT_LIT_S
+    t = Text(no_wrap=True, overflow="crop")
+    t.append(GLYPHS.beat_on if lit else GLYPHS.beat_off, style=ramp(1.0) if lit else DIM)
+    t.append("  BPM ", style=DIM)
+    if an.bpm:
+        t.append(f"{an.bpm:>3d}", style=f"bold {ramp(0.75)}")
+    else:
+        t.append("---", style=MUTED)
+    t.append(f"  {GLYPHS.sep}  ", style=DIM)
+    t.append(f"{_shown_db(an.db):6.1f}", style=f"bold {ramp(_db_pct(an.db) / 100.0)}")
+    t.append(" dB", style=DIM)
+    t.append(f"  {GLYPHS.sep}  conf ", style=DIM)
+    t.append_text(bar(an.confidence * 100.0, 8))
+    if not an.music:
+        t.append("  quiet", style=MUTED)
+    return t
+
+
+def _eq_labels(an, columns, left, width):
+    """The frequency axis under the bars: a few round numbers at the column they fall in."""
+    edges = getattr(getattr(an, "spectrum", None), "edges", None)
+    bands = len(an.levels)
+    row = [" "] * max(width, 1)
+    for freq, label in EQ_LABELS:
+        if not edges:
+            break
+        k = next((i for i in range(bands) if edges[i] <= freq < edges[i + 1]), bands - 1)
+        col = min(columns - 1, (k * columns) // bands)
+        x = left + col * (EQ_BAR_W + EQ_GAP)
+        if x + len(label) > width or any(ch != " " for ch in row[max(0, x - 1):x + len(label) + 1]):
+            continue
+        row[x:x + len(label)] = list(label)
+    return Text("".join(row).rstrip(), style=MUTED, no_wrap=True, overflow="crop")
+
+
+def eq_body(an, now, width, rows):
+    """The analyser: HUD, a spacer, the bars, the frequency axis - exactly `rows` lines."""
+    n = eq_columns(width, len(an.levels))
+    levels, peaks = _group_bands(an.levels, n), _group_bands(an.peaks, n)
+    plot_h = max(1, rows - 3)
+    span = n * EQ_BAR_W + (n - 1) * EQ_GAP
+    left = max(0, (width - span) // 2)
+    fulls = [_eighths(v, plot_h) for v in levels]
+    peak_cells = [int(math.ceil(max(0.0, min(1.0, p)) * plot_h)) for p in peaks]
+    lines = [audio_hud(an, now, width), Text("")]
+    for r in range(plot_h):
+        h = plot_h - r                                       # 1 = the bottom row
+        tone = ramp((h - 0.5) / plot_h)
+        line = Text(" " * left, no_wrap=True, overflow="crop")
+        for c in range(n):
+            full, part = fulls[c]
+            if full >= h:
+                glyph, style = GLYPHS.bar_full, tone
+            elif full == h - 1 and part > 0 and GLYPHS.spark:
+                glyph, style = GLYPHS.spark[part - 1], tone
+            elif full == h - 1 and part >= 4:               # no partials (ASCII): round the top cell
+                glyph, style = GLYPHS.bar_full, tone
+            elif peak_cells[c] == h:                          # only reached above the bar: the branches
+                glyph, style = GLYPHS.vpeak, tone              # before took every cell the bar owns
+            else:
+                glyph, style = " ", ""
+            line.append(glyph * EQ_BAR_W, style=style)
+            if c < n - 1:
+                line.append(" " * EQ_GAP)
+        lines.append(line)
+    lines.append(_eq_labels(an, n, left, width))
+    return Group(*lines[:rows])
+
+
+def _history_series(history, now, window_s, points):
+    """Bucket a (t, value) history over the last `window_s` seconds into `points` means."""
+    recent = [(t, v) for t, v in history if now - t <= window_s]
+    if len(recent) < 2 or points < 2:
+        return None, 0.0
+    t0 = recent[0][0]
+    span = max(recent[-1][0] - t0, 1e-9)
+    buckets = [[] for _ in range(points)]
+    for t, v in recent:
+        buckets[min(points - 1, int((t - t0) / span * points))].append(v)
+    out, last = [], recent[0][1]
+    for b in buckets:
+        if b:
+            last = sum(b) / len(b)
+        out.append(last)
+    return out, span
+
+
+def _audio_chart(title, history, now, ylim, width, height, fill=True):
+    """A history chart with its own title line, or None when there is nothing to draw."""
+    window_s = min(60.0, max(1.0, now - history[0][0])) if history else 0.0
+    values, span = _history_series(history, now, window_s, max(2, width - T.AXIS_W_PCT - 2))
+    if values is None:
+        return None
+    label = Text(f"{title} {GLYPHS.sep} last {int(round(span))}s", style=MUTED, no_wrap=True, overflow="crop")
+    chart = _render_chart([(values, title, ramp_rgb(0.5), fill)], ylim, width, height, axis_w=T.AXIS_W_PCT,
+                          span_s=span)
+    return Group(label, chart)
+
+
+def db_body(an, now, width, rows):
+    """The level meter: the number big and centred, a meter with its peak, extremes, history."""
+    audio = _load_audio()
+    pct = _db_pct(an.db)
+    stats = Text(no_wrap=True, overflow="crop")
+    stats.append("min ", style=DIM); stats.append(f"{_shown_db(an.db_min):.1f}", style=SOFT)
+    stats.append("   max ", style=DIM); stats.append(f"{_shown_db(an.db_max):.1f}", style=SOFT)
+    stats.append(f"   {GLYPHS.sep}   beats ", style=DIM); stats.append(f"{an.beats}", style=SOFT)
+    lines = [audio_hud(an, now, width), Text("")]
+    if rows >= T.BIG_DIGIT_MIN_ROWS:
+        eased = readout("audio.db", shown_level(an.db), now)
+        lines.extend(big_number(f"{_shown_db(eased):.1f}", ramp(_db_pct(eased) / 100.0), width))
+        lines.append(centred(f"dB   {GLYPHS.sep}   smoothed {_shown_db(an.db_smooth):.1f}", width))
+        lines.append(Text(""))
+    else:
+        one = Text(no_wrap=True, overflow="crop")
+        one.append(f"{_shown_db(an.db):.1f}", style=f"bold {ramp(pct / 100.0)}")
+        one.append(" dB", style=DIM)
+        one.append(f"   {GLYPHS.sep}   smoothed {_shown_db(an.db_smooth):.1f}", style=MUTED)
+        lines.append(one)
+    lines.append(meter("level", pct, width, value=f"{_shown_db(an.db):6.1f}dB", value_w=8, unit_w=2,
+                       fill=shown("audio.db", pct), peak=peak_of("audio.db", pct)))
+    lines.append(stats)
+    remaining = rows - len(lines) - 2
+    if remaining >= AUDIO_CHART_MIN_H:
+        chart = _audio_chart("level", level_history(an), now,
+                             (audio.spl(audio.DB_FLOOR), audio.spl(0.0)), width, remaining)
+        if chart is not None:
+            lines.extend([Text(""), chart])
+    return Group(*lines[:rows])
+
+
+def bpm_body(an, now, width, rows):
+    """The tempo screen: the number big and centred, flaring on the beat, then the meters."""
+    audio = _load_audio()
+    detail = f"BPM   {GLYPHS.sep}   {an.tempo.onset_rate():.1f} beats/s   {GLYPHS.sep}   {an.beats} beats"
+    if not an.music:
+        detail += f"   {GLYPHS.sep}   waiting for music"
+    lines = [audio_hud(an, now, width), Text("")]
+    if rows >= T.BIG_DIGIT_MIN_ROWS:
+        eased = readout("audio.bpm", shown_tempo(an.bpm), now)
+        lines.extend(big_number(f"{eased:.0f}" if eased else "---", tempo_tone(an, now), width))
+        lines.append(centred(detail, width))
+        lines.append(Text(""))
+    else:
+        lit = an.beat_age(now) <= BEAT_LIT_S
+        one = Text(no_wrap=True, overflow="crop")
+        one.append(GLYPHS.beat_on if lit else GLYPHS.beat_off, style=f"bold {ramp(1.0)}" if lit else DIM)
+        one.append("  ")
+        one.append(f"{an.bpm}" if an.bpm else "---", style=f"bold {ramp(0.75)}" if an.bpm else MUTED)
+        one.append(" ", style=DIM)
+        one.append(detail, style=MUTED)
+        lines.append(one)
+    lines.append(meter("confidence", an.confidence * 100.0, width, value=f"{an.confidence * 100.0:5.0f}%",
+                       label_w=11, fill=shown("audio.conf", an.confidence * 100.0)))
+    lines.append(meter("kick band", an.bass * 100.0, width, value=f"{an.bass * 100.0:5.0f}%", label_w=11,
+                       fill=shown("audio.bass", an.bass * 100.0), peak=peak_of("audio.bass", an.bass * 100.0)))
+    remaining = rows - len(lines) - 2
+    tempo_hist = [(t, b) for t, b in an.bpm_history if b > 0]
+    if remaining >= AUDIO_CHART_MIN_H and len(tempo_hist) >= 2:
+        chart = _audio_chart("tempo", tempo_hist, now, (audio.BPM_MIN, audio.BPM_MAX), width, remaining, fill=False)
+        if chart is not None:
+            lines.extend([Text(""), chart])
+    return Group(*lines[:rows])
+
+
+_AUDIO_BODIES = {"eq": eq_body, "db": db_body, "bpm": bpm_body}
+_AUDIO_TITLES = {"eq": ("equalizer", "bands from 40 Hz to 16 kHz"),
+                 "db": ("level", "dB, uncalibrated estimate"),
+                 "bpm": ("tempo", "beats per minute")}
+
+
+def render_audio(mode, an, now, width=None, height=None):
+    """A whole microphone frame: header with the mode badge, one panel, footer."""
+    size = console.size
+    tw = size.width if width is None else width
+    th = size.height if height is None else height
+    body_h = max(3, th - 2)
+    ch, cw = chrome()
+    title, subtitle = _AUDIO_TITLES[mode]
+    if mode == "eq":
+        subtitle = f"{len(an.levels)} {subtitle}"
+    body = _AUDIO_BODIES[mode](an, now, max(10, tw - cw), max(1, body_h - ch))
+    root = Layout()
+    root.split_column(Layout(header_line(tw, badge=mode.upper()), name="head", size=1),
+                      Layout(_panel(body, title, subtitle), name="main"),
+                      Layout(footer_line(tw), name="foot", size=1))
+    return root
+
+
+def run_audio(mode, interval, source, once=False):
+    """Drive a microphone screen from `source`: a MicSource (push, its own thread) or a
+    DemoAudio (pull, its own clock). Ctrl+C ends a live session quietly with exit 0."""
+    global LIVE, SMOOTHING
+    audio = _load_audio()
+    pull = hasattr(source, "read")
+    an = audio.Analyzer(getattr(source, "samplerate", audio.SAMPLE_RATE), audio.BLOCK)
+    lock = threading.Lock()
+    clock = source.now if pull else time.monotonic
+
+    def on_block(block):
+        with lock:
+            an.feed(block, time.monotonic())
+
+    def pump(seconds):
+        n = int(seconds * an.samplerate)
+        while n > 0:
+            an.feed(source.read(audio.BLOCK), source.now())
+            n -= audio.BLOCK
+
+    previous = None
+    try:
+        if pull:
+            pump(AUDIO_DEMO_PREFILL_S)
+        else:
+            source.start(on_block)
+        if once:
+            if not pull:
+                time.sleep(AUDIO_SNAPSHOT_S)
+            with lock:
+                console.print(render_audio(mode, an, clock()))
+            return
+        LIVE, SMOOTHING = True, True
+        _smoother.reset()
+        _peaks.reset()
+        _readouts.clear()
+        previous = _install_resize_handler()
+        _resized.clear()
+        _quit.clear()
+        _keys.start()
+        console.show_cursor(False)
+        refresh = max(1, min(30, round(1 / interval)))
+        with lock:
+            first = render_audio(mode, an, clock())
+        with Live(first, console=console, refresh_per_second=refresh, screen=True) as live:
+            next_tick = time.monotonic()
+            while True:
+                next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
+                if _sleep_until(next_tick):
+                    if _quit.is_set():
+                        break
+                    next_tick = time.monotonic()
+                if pull:
+                    pump(interval)
+                with lock:
+                    frame = render_audio(mode, an, clock())
+                live.update(frame, refresh=True)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _keys.stop()
+        console.show_cursor(True)
+        if previous is not None:
+            _restore_resize_handler(previous)
+        if not pull:
+            source.stop()
+        LIVE = False
 
 
 # ---------------------------------------------------------------------------------
@@ -1478,6 +2035,11 @@ _LIST_THEMES_FLAGS = ("--list-themes", "-list-themes")
 _COMPACT_FLAGS = ("--compact", "-compact")
 _NO_BORDER_FLAGS = ("--no-border", "-no-border")
 _DEMO_FLAGS = ("--demo", "-demo")
+_EQ_FLAGS = ("-eq", "--eq", "--equalizer", "-equalizer")
+_BPM_FLAGS = ("-bpm", "--bpm")
+_DB_FLAGS = ("-db", "--db")
+_DEVICE_FLAGS = ("-d", "--device", "-device")
+_LIST_DEVICES_FLAGS = ("--list-devices", "-list-devices")
 
 
 def print_help():
@@ -1498,10 +2060,17 @@ def print_help():
     print("      --compact       No padding inside panels (narrow terminals)")
     print("      --no-border     Title rules instead of frames (screenshots, tiny terminals)")
     print("      --demo          Scripted, repeatable metrics instead of this machine's")
+    print("  -eq, --equalizer    Live microphone spectrum: 28 bands, peak hold, BPM + dB")
+    print("  -bpm, --bpm         Tempo detector: BPM, confidence, beat indicator")
+    print("  -db, --db           Level meter: dB with peak, session min/max, history")
+    print("  -d, --device NAME   Microphone to use (part of its name; see --list-devices)")
+    print("      --list-devices  List the input devices and exit")
     print("  -V, --version       Show version")
     print("  -h, --help          Show this help")
     print()
     print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
+    print()
+    print(f"The microphone modes need the audio extra:  {AUDIO_HINT}")
     print()
     print("Environment:")
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
@@ -1510,10 +2079,12 @@ def print_help():
     print("  NO_COLOR=1               No colour at all; TERM=dumb also drops to ASCII")
     print()
     print("Examples:")
-    print("  termstats           Live dashboard (Ctrl+C to exit)")
+    print("  termstats           Live dashboard (Esc or Ctrl+C to exit)")
     print("  termstats -i 2      Live, refresh every 2 seconds")
     print("  termstats --once    One snapshot, then exit")
     print("  termstats > out.txt One snapshot (stdout is not a terminal)")
+    print("  termstats -eq       Spectrum analyser from the microphone (ts -eq with the alias)")
+    print("  termstats --demo -bpm  The tempo screen on the scripted machine, no microphone")
     print()
     print("Module form:  python -m termstats [OPTIONS]")
 
@@ -1601,10 +2172,17 @@ def main():
         sys.exit(0)
 
     interval = DEFAULT_INTERVAL
+    interval_given = False
     mode = None  # None = decide from the terminal
     theme_name = os.environ.get(T.THEME_ENV, "").strip() or None
-    list_themes = False
+    list_themes = list_devices = False
     compact = no_border = use_demo = False
+    audio_mode = device = None
+
+    def pick_audio(chosen):
+        if audio_mode is not None and audio_mode != chosen:
+            _fail(f"only one audio mode at a time: -eq, -bpm or -db (got -{audio_mode} and -{chosen})")
+        return chosen
 
     i = 0
     while i < len(args):
@@ -1619,12 +2197,25 @@ def main():
             mode = "once"
         elif arg in _LIST_THEMES_FLAGS:
             list_themes = True
+        elif arg in _LIST_DEVICES_FLAGS:
+            list_devices = True
         elif arg in _COMPACT_FLAGS:
             compact = True
         elif arg in _NO_BORDER_FLAGS:
             no_border = True
         elif arg in _DEMO_FLAGS:
             use_demo = True
+        elif arg in _EQ_FLAGS:
+            audio_mode = pick_audio("eq")
+        elif arg in _BPM_FLAGS:
+            audio_mode = pick_audio("bpm")
+        elif arg in _DB_FLAGS:
+            audio_mode = pick_audio("db")
+        elif arg in _DEVICE_FLAGS:
+            if i + 1 >= len(args):
+                _fail(f"option '{arg}' needs a device name (see --list-devices)")
+            device = args[i + 1]
+            i += 1
         elif arg in _THEME_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs a theme name ({', '.join(T.theme_names())})")
@@ -1640,6 +2231,7 @@ def main():
                 _fail(f"option '{arg}' needs a number, got '{raw}'")
             if not math.isfinite(interval) or interval <= 0:
                 _fail(f"option '{arg}' needs a positive, finite number, got '{raw}'")
+            interval_given = True
             i += 1
         else:
             _fail(f"unknown option '{arg}'")
@@ -1655,8 +2247,39 @@ def main():
         print_themes()
         sys.exit(0)
 
+    if list_devices:
+        try:
+            devices = _list_devices()
+        except ImportError as exc:
+            _fail(f"the microphone modes need the audio extra: {AUDIO_HINT} ({exc})")
+        except Exception as exc:              # capture.AudioUnavailable, without importing it here
+            _fail(str(exc))
+        if not devices:
+            print("no input devices found")
+        for index, name, channels, rate in devices:
+            print(f"{index:>3}  {name}  ({channels} ch, {rate:.0f} Hz)")
+        sys.exit(0)
+
+    if device is not None and audio_mode is None:
+        _fail("'--device' only makes sense with -eq, -bpm or -db")
+
     if mode is None:
         mode = "live" if _stdout_is_interactive() else "once"
+
+    if audio_mode is not None:
+        try:
+            audio = _load_audio()
+        except ImportError as exc:
+            _fail(f"the microphone modes need the audio extra: {AUDIO_HINT} ({exc})")
+        if use_demo:
+            source = audio.DemoAudio(demo.DEFAULT_SEED)
+        else:
+            try:
+                source = _mic_source(device)
+            except Exception as exc:          # capture.AudioUnavailable: library, PortAudio or device
+                _fail(str(exc))
+        run_audio(audio_mode, interval if interval_given else AUDIO_INTERVAL, source, once=(mode == "once"))
+        return
 
     if mode == "live":
         run_live(interval)          # Ctrl+C ends it quietly with exit 0 - see run_live
@@ -1667,7 +2290,6 @@ def main():
             # An interrupted snapshot is no snapshot: quiet, but not a success either -
             # 130 is what a shell reports for a SIGINT-terminated command.
             sys.exit(130)
-
 
 if __name__ == "__main__":
     main()

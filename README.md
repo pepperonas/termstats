@@ -96,6 +96,7 @@ termstats               # live dashboard, refreshing twice a second
 termstats --once        # a single snapshot, then exit
 termstats --theme nord  # one of six themes; TERMSTATS_THEME=nord does the same
 termstats --demo        # a scripted, repeatable machine - for screenshots and trying themes
+termstats -eq           # spectrum analyser from the microphone (ts -eq with the alias); -bpm, -db
 ```
 
 Running it with no arguments gives you the live view. Redirect or pipe it and you get one
@@ -107,6 +108,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [Installation](#installation) — pipx, pip, from source, Windows, the `ts` alias
 - [Usage](#usage) — options, themes, environment, choosing the mode, fallbacks, exit
 - [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
+- [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level; the audio extra
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
 - [Health Report (optional)](#health-report-optional)
@@ -134,7 +136,9 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **One Colour Ramp** — cool → warm → hot, shared by every meter, value and chart
 - **Cross-Platform** — Linux, macOS, Windows; braille → block → ASCII and truecolor → 256 → 16 → mono fallbacks, `NO_COLOR` honoured
 - **Live by Default** — no flag needed; snapshot mode kicks in automatically when output is piped
+- **Leaves Cleanly** — `Esc`, `q` or `Ctrl+C`; alternate screen, cursor and input mode all restored
 - **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
+- **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
 - **Zero Config** — flags and environment variables only; no config file, no state on disk
 
 ## Installation
@@ -192,7 +196,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.4.2
+termstats --version   # -> termstats 0.5.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -246,7 +250,12 @@ python -m termstats
 | `--list-themes`, `-list-themes` | Print every theme with its ramp and exit |
 | `--compact`, `-compact` | No padding inside the panels — two more bar cells per row |
 | `--no-border`, `-no-border` | Title rules instead of frames; the body gets the full width |
-| `--demo`, `-demo` | Scripted, repeatable metrics instead of this machine's (says **DEMO** in the header) |
+| `--demo`, `-demo` | Scripted, repeatable metrics instead of this machine's (says **DEMO** in the header); with an audio mode, scripted music instead of the microphone |
+| `-eq`, `--equalizer` | Live microphone spectrum analyser: 28 bands, peak hold, BPM and dBFS in the HUD ([audio extra](#microphone-modes)) |
+| `-bpm`, `--bpm` | Tempo detector: BPM, confidence, beat indicator, kick-band meter, tempo history |
+| `-db`, `--db` | Level meter: dBFS with a peak hairline, session min/max, level history |
+| `-d`, `--device NAME` | Microphone to use, by any part of its name; default is the system input |
+| `--list-devices` | List the input devices and exit |
 | `-V`, `--version`, `-version` | Show version |
 | `-h`, `--help`, `-help` | Show help |
 
@@ -350,10 +359,15 @@ print columns.
 
 ### Exit
 
-Live mode runs until you press `Ctrl+C` — the footer says so — and exits 0 without a
-traceback; the alternate screen buffer and the cursor are restored, so your scrollback stays
-intact. Resizing the terminal relayouts the dashboard at once rather than at the next tick.
-An interrupted snapshot exits 130, quietly.
+Live mode runs until you press **`Esc`** or `Ctrl+C` — the footer says so — and exits 0
+without a traceback; the alternate screen buffer, the cursor and the terminal's input mode are
+restored, so your scrollback stays intact. `q` works too. The key is read within a tenth of a
+second, the same slice a resize is noticed in.
+
+For a single keypress to arrive at all, the terminal spends the session in cbreak mode. When
+stdout is a terminal but stdin is not (`termstats --live < /dev/null`), or input is redirected,
+nothing is read and `Ctrl+C` remains the way out. Resizing relayouts the dashboard at once
+rather than at the next tick. An interrupted snapshot exits 130, quietly.
 
 ## What the dashboard shows
 
@@ -430,6 +444,86 @@ blank line inside the picture, every section whole or absent.
 <sub>100×26: not enough lines for everything, so the layout drops a whole section from the bottom instead of squeezing every panel. Nothing is drawn off-screen.</sub>
 </div>
 
+## Microphone modes
+
+`termstats -eq`, `-bpm` and `-db` turn the same shell — header, theme, footer, fallbacks,
+`Ctrl+C` — into a spectrum analyser, a tempo detector and a level meter fed by the
+microphone. Nothing is recorded or stored: blocks of 1024 samples are analysed and dropped.
+With the `ts` alias they are `ts -eq`, `ts -bpm`, `ts -db`.
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/eq.png" alt="termstats -eq: a 28-band spectrum analyser with peak-hold markers" width="760"/>
+<br/>
+<sub><code>termstats -eq</code>: 28 log-spaced bands from 40 Hz to 16 kHz, two cells per bar, coloured by height on the theme ramp, a peak-hold marker above each bar, a frequency axis — and the HUD every mode shares: beat dot, BPM, dBFS, confidence.</sub>
+</div>
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/bpm.png" alt="termstats -bpm: the tempo detector" width="760"/>
+<br/>
+<sub><code>termstats -bpm</code>: the tempo, a beat dot that lights on every detected onset, confidence (how regular the beats are), a kick-band meter with its peak, and the tempo over time.</sub>
+</div>
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/db.png" alt="termstats -db: the level meter" width="760"/>
+<br/>
+<sub><code>termstats -db</code>: the level of every block in dBFS, a meter with the recent peak as a hairline, the smoothed value, session minimum and maximum, and a level history. All three pictures come from <code>--demo</code>, which plays scripted music instead of opening a microphone.</sub>
+</div>
+
+### Installing the audio extra
+
+The FFT needs numpy and the microphone needs PortAudio (via `sounddevice`); the system
+dashboard needs neither, so they are an **optional extra** and a bare `termstats -eq` without
+them says so and exits 2:
+
+```bash
+pipx install 'termstats[audio] @ git+https://github.com/pepperonas/termstats.git'   # fresh install
+pipx inject termstats numpy sounddevice                                            # already installed
+```
+
+macOS and Windows wheels bundle PortAudio. Debian/Ubuntu need the library itself:
+`sudo apt install libportaudio2`. The first run on macOS asks for microphone access for your
+terminal application; deny it and the modes show silence, not an error.
+
+### What is measured
+
+| | |
+|---|---|
+| **Level** | RMS of each 1024-sample block, shown on the **positive scale a phone's sound-level app uses**: a quiet room reads about 40, conversation about 60, loud music about 80. Internally it is dBFS — decibels relative to the input's full scale, negative by definition and floored at −80 — and the display adds a fixed offset of 100. That offset is an **estimate, not a calibration**: without a reference microphone there is no true sound-pressure value, so the number is comparable between runs on the same device, not between devices, and it is not a measurement you can put in a noise complaint. Nothing but the display is shifted — the analysis, the history and the tempo gate all stay in dBFS, because a shifted value would no longer be dBFS at all. |
+| **Spectrum** | Magnitude of a 4096-sample rolling FFT (Hann window, hopped by one block) folded into 28 log-spaced bands. Each band is the peak bin in dB; the bars span a 60 dB window under a slow global ceiling, so a whisper and a club both fill the panel while the bands keep their proportions. Bars rise fast and fall slowly; the peak marker holds ~140 ms, then falls in about two seconds. |
+| **Tempo** | Energy in the 30–110 Hz kick band; an onset is a block that beats the 3 s moving average by 1.4× **and** rises above the peak of a lagged window (the SuperFlux rule, so a sustained bass note is one onset, not twenty). The median inter-onset interval is folded into 60–200 BPM and shown as a 4 s rolling mean; confidence is 1 − σ/median of the intervals. Onsets are gated on −45 dBFS (`quiet` in the HUD) so room noise never produces a tempo. The same estimator runs in inspector-rust and disco-controller. |
+
+A tempo needs about five seconds of music. Halving and doubling are a genuine ambiguity
+(a 60 BPM ballad and a 120 BPM track with a kick on every beat produce the same intervals);
+the fold prefers the 60–200 range and snaps to the tempo already shown.
+
+### The headline number
+
+`-db` and `-bpm` put their one important number in the middle of the screen, five rows tall,
+drawn in the same bar glyph as every meter (so it degrades to `#` on an ASCII terminal like
+everything else). Three things happen to it while a session runs:
+
+- **It eases.** A level that jumps 40 → 78 → 44 between frames is noise the eye has to
+  track; the shown value moves towards the measurement instead of snapping to it.
+- **It has its own clock.** Twenty frames a second is right for a bar and far too fast for a
+  digit — the last decimal would be a blur — so the number refreshes about five times a
+  second while the bars, the beat dot and the flash keep every frame.
+- **The tempo flares on the beat.** Every detected onset lights the digits for a tenth of a
+  second, so the number itself carries the pulse.
+
+The HUD line above keeps the raw sample, so the exact measurement is always on screen next
+to the eased one. In a snapshot (`--once`, or a pipe) nothing is eased and nothing is held:
+one frame, one number, the one that was measured. Below about ten rows there is no room for
+five rows of digits and the screen falls back to a single line.
+
+### Devices, snapshots, refresh
+
+`--list-devices` prints every input with its channel count and sample rate; `--device NAME`
+picks one by any part of its name (`-d usb`), the default is the system input. The analyser
+runs at the device's own sample rate. The screens refresh 20 times a second (`-i` changes
+that); `--once`, or a pipe, listens for 1.5 s and prints one frame — enough for a level, not
+for a tempo, which the HUD shows as `---`. `--demo -eq` plays eight seconds of scripted
+music before the first frame, so a tempo is already on screen.
+
 ## Platform Support
 
 | Feature | Linux | macOS | Windows |
@@ -445,6 +539,7 @@ blank line inside the picture, every section whole or absent.
 | Live charts | Yes | Yes | Yes |
 | Load average | Yes | Yes | Yes* |
 | Resize | Immediate | Immediate | Next refresh |
+| Microphone modes | Yes, needs `libportaudio2` | Yes | Yes |
 
 \* Windows has no load average; psutil emulates one from a sampler thread that reads
 `0.00` for its first five seconds after start.
@@ -458,6 +553,8 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - [psutil](https://github.com/giampaolo/psutil) — cross-platform system metrics
 - [rich](https://github.com/Textualize/rich) — terminal formatting
 - [plotext](https://github.com/piccolomo/plotext) — terminal plots (**5.x only**, see below)
+- optional, for the microphone modes only: [numpy](https://numpy.org) and
+  [sounddevice](https://python-sounddevice.readthedocs.io) — the `termstats[audio]` extra
 
 The charts are drawn in **Unicode braille** (U+2800–U+28FF), which packs 2×4 dots into one
 character cell. Font coverage for that block is near-universal; if yours lacks it the charts
@@ -536,7 +633,9 @@ termstats/
 │   ├── __main__.py      # python -m termstats
 │   ├── cli.py           # collectors, renderers, layout, arg handling, entry point main()
 │   ├── theme.py         # glyph sets, spacing/format tokens, OKLab ramps, the six themes
-│   └── demo.py          # the scripted machine behind --demo
+│   ├── demo.py          # the scripted machine behind --demo
+│   ├── audio.py         # -eq/-bpm/-db: dBFS, log bands, peak hold, tempo estimator, demo synth (numpy)
+│   └── capture.py       # the microphone (sounddevice), imported lazily, every failure a sentence
 ├── tests/               # pytest suite (pure unit tests, psutil stubbed)
 ├── tools/badges.py      # generates .github/badges/*.json for the headline badges
 ├── tools/demo.tape      # VHS recording script for the --demo GIF
@@ -614,7 +713,10 @@ What it covers:
 | Lifecycle | SIGWINCH guard and restore, sliced waits, immediate relayout with cadence resync, cursor always restored, Ctrl+C quiet |
 | Windows | `WT_SESSION` and the conhost build in the colour chain, load-average priming, the docs and CI keep the PowerShell path honest |
 | Docs sync | every parser flag has a README row and a `--help` line, every `TERMSTATS_*` variable and theme is documented, every README image exists and every screenshot is shown, the table of contents matches the headings, the changelog is dated and descending |
-| Screenshot tool | importable, one SVG per view, no window chrome, byte-identical on repeat, the ASCII tile is 7-bit, the mono tile has no colour, the snapshot shows the skeleton |
+| Screenshot tool | importable, one SVG per view, no window chrome, byte-identical on repeat, the ASCII tile is 7-bit, the mono tile has no colour, the snapshot shows the skeleton, the audio views carry a tempo |
+| Audio DSP | dBFS of silence/full scale/quiet tones, log-spaced edges, a pure tone lights its own band and no distant one, unit interval, silence settles, attack faster than release, peaks hold then fall and never sit below the level, the tempo estimator locks onto a metronome, folds octaves, ignores steady noise and the quiet room, forgets after silence, the demo synth is deterministic, within full scale, loud enough, and has the tempo it claims |
+| Audio screens | every mode fits every size, badge and HUD in every mode, bars follow the levels, columns adapt to the width, peak markers only above the bar, ASCII stays 7-bit, the level screen shows value/min/max/meter and drops the chart before the meter, the tempo screen shows the number or `---` and a beat dot that lights and rests |
+| Audio arguments & capture | every flag spelling, one mode at a time, faster default refresh, `-i` still wins, `--device` needs a value and an audio mode, `--demo` needs no microphone, `--once` and a pipe measure briefly, `--list-devices`, the missing-extra message names the install; the microphone opens mono float32 at the device's own rate, resolves by substring or default, explains a missing library, PortAudio or device, and never lets a consumer error reach the audio thread |
 | Demo | the psutil surface contract against the source, byte-identical stories per seed, the story's shape, reproducible snapshots |
 | Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes — in-process and, on Linux/macOS, in a fresh process per colour level |
 
@@ -824,6 +926,20 @@ table, so a longer interval is also the cheaper one on a small machine.
 (`termstats > out.txt`) and Windows defaults that stream to cp1252, which cannot encode the
 block characters the bars are drawn with. Fixed in 1.1.4; on older versions set
 `PYTHONIOENCODING=utf-8`.
+
+**`the microphone modes need the audio extra`** — `-eq`, `-bpm` and `-db` import numpy and
+sounddevice, which the system dashboard does not ship. `pipx inject termstats numpy sounddevice`,
+or install with the extra (see [Microphone modes](#microphone-modes)).
+
+**`PortAudio is not available`** — the Linux `sounddevice` wheel does not bundle the library:
+`sudo apt install libportaudio2` (Fedora: `portaudio`). macOS and Windows wheels carry it.
+
+**`no input device matches 'x'`** — the message lists the inputs it can see; `--list-devices`
+shows them with index, channels and sample rate. Pick with any part of the name: `-d usb`.
+
+**The level sits at −60.0 and nothing moves** — the terminal application has no microphone
+permission (macOS: System Settings → Privacy & Security → Microphone), or the default input is
+a virtual device (loopback drivers, conferencing tools). `--list-devices`, then `--device`.
 
 **Colours look flat in Windows Terminal** — fixed in 0.4.1. Windows Terminal announces
 itself only through `WT_SESSION`, and earlier versions read the missing `TERM` as a

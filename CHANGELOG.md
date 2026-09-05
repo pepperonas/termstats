@@ -11,6 +11,71 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-05
+
+### Added
+
+- **Microphone modes.** `termstats -eq` (also `--equalizer`) is a 28-band spectrum analyser
+  from 40 Hz to 16 kHz with peak-hold markers and a frequency axis; `-bpm` a tempo detector
+  (kick-band energy onsets with the SuperFlux rule, inter-onset median folded to 60–200 BPM,
+  confidence, beat dot, kick-band meter, tempo history); `-db` a level meter (one level per block,
+  peak hairline, smoothed value, session min/max, level history). Every mode shares one HUD
+  line — beat dot, BPM, level, confidence — and the dashboard's header, theme, footer and
+  fallbacks; the header carries an `EQ`/`BPM`/`DB` badge. Nothing is recorded or stored.
+- **The headline number is drawn five rows tall, centred**, in the same bar glyph as every
+  meter (so it degrades to `#` with the rest). It eases towards the measurement instead of
+  snapping, refreshes on its own ~5 Hz clock (a digit redrawn 20 times a second is a blur
+  while the bars need every frame), and the tempo flares on every detected beat. The HUD
+  keeps the raw sample beside it; a snapshot eases and holds nothing.
+- **The level is shown on a positive scale** — a quiet room reads about 40, loud music about
+  80, the range a phone's sound-level app shows. Internally everything stays dBFS; the
+  display adds a fixed offset of 100, which is an estimate rather than a calibration.
+- **`Esc` (or `q`) ends a live session**, alongside `Ctrl+C` — the footer says so. The
+  terminal is put into cbreak mode for the session and restored in the same `finally` that
+  restores the cursor; with stdin not a terminal nothing is read. An `Esc` that introduces an
+  arrow key is not a quit.
+- `--device NAME` picks the microphone by any part of its name, `--list-devices` lists the
+  inputs; the analyser runs at the device's own sample rate.
+- The modes refresh 20 times a second by default (`-i` still wins); `--once` or a pipe listens
+  for 1.5 s and prints one frame; `--demo` with an audio mode plays eight seconds of scripted
+  music (kick, bass, hi-hats, pad — deterministic per seed) instead of opening a microphone.
+- **Optional `audio` extra** (`pip install 'termstats[audio]'`: numpy + sounddevice). The
+  system dashboard stays free of both; an audio mode without them exits 2 with the install
+  line, a missing PortAudio or device is explained in one sentence.
+- New modules `termstats/audio.py` (pure DSP, no I/O) and `termstats/capture.py` (the
+  microphone, imported lazily); new glyphs `vpeak`, `beat_on`, `beat_off` in every glyph set.
+- Three new rendered README pictures (`-eq`, `-bpm`, `-db` from `--demo`); the screenshot
+  tool has `eq`, `bpm`, `db` views.
+
+### Changed
+
+- `--help` lists the audio options, `Esc` and the install line for the extra.
+
+### Fixed
+
+- **Charts were clamped to 80 columns.** plotext limits a plot to the terminal size *it*
+  detects — 80 in a pipe, a test or a screenshot render — so a 116-column chart came back 80
+  wide and stopped two thirds across its panel while the meter above ran to the edge. The
+  renderer has already measured the slot (`limit_size(False, False)`).
+- **A filled chart filled towards zero, not towards its floor.** With `ylim` (−80, 0) the
+  level chart filled downward from silence at the top. Values are plotted relative to the
+  floor now and labelled in the caller's units; a 0-based chart is unchanged.
+- **A history chart's x axis showed the dashboard's window**, `-30s`, whatever the data
+  actually spanned. `_render_chart` takes the span it is drawing.
+
+### Tests
+
+- 1035 → +98: `tests/test_audio.py` (dBFS, bands, peak hold, tempo, demo synth),
+  `tests/test_audio_render.py` (every mode at every size, badges, HUD, bars, peaks, ASCII,
+  level and tempo screens), `tests/test_audio_args.py` (flags, exclusivity, device, demo,
+  once, list-devices, the missing-extra message, help), `tests/test_capture.py` (a fake
+  sounddevice: inputs, resolution, stream parameters, idempotent stop, thread safety, the
+  three failure messages), `tests/test_keys.py` (which bytes mean quit, the watcher's states,
+  both loops leaving, the footer and help naming `Esc`). The audio suites skip where numpy is
+  not installed. Every new pin was mutation-probed; the two seams a text search cannot see —
+  the headline is glyphs, the chart is plotted — got their own pins after the first probe
+  came back green.
+
 ## [0.4.2] - 2026-09-05
 
 ### Fixed

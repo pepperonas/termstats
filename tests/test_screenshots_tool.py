@@ -52,7 +52,8 @@ def test_every_view_has_a_renderer(tool):
 
 EXPECTED_VIEWS = {"hero", "compact", "help", "no-border", "narrow", "snapshot", "list-themes",
                   "glyph-braille", "glyph-block", "glyph-ascii",
-                  "color-truecolor", "color-256", "color-16", "color-mono"}
+                  "color-truecolor", "color-256", "color-16", "color-mono",
+                  "eq", "bpm", "db"}
 
 
 def test_the_view_set_covers_the_readme(tool):
@@ -180,7 +181,7 @@ def test_index_page_has_a_section_per_readme_figure(tool, tmp_path):
     tool.write_index(tmp_path)
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     for sid in ("hero", "grid", "compact", "help", "no-border", "narrow", "snapshot",
-                "list-themes", "glyphs", "colours"):
+                "list-themes", "glyphs", "colours", "eq", "bpm", "db"):
         assert f'id="{sid}"' in html, sid
     assert __version__ in html
 
@@ -192,3 +193,23 @@ def test_script_entry_point_renders_a_selection(tmp_path):
     assert (tmp_path / "compact.svg").is_file()
     assert (tmp_path / "index.html").is_file()
     assert not (tmp_path / "hero.svg").exists()
+
+
+# --- the microphone screens, from the demo synth ---------------------------------------------
+
+def test_audio_views_come_from_the_demo_synth_with_a_tempo(tool, tmp_path):
+    pytest.importorskip("numpy")
+    tool.render(tmp_path, ["eq", "bpm", "db"])
+    eq = svg_text(read_svg(tmp_path / "eq.svg"))
+    assert "equalizer" in eq and "16k" in eq and " EQ " in eq
+    bpm = svg_text(read_svg(tmp_path / "bpm.svg"))
+    assert "BPM" in bpm and "---" not in bpm, "eight seconds of scripted music must yield a tempo"
+    db = svg_text(read_svg(tmp_path / "db.svg"))
+    assert "dB" in db and "min" in db          # 0.5.0: the shown scale is positive, not dBFS
+
+
+def test_audio_views_are_reproducible(tool, tmp_path):
+    pytest.importorskip("numpy")
+    a = tmp_path / "a"; b = tmp_path / "b"
+    tool.render(a, ["eq"]); tool.render(b, ["eq"])
+    assert (a / "eq.svg").read_bytes() == (b / "eq.svg").read_bytes()

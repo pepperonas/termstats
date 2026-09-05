@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "termstats"
-version = "0.4.2"
+version = "0.5.0"
 description = "Beautiful terminal server dashboard with real-time charts"
 readme = "README.md"
 license = "MIT"
@@ -15,6 +15,7 @@ authors = [
 keywords = [
     "terminal", "dashboard", "monitoring", "system", "cpu", "memory",
     "server", "devops", "sysadmin", "tui", "charts", "cli",
+    "audio", "spectrum", "equalizer", "bpm", "decibel",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -41,7 +42,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+# The microphone modes (-eq / -bpm / -db) need an FFT and a capture library; the system
+# dashboard does not, and stays installable without them.
+audio = ["numpy>=1.24", "sounddevice>=0.4.6"]
+dev = ["pytest>=7.0", "numpy>=1.24", "sounddevice>=0.4.6"]
 
 [project.urls]
 Homepage = "https://github.com/pepperonas/termstats"

@@ -465,3 +465,15 @@ def test_the_ascii_chart_fades_as_well(ascii_mode):
         if cols:
             Ls.append(T.lightness(T.rgb_of(str(cols[0]))))
     assert len(Ls) >= 3 and Ls[0] < Ls[-1]
+
+
+def test_a_chart_wider_than_eighty_columns_is_not_clamped_to_a_phantom_terminal(monkeypatch):
+    """plotext limits a plot to the terminal size it detects - 80 columns in a pipe, a test or
+    a screenshot render. A 116-column chart came back 80 wide, ending two thirds across the
+    panel while the meter above it ran to the edge. The renderer decides the size, not plotext."""
+    from rich.cells import cell_len
+    monkeypatch.delenv("COLUMNS", raising=False)
+    values = [50.0] * 110
+    out = plain(cli._render_chart([(values, "x", cli.ramp_rgb(0.5), True)], (0.0, 100.0), 116, 10), width=116, height=10)
+    widest = max(cell_len(l.rstrip()) for l in out.splitlines())
+    assert widest >= 110, f"chart is only {widest} cells wide in a 116-column slot"

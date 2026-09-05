@@ -118,6 +118,30 @@ def dashboard(out, name, size, theme=T.DEFAULT_THEME, color="truecolor", glyphs=
     return write(out, con, name, theme_bg(cli))
 
 
+AUDIO = (120, 36)
+AUDIO_SECONDS = 8.0   # scripted music before the frame: the tempo needs ~5 s to lock
+
+
+def audio_view(out, mode):
+    """One microphone screen fed by the demo synth - no device, same picture every time."""
+    from termstats import audio
+    cli = fresh_cli()
+    cli.set_theme(T.DEFAULT_THEME, color="truecolor")
+    source = audio.DemoAudio(seed=7)
+    an = audio.Analyzer(source.samplerate, audio.BLOCK)
+    while source.now() < AUDIO_SECONDS:
+        an.feed(source.read(audio.BLOCK), source.now())
+    demo_source = demo.DemoSource(demo.DEFAULT_SEED, 0.5)
+    demo_source.T0 = SHOT_T0
+    cli.set_demo(demo_source)
+    cli._prime_measurements()
+    w, h = AUDIO
+    con = console(w, h)
+    cli.console = con
+    con.print(cli.render_audio(mode, an, source.now(), w, h))
+    return write(out, con, mode, theme_bg(cli))
+
+
 def help_view(out):
     text = subprocess.run([sys.executable, "-m", "termstats", "--help"], capture_output=True, text=True).stdout
     cli = fresh_cli()
@@ -145,6 +169,9 @@ VIEWS = {
     "snapshot": lambda out: dashboard(out, "snapshot", WIDE, prefill=False, interval=1.0),
     "help": help_view,
     "list-themes": list_themes_view,
+    "eq": lambda out: audio_view(out, "eq"),
+    "bpm": lambda out: audio_view(out, "bpm"),
+    "db": lambda out: audio_view(out, "db"),
 }
 for _theme in T.theme_names():
     VIEWS[f"theme-{_theme}"] = (lambda t: lambda out: dashboard(out, f"theme-{t}", TILE, theme=t))(_theme)
@@ -189,7 +216,7 @@ def write_index(out):
   img{{display:block}}
   #hero img{{width:1700px}}
   #compact img{{width:980px}}
-  #no-border img,#snapshot img{{width:1460px}}
+  #no-border img,#snapshot img,#eq img,#bpm img,#db img{{width:1460px}}
   #narrow img{{width:1220px}}
   #list-themes img{{width:732px}}
   #help img{{width:{help_px}px}}   /* rich draws 12.2 px per cell at its 20 px font; the SVG carries no intrinsic size */
@@ -211,6 +238,9 @@ def write_index(out):
 <section id="list-themes"><img src="list-themes.svg" alt="termstats --list-themes"></section>
 <section id="glyphs" class="tiles">{glyphs}</section>
 <section id="colours" class="tiles">{colours}</section>
+<section id="eq"><img src="eq.svg" alt="termstats -eq: the spectrum analyser"></section>
+<section id="bpm"><img src="bpm.svg" alt="termstats -bpm: the tempo detector"></section>
+<section id="db"><img src="db.svg" alt="termstats -db: the level meter"></section>
 <section id="help"><img src="help.svg" alt="termstats --help"></section>
 """
     Path(out).mkdir(parents=True, exist_ok=True)

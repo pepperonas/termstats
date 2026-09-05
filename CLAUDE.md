@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.2**, 1033 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.5.0**, 1193 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -47,8 +47,10 @@ termstats/
 │   ├── __main__.py   # python -m termstats
 │   ├── cli.py        # collectors, meters, charts, layout budget, run modes, arg parsing, main()
 │   ├── theme.py      # EVERY colour and glyph: GlyphSets, spacing/format tokens, OKLab, 6 themes
-│   └── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
-├── tests/            # 1033 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+│   ├── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
+│   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
+│   └── capture.py    # the microphone via sounddevice, lazy import, actionable errors
+├── tests/            # 1193 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -107,6 +109,15 @@ glyph level, the theme, `SMOOTHING`, `LIVE`, the frame mode (`set_frame`), the d
 (`set_demo(None)`), the resize event, the smoother, the peak tracker, the net unit hysteresis
 and the disk/net rate attributes. Rate state survives between calls by design; without the
 reset a collector test passes or fails depending on what ran before it.
+
+⚠️ **A mutation batch needs a timeout, a cache purge and a `git` check.** Three ways a probe
+has already gone wrong in this repo: a mutation that removes a loop's exit condition makes
+pytest run FOREVER (use `subprocess.run(..., timeout=90)`, and bound the fake `Live` in the
+test so a broken break fails fast); a mutation of the SAME LENGTH written in the same second
+leaves Python's `.pyc` valid, so the interpreter keeps executing the mutant after the source
+is restored (`PYTHONDONTWRITEBYTECODE=1`, and `find . -name __pycache__ -prune -exec rm -rf
+{} +` afterwards); and a run that dies mid-batch leaves the mutant in the working tree — so
+after every batch, check `git diff` rather than trusting the harness's own checksum.
 
 ⚠️ **Mutation-test every new pin.** Every stage of the S1–S10 programme ran 7–13 mutations
 against its new tests (border in accent, unit in ramp tone, chrome() ignoring --no-border,
@@ -254,6 +265,90 @@ plays 60 frames in a tight loop before the first visible one. Story period 150: 
 spike 46–74, disk fills, processes react; the first visible frame (63) lands on the spike.
 `set_demo(source)` rebinds the module-level `psutil`. A **DEMO** badge sits in the header's
 fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last 60s`).
+
+## Microphone modes (0.5.0)
+
+`-eq` / `--equalizer`, `-bpm`, `-db`, plus `-d/--device NAME` and `--list-devices`. Three files:
+
+- **`termstats/audio.py`** — pure DSP, numpy only, no I/O, no rich. `dbfs()` (RMS, clamped to
+  `DB_FLOOR = -80`; a quiet room on the MacBook mic measured median −67 / p90 −63 — at the
+  earlier −60 floor the level meter sat pinned in a quiet room), `Spectrum` (28 log bands
+  40 Hz–16 kHz from a ROLLING 4096-sample Hann window hopped by one 1024 block — a 1024-point
+  FFT has 43 Hz bins and bands below 200 Hz would share one; peak bin per band in dB; a 60 dB
+  window under a slow GLOBAL ceiling so quiet and loud both fill the panel while bands keep
+  their proportions; attack .55 / release .18; peak hold 6 blocks then −0.012/block),
+  `BpmAnalyzer` (the inspector-rust/disco estimator: kick band 30–110 Hz, onset = energy >
+  1.4× 3 s average AND > peak of a lagged window ×1.04 [SuperFlux], 0.30 s refractory, IOI
+  median folded into 60–200, octave snap, 4 s display mean; **stale = no ONSET for 4 s once
+  the window thinned** — counting from the last estimate kept a stopped track's tempo on
+  screen 8 s+), `Analyzer` (one `feed(block, now)` per block; `music` = smoothed dB > −45
+  gates onsets; db/bpm histories as deques; ONE FFT serves bands and kick band), `DemoAudio`
+  (deterministic synth: kick 55 Hz decaying sine on the beat, off-beat hi-hat noise, two-bar
+  bass, pad, room noise, tanh soft clip; own clock `now()`).
+- **`termstats/capture.py`** — `MicSource(device)` (mono float32, `audio.BLOCK`, the DEVICE's
+  own sample rate, callback errors swallowed — the PortAudio thread must never die),
+  `resolve_device` (case-insensitive substring, else the system default input),
+  `list_devices`, `AudioUnavailable` with three actionable messages (no numpy/sounddevice →
+  the install line; PortAudio missing → `apt install libportaudio2`; no match → the inputs).
+  sounddevice is imported lazily; the Linux wheel does not bundle PortAudio.
+- **`cli.py`** — `render_audio(mode, an, now, w, h)` (header with badge via
+  `header_line(width, badge=)`, ONE `_panel`, footer, in a `Layout`), `eq_body` (columns =
+  `eq_columns(width, bands)`: 2 cells + 1 gap, bands FOLDED into fewer columns when narrow so
+  the range stays 40 Hz–16 kHz; top cell from `GLYPHS.spark` eighths, `GLYPHS.vpeak` marker
+  only when the peak cell is above the bar; frequency axis via band edges), `db_body`
+  (`meter()` with `peak_of("audio.db")`, `_audio_chart` from `db_history` when ≥ 6 rows are
+  left), `bpm_body` (`---` before a tempo, `GLYPHS.beat_on` for `BEAT_LIT_S` = 120 ms after an
+  onset), `audio_hud` shared by all three, `run_audio(mode, interval, source, once)` — push
+  (mic thread + lock) or pull (`DemoAudio.read` pumped `interval` seconds per frame after an
+  8 s prefill), `AUDIO_INTERVAL` = 0.05, `--once`/pipe = listen 1.5 s and print one frame.
+
+Tests pin the DSP with phase-CONTINUOUS tones (`Tone` in `test_audio.py`): restarting the
+phase every block puts a click at each boundary — broadband energy that lit every band and
+hid the tone, which looked like a resolution bug and was the test's fault. The audio suites
+`importorskip("numpy")`; CI installs `.[dev]`, which carries numpy and sounddevice.
+Live-checked: pty run of `--demo -eq` (98 frames/3 s, alt screen once, exit 0 on Ctrl+C), real
+mic `-db --once` and `-bpm --once --device MacBook`, the wrong-device message.
+
+## Leaving a session (0.5.0)
+
+`Esc` and `q` end a live session; `Ctrl+C` still does. `KeyWatcher` puts the terminal into
+**cbreak** for the session (`_set_cbreak`/`_restore_tty`, restored in the same `finally` as
+the cursor) and `_read_ready` polls without blocking - `select` on POSIX, `msvcrt.kbhit` on
+Windows. `_sleep_until` checks it once per 0.1 s slice, sets `_quit` and returns True; both
+loops then `break` instead of drawing one more frame. ⚠️ **Esc is the first byte of every
+arrow and function key**, so `is_quit_key` treats a lone `\x1b` as quit and `\x1b[`/`\x1bO`
+as a sequence - the whole burst arrives in one read, which is the only reason they can be
+told apart. Inactive when stdin is not a terminal (`--live < /dev/null`, a pipe), and
+`stop()` is idempotent.
+
+## The headline number (0.5.0)
+
+`-db` and `-bpm` draw their value five rows tall from `theme.BIG_FONT` (3x5 per glyph,
+`#`/`.`, scaled `BIG_DIGIT_SCALE = 2` wide because a terminal cell is half as wide as it is
+tall - unscaled it reads as a scratch). `cli.big_digits` paints it in `GLYPHS.bar_full`, so
+cli.py still names no glyph and ASCII degrades with everything else. Three behaviours:
+`shown_level`/`shown_tempo` ease through the existing `Smoother` (a lost tempo calls
+`Smoother.forget`, so the next one appears rather than counting up from the stale value),
+`readout()` holds the drawn value for `AUDIO_READOUT_S` = 0.2 s (20 fps is right for a bar
+and a blur for a digit), and `tempo_tone` flares on every beat. **Nothing is eased or held
+when `SMOOTHING` is off**, so a snapshot still prints exactly what was measured, and the HUD
+carries the raw sample in every mode.
+
+⚠️ **Two seams here are invisible to a text search**: the headline is glyphs, not a number,
+and the chart is plotted. Both mutation probes came back green until they got pins of their
+own (`test_the_headline_digits_are_the_shown_value`, `cli.level_history` + its pin).
+
+## The level scale (0.5.0)
+
+The screens show **dBFS + `audio.SPL_OFFSET` (100)**: a quiet room ~40, loud music ~80, the
+range a phone app shows. Measured on this machine to choose it: a quiet room is around
+-67 dBFS, music at a normal level around -20. It is an **estimate, not a calibration** - the
+README says so, and the panel subtitle says "uncalibrated estimate". ⚠️ **Only the display is
+shifted.** The analysis, `db_history`, the extremes and the -45 dBFS music gate stay in dBFS,
+because a shifted value is not dBFS any more (the same rule disco-controller follows). The
+conversion sits in `_shown_db` and `level_history`; the x-axis labels stay negative on
+purpose - they are seconds ago, not levels, and the pin that forbids negative numbers
+excludes them explicitly.
 
 ## Docs sync (0.4.2)
 

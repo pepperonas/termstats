@@ -33,7 +33,7 @@ GLYPH_LEVELS = ("braille", "block", "ascii")
 
 # Every non-ASCII character the dashboard can draw with. The stream must encode all of it,
 # or the glyph level drops to ASCII. Add to this when you add a glyph.
-GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©"
+GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©▔●○"
 
 
 class Capabilities(NamedTuple):
@@ -136,6 +136,9 @@ class GlyphSet(NamedTuple):
     box: str               # rich box style name
     rule: str              # --no-border: the title rule
     copyright: str         # the footer's mark
+    vpeak: str             # -eq: peak-hold marker above a vertical bar
+    beat_on: str           # -bpm: the beat indicator, lit
+    beat_off: str          # -bpm: the beat indicator, at rest
 
 
 GLYPH_SETS = {
@@ -144,18 +147,21 @@ GLYPH_SETS = {
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="⠒", chart_marker="braille", chart_full="#", chart_half="=",
         box="ROUNDED", rule="─", copyright="©",
+        vpeak="▔", beat_on="●", beat_off="○",
     ),
     "block": GlyphSet(
         name="block", bar_full="█", bar_partials="▏▎▍▌▋▊▉", bar_empty="╌", bar_secondary="▒",
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="╌", chart_marker="hd", chart_full="#", chart_half="=",
         box="ROUNDED", rule="─", copyright="©",
+        vpeak="▔", beat_on="●", beat_off="○",
     ),
     "ascii": GlyphSet(
         name="ascii", bar_full="#", bar_partials="", bar_empty="-", bar_secondary="=",
         peak="|", spark="", sep="-", legend_fill="#", legend_line="-", ellipsis="~",
         sigma="tot", collecting="-", chart_marker=None, chart_full="#", chart_half="=",
         box="ASCII", rule="-", copyright="(c)",
+        vpeak="-", beat_on="*", beat_off="o",
     ),
 }
 
@@ -188,6 +194,33 @@ NOTE_TOTAL_W = 10          # "tot   1.9G" - the ASCII sigma is three letters wid
 SPARK_W = 16               # header sparkline cells
 PEAK_WINDOW = 30           # samples the peak marker remembers
 SMOOTH_ALPHA = 0.5         # EMA weight of the newest sample for bar positions (live only)
+
+# The headline number of -db and -bpm, drawn five cells tall. A 5x3 grid is the smallest
+# that keeps ten digits apart at a glance; "#" is a filled cell and "." an empty one, both
+# painted by cli.py in the current glyph set, so the font itself carries no drawing glyph.
+BIG_DIGIT_ROWS = 5
+BIG_DIGIT_SCALE = 2        # cells per filled square: a terminal cell is about half as wide as
+                           # it is tall, so an unscaled 3x5 glyph reads as a scratch, not a number
+BIG_DIGIT_GAP = 2          # blank columns between two characters
+BIG_FONT = {
+    "0": ("###", "#.#", "#.#", "#.#", "###"),
+    "1": (".#.", "##.", ".#.", ".#.", "###"),
+    "2": ("###", "..#", "###", "#..", "###"),
+    "3": ("###", "..#", "###", "..#", "###"),
+    "4": ("#.#", "#.#", "###", "..#", "..#"),
+    "5": ("###", "#..", "###", "..#", "###"),
+    "6": ("###", "#..", "###", "#.#", "###"),
+    "7": ("###", "..#", "..#", "..#", "..#"),
+    "8": ("###", "#.#", "###", "#.#", "###"),
+    "9": ("###", "#.#", "###", "..#", "###"),
+    "-": ("...", "...", "###", "...", "..."),
+    ".": ("...", "...", "...", "...", ".#."),
+    ",": ("...", "...", "...", ".#.", "#.."),
+    ":": ("...", ".#.", "...", ".#.", "..."),
+    " ": ("...", "...", "...", "...", "..."),
+    "?": ("###", "..#", ".##", "...", ".#."),
+}
+BIG_DIGIT_MIN_ROWS = 9     # hud + blank + five rows + meter + a stats line: below this, one line
 
 RIGHT_COL_MIN, RIGHT_COL_MAX, RIGHT_COL_SHARE = 36, 52, 0.4
 NARROW_BELOW = 92          # single-column layout under this width

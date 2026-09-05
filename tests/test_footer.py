@@ -41,8 +41,10 @@ def test_footer_year_comes_from_the_clock(monkeypatch):
 
 
 def test_live_footer_offers_the_exit(monkeypatch):
+    # 0.5.0 named Esc first: it is the key a full-screen program is expected to answer to,
+    # and Ctrl+C stays listed because it always worked. The hint still opens the line.
     monkeypatch.setattr(cli, "LIVE", True)
-    assert plain(cli.footer_line(80), width=80).lstrip().startswith("Ctrl+C to exit")
+    assert plain(cli.footer_line(80), width=80).lstrip().startswith("Esc or Ctrl+C to exit")
 
 
 def test_snapshot_footer_has_no_exit_hint():
