@@ -21,7 +21,8 @@ def clean_module_state():
     # mode would otherwise relabel every later chart test's x-axis.
     cli.sample_interval = cli.DEFAULT_INTERVAL
     # Capability detection is global; a test that drops to ASCII must not leak that.
-    cli.UNICODE = True
+    cli.set_glyph_level("braille")
+    cli.set_theme("default")
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),
         (cli.get_network_section, ("_last", "_last_time")),
@@ -33,15 +34,16 @@ def clean_module_state():
     for dq in (cli.cpu_history, cli.steal_history, cli.net_sent_history, cli.net_recv_history):
         dq.clear()
     cli.sample_interval = cli.DEFAULT_INTERVAL
-    cli.UNICODE = True
+    cli.set_glyph_level("braille")
+    cli.set_theme("default")
 
 
 @pytest.fixture
 def ascii_mode():
     """Pretend stdout cannot carry the drawing glyphs."""
-    cli.UNICODE = False
+    cli.set_glyph_level("ascii")
     yield
-    cli.UNICODE = True
+    cli.set_glyph_level("braille")
 
 
 @pytest.fixture

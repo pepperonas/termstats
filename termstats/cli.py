@@ -23,6 +23,7 @@ from rich.text import Text
 from rich.live import Live
 
 from termstats import __version__
+from termstats import theme as T
 
 IS_LINUX = platform.system() == "Linux"
 IS_MACOS = platform.system() == "Darwin"
@@ -64,24 +65,41 @@ _CHART_NEEDS_PLOTEXT_5 = "  Charts need plotext 5.x  (pip install 'plotext<6')"
 # cannot encode a block character must not be handed one.
 # ---------------------------------------------------------------------------------
 
-# Every non-ASCII character the dashboard draws with. Add to this when you add a glyph.
-_GLYPH_PROBE = "█░╭\U0001f37b▏╌⠀▁▂▃▄▅▆▇━"
+_GLYPH_PROBE = T.GLYPH_PROBE
+_stream_can_draw = T.stream_can_draw
 
-UNICODE = True
+CAPS = T.Capabilities(color="truecolor", glyphs="braille", nerd=False)
+GLYPHS = T.GLYPH_SETS["braille"]
+UNICODE = True     # legacy alias: GLYPHS.name != "ascii"
+
+# The active glyph vocabulary, as module globals so the formatters read one name each.
+BAR_FULL = BAR_PARTIALS = BAR_EMPTY = BAR_SECONDARY = SPARK = ""
+ASCII_FULL, ASCII_EMPTY, ASCII_SECONDARY = (T.GLYPH_SETS["ascii"].bar_full,
+                                            T.GLYPH_SETS["ascii"].bar_empty,
+                                            T.GLYPH_SETS["ascii"].bar_secondary)
 
 
-def _stream_can_draw(stream):
-    try:
-        _GLYPH_PROBE.encode(stream.encoding or "")
-    except (AttributeError, LookupError, TypeError, UnicodeEncodeError):
-        return False
-    return True
+def set_glyph_level(level):
+    """Switch the whole drawing vocabulary at once - never mix two levels."""
+    global GLYPHS, UNICODE, BAR_FULL, BAR_PARTIALS, BAR_EMPTY, BAR_SECONDARY, SPARK
+    GLYPHS = T.GLYPH_SETS[level]
+    UNICODE = level != "ascii"
+    BAR_FULL, BAR_PARTIALS = GLYPHS.bar_full, GLYPHS.bar_partials
+    BAR_EMPTY, BAR_SECONDARY, SPARK = GLYPHS.bar_empty, GLYPHS.bar_secondary, GLYPHS.spark
 
 
-def detect_capabilities():
-    """Decide once whether the drawing glyphs are safe on this stdout."""
-    global UNICODE
-    UNICODE = _stream_can_draw(sys.stdout)
+set_glyph_level("braille")
+
+
+def detect_capabilities(env=None, stream=None):
+    """Decide once what this terminal can show, and configure the renderer for it.
+
+    Returns the legacy boolean (True when the drawing glyphs are safe on stdout) that
+    the encoding tests read; the full answer lives in CAPS.
+    """
+    global CAPS
+    CAPS = T.detect(env, stream)
+    set_glyph_level(CAPS.glyphs)
     return UNICODE
 
 
@@ -93,25 +111,31 @@ def detect_capabilities():
 # the bottom, warm in the middle, hot and saturated at the top.
 # ---------------------------------------------------------------------------------
 
-RAMP = (
-    (0.00, (0x5A, 0xD8, 0xC8)),   # teal   - idle
-    (0.55, (0xF0, 0xBE, 0x5A)),   # amber  - working
-    (1.00, (0xF0, 0x6E, 0x78)),   # rose   - saturated
-)
+THEME = T.THEMES[T.DEFAULT_THEME]
+RAMP_OBJ = T.Ramp(THEME.stops)
+RAMP = RAMP_OBJ.stops
+MUTED = DIM = FAINT = SOFT = TEXT = TRACK = ""
+NET_RX_RGB = NET_TX_RGB = (0, 0, 0)
 
-MUTED = "grey42"
-DIM = "grey54"
-FAINT = "grey30"
+
+def set_theme(name):
+    """Activate a theme: the ramp, every text tone, and the two network series colours."""
+    global THEME, RAMP_OBJ, RAMP, MUTED, DIM, FAINT, SOFT, TEXT, TRACK, NET_RX_RGB, NET_TX_RGB
+    THEME = T.THEMES[name]
+    RAMP_OBJ = T.Ramp(THEME.stops)
+    RAMP = RAMP_OBJ.stops
+    MUTED, DIM, FAINT = THEME.muted, THEME.dim, THEME.faint
+    SOFT, TEXT, TRACK = THEME.soft, THEME.text, THEME.track
+    NET_RX_RGB = RAMP_OBJ.rgb(0.0)      # the filled series
+    NET_TX_RGB = RAMP_OBJ.rgb(0.55)     # the line drawn over it
+
+
+set_theme(T.DEFAULT_THEME)
 
 
 def ramp_rgb(t):
     """Colour at position t (0..1) on the shared ramp, as an (r, g, b) tuple."""
-    t = 0.0 if t != t else max(0.0, min(1.0, t))          # t != t catches NaN
-    for (lo, c_lo), (hi, c_hi) in zip(RAMP, RAMP[1:]):
-        if t <= hi:
-            k = 0.0 if hi == lo else (t - lo) / (hi - lo)
-            return tuple(round(c_lo[i] + (c_hi[i] - c_lo[i]) * k) for i in range(3))
-    return RAMP[-1][1]
+    return RAMP_OBJ.rgb(t)
 
 
 def ramp(t):
@@ -120,30 +144,15 @@ def ramp(t):
     Returned as truecolor; rich quantises it to 256 or 16 colours on terminals that
     need it, so there is deliberately no palette table here.
     """
-    r, g, b = ramp_rgb(t)
-    return f"#{r:02x}{g:02x}{b:02x}"
+    return RAMP_OBJ.hex(t)
 
 
-def dim_rgb(rgb, factor=0.45):
-    """The same hue at a fraction of the brightness - for a secondary segment that must
-    read as related to the primary but clearly not the same thing."""
-    return f"#{round(rgb[0] * factor):02x}{round(rgb[1] * factor):02x}{round(rgb[2] * factor):02x}"
+dim_rgb = T.dim_hex
 
 
 # ---------------------------------------------------------------------------------
 # Meters
 # ---------------------------------------------------------------------------------
-
-BAR_FULL = "█"
-BAR_PARTIALS = "▏▎▍▌▋▊▉"   # 1/8 .. 7/8 of a cell
-BAR_EMPTY = "╌"
-ASCII_FULL = "#"
-ASCII_EMPTY = "-"
-
-
-BAR_SECONDARY = "▒"
-ASCII_SECONDARY = "="
-
 
 def bar(pct, width, secondary=0.0):
     """A gradient meter, accurate to an eighth of a character cell.
@@ -154,10 +163,7 @@ def bar(pct, width, secondary=0.0):
     `secondary` is a second percentage drawn after the first in a dimmed tone - used for
     the memory the kernel holds as cache: not free, not the process's, and worth seeing.
     """
-    full_ch = BAR_FULL if UNICODE else ASCII_FULL
-    empty_ch = BAR_EMPTY if UNICODE else ASCII_EMPTY
-    second_ch = BAR_SECONDARY if UNICODE else ASCII_SECONDARY
-    partials = BAR_PARTIALS if UNICODE else ""
+    full_ch, empty_ch, second_ch, partials = BAR_FULL, BAR_EMPTY, BAR_SECONDARY, BAR_PARTIALS
 
     text = Text(no_wrap=True, overflow="crop")
     if width <= 0:
@@ -178,11 +184,11 @@ def bar(pct, width, secondary=0.0):
     for i in range(second):
         text.append(second_ch, style=dim_rgb(ramp_rgb((filled + i) / span)))
     filled += second
-    text.append(empty_ch * (width - filled), style=FAINT)
+    text.append(empty_ch * (width - filled), style=TRACK)
     return text
 
 
-MIN_BAR_W = 6
+MIN_BAR_W = T.MIN_BAR_W
 
 
 def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0):
@@ -215,9 +221,6 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondar
     return text
 
 
-SPARK = "▁▂▃▄▅▆▇█"
-
-
 def sparkline(values, width):
     """A width-cell block sparkline, each cell the PEAK of its slice, tinted by the ramp.
 
@@ -225,7 +228,7 @@ def sparkline(values, width):
     over four samples flattens exactly the sample you wanted to see.
     """
     text = Text(no_wrap=True, overflow="crop")
-    if not values or width <= 0 or not UNICODE:
+    if not values or width <= 0 or not SPARK:
         return text
     values = list(values)
     step = max(1, math.ceil(len(values) / width))
@@ -245,7 +248,7 @@ def heat_strip(values, width):
     for i in range(0, len(values), step):
         chunk = values[i:i + step]
         avg = sum(chunk) / len(chunk)
-        text.append(BAR_FULL if UNICODE else ASCII_FULL, style=ramp(avg / 100))
+        text.append(BAR_FULL, style=ramp(avg / 100))
     return text
 
 
@@ -396,7 +399,7 @@ def disk_entries():
     return entries
 
 
-DISK_LABEL_W = 12
+DISK_LABEL_W = T.DISK_LABEL_W
 
 
 def short_mount(label, width=DISK_LABEL_W):
@@ -407,7 +410,7 @@ def short_mount(label, width=DISK_LABEL_W):
     """
     if len(label) <= width:
         return label
-    ellipsis = "…" if UNICODE else "~"
+    ellipsis = GLYPHS.ellipsis
     tail = label.rstrip("/").rsplit("/", 1)[-1]
     if tail and len(tail) + 1 <= width:
         return ellipsis + tail
@@ -480,14 +483,14 @@ def get_network_section(width):
     peak = max(list(net_sent_history) + list(net_recv_history) + [sent_s, recv_s, 1.0])
     rows = [
         meter("tx", 100 * sent_s / peak, width, value=_fmt_bytes_rate(sent_s).replace(" ", ""),
-              note=f"Σ {net.bytes_sent / 1024**3:.2f}G" if UNICODE else f"tot {net.bytes_sent / 1024**3:.2f}G"),
+              note=f"{GLYPHS.sigma} {net.bytes_sent / 1024**3:.2f}G"),
         meter("rx", 100 * recv_s / peak, width, value=_fmt_bytes_rate(recv_s).replace(" ", ""),
-              note=f"Σ {net.bytes_recv / 1024**3:.2f}G" if UNICODE else f"tot {net.bytes_recv / 1024**3:.2f}G"),
+              note=f"{GLYPHS.sigma} {net.bytes_recv / 1024**3:.2f}G"),
     ]
     if conns >= 0:
         line = Text(no_wrap=True, overflow="crop")
         line.append("    conns ", style=DIM)
-        line.append(str(conns), style="grey70")
+        line.append(str(conns), style=TEXT)
         rows.append(line)
     return Group(*rows), sent_s, recv_s
 
@@ -543,7 +546,7 @@ def get_top_processes(width, n=8):
         cells += [
             Text(f"{cpu_pct:.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
             Text(f"{mem_pct:.1f}", style=ramp(mem_pct / 25)),
-            Text(_fmt_mem(rss), style="grey62"),
+            Text(_fmt_mem(rss), style=SOFT),
         ]
         table.add_row(*cells)
     return table
@@ -605,9 +608,9 @@ def _ascii_chart(values, ylim, width, height):
         line = Text(f"{label:>{axis_w - 1}} ", style=MUTED, no_wrap=True, overflow="crop")
         for t in levels:
             if t >= top:
-                line.append("#", style=ramp(t))
+                line.append(GLYPHS.chart_full, style=ramp(t))
             elif t > bottom:
-                line.append("=", style=ramp(t))
+                line.append(GLYPHS.chart_half, style=ramp(t))
             else:
                 line.append(" ")
         rows.append(line)
@@ -641,7 +644,7 @@ def _render_chart(series, ylim, width, height):
     thin braille trace, but two overlapping fills turn to mud where they cross, so callers
     fill at most one series and draw the others as lines over it.
     """
-    if not UNICODE:
+    if GLYPHS.chart_marker is None:
         return _ascii_chart(series[0][0], ylim, width, height)
     if not _PLOTEXT_5:
         return Text(_CHART_NEEDS_PLOTEXT_5, style=MUTED)
@@ -653,7 +656,7 @@ def _render_chart(series, ylim, width, height):
             # braille packs 2x4 dots into one cell - four times the vertical resolution of
             # the block markers, and the same trick btop uses. "clear" keeps plotext from
             # painting its own black background over the terminal's.
-            plt.plot(values, marker="braille", color=color, fillx=fill)
+            plt.plot(values, marker=GLYPHS.chart_marker, color=color, fillx=fill)
         if ylim is None:
             top = nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0))
             ylim = (0, top)
@@ -670,7 +673,7 @@ def _render_chart(series, ylim, width, height):
 
 
 def _collecting():
-    return Text("  Collecting data…" if UNICODE else "  Collecting data...", style=MUTED)
+    return Text(f"  Collecting data{GLYPHS.ellipsis if GLYPHS.name != 'ascii' else '...'}", style=MUTED)
 
 
 def cpu_chart_colour():
@@ -688,10 +691,6 @@ def get_cpu_chart(width, height):
     if IS_LINUX and any(s > 0 for s in steal_history):
         series.append((list(steal_history), "Steal %", ramp_rgb(1.0), False))
     return _render_chart(series, (0, 100), width, height)
-
-
-NET_RX_RGB = ramp_rgb(0.0)     # teal  - the filled series
-NET_TX_RGB = ramp_rgb(0.55)    # amber - the line drawn over it
 
 
 def net_scale():
@@ -722,15 +721,12 @@ def _panel(renderable, title, colour, subtitle=""):
     if subtitle:
         head += f" [{MUTED}]{_sep()} {subtitle}[/{MUTED}]"
     return Panel(renderable, title=head, title_align="left", border_style=colour,
-                 box=box.ROUNDED if UNICODE else box.ASCII, padding=(0, 1))
-
-
-C_CPU, C_MEM, C_NET, C_DISK, C_PROC = "#4a6fa5", "#4a9575", "#4a6fa5", "#a5904a", "#7a5a95"
+                 box=getattr(box, GLYPHS.box), padding=T.PANEL_PADDING)
 
 
 def _sep():
     """The dot that joins subtitle parts - and the one glyph that leaked into ASCII mode."""
-    return "·" if UNICODE else "-"
+    return GLYPHS.sep
 
 
 def cpu_chart_subtitle():
@@ -748,7 +744,7 @@ def net_chart_subtitle():
     _div, unit = net_scale()
     rx = _fmt_bytes_rate(net_recv_history[-1] if net_recv_history else 0.0).replace(" ", "")
     tx = _fmt_bytes_rate(net_sent_history[-1] if net_sent_history else 0.0).replace(" ", "")
-    rx_glyph, tx_glyph = ("▇", "━") if UNICODE else ("#", "-")
+    rx_glyph, tx_glyph = GLYPHS.legend_fill, GLYPHS.legend_line
     rx_hex = "#%02x%02x%02x" % NET_RX_RGB
     tx_hex = "#%02x%02x%02x" % NET_TX_RGB
     return f"[{rx_hex}]{rx_glyph} rx[/] {rx}  [{tx_hex}]{tx_glyph} tx[/] {tx} {_sep()} {unit}"
@@ -764,17 +760,17 @@ def header_line(width):
         platform.system(), platform.system())
 
     text = Text(no_wrap=True, overflow="crop")
-    text.append(" TERMSTATS ", style="bold white on #2d6cdf")
-    text.append(f"  {platform.node()[:24]}", style="bold white")
+    text.append(" TERMSTATS ", style=f"bold {THEME.wordmark_fg} on {THEME.wordmark_bg}")
+    text.append(f"  {platform.node()[:24]}", style=f"bold {THEME.wordmark_fg}")
     text.append(f" {os_name}", style=MUTED)
     text.append("   load ", style=MUTED)
     text.append(f"{load1:.2f}", style=f"bold {ramp(load1 / (ncpu * 2))}")
     text.append(f" {load5:.2f} {load15:.2f}", style=DIM)
     text.append(f"   {ncpu} cpu", style=MUTED)
     text.append("   up ", style=MUTED)
-    text.append(up, style="grey70")
+    text.append(up, style=TEXT)
     text.append("   proc ", style=MUTED)
-    text.append(str(len(psutil.pids())), style="grey70")
+    text.append(str(len(psutil.pids())), style=TEXT)
 
     tail = Text(no_wrap=True)
     # A 16-cell CPU sparkline, tmux-status-bar style: the whole recent history in one
@@ -785,7 +781,7 @@ def header_line(width):
         tail.append("  ")
     # The wall clock is the liveness signal: a frozen dashboard and a quiet machine look
     # identical without it. It sits in the tail because the head is the identity.
-    tail.append(time.strftime("%H:%M:%S") + "  ", style="grey70")
+    tail.append(time.strftime("%H:%M:%S") + "  ", style=TEXT)
     tail.append(f"{sample_interval:g}s  ", style=MUTED)
     tail.append(f"v{__version__} ", style=FAINT)
     # Only right-align the tail when there is actually room; otherwise it collides with the
@@ -871,13 +867,13 @@ def render_dashboard(width=None, height=None):
 
     sections = [Layout(header_line(tw), name="head", size=1)]
 
-    stack_panels = [(_panel(mem_body, "memory", C_MEM), mem_h),
-                    (_panel(net_body, "network", C_NET), net_h)]
+    stack_panels = [(_panel(mem_body, "memory", THEME.panel("memory")), mem_h),
+                    (_panel(net_body, "network", THEME.panel("network")), net_h)]
     if disk_in_stack:
-        stack_panels.append((_panel(disk_body, "disk", C_DISK), disk_h))
+        stack_panels.append((_panel(disk_body, "disk", THEME.panel("disk")), disk_h))
     stack_panels = stack_panels[:kept_stack]
 
-    cpu_panel = _panel(cpu_body, "cpu", C_CPU)
+    cpu_panel = _panel(cpu_body, "cpu", THEME.panel("cpu"))
     top = Layout(name="top", size=top_h)
 
     # ⚠️ The last card everywhere takes ratio instead of a fixed size, so slack is absorbed
@@ -899,16 +895,16 @@ def render_dashboard(width=None, height=None):
     sections.append(top)
 
     if not disk_in_stack and kept_stack:
-        sections.append(Layout(_panel(disk_body, "disk", C_DISK), name="disk", size=disk_h))
+        sections.append(Layout(_panel(disk_body, "disk", THEME.panel("disk")), name="disk", size=disk_h))
 
     if charts_h:
         chart_w = (tw - 1) // 2 - 4
         chart_h = charts_h - 2
         charts = Layout(name="charts", size=charts_h)
         charts.split_row(
-            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", C_CPU,
+            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", THEME.panel("cpu"),
                           cpu_chart_subtitle()), name="c1"),
-            Layout(_panel(get_net_chart(chart_w, chart_h), "network", C_NET,
+            Layout(_panel(get_net_chart(chart_w, chart_h), "network", THEME.panel("network"),
                           net_chart_subtitle()), name="c2"),
         )
         sections.append(charts)
@@ -917,7 +913,7 @@ def render_dashboard(width=None, height=None):
     # it is worth drawing; below that it is a stump, and a stump is worse than the space.
     if proc_h >= 5:
         procs = get_top_processes(tw - 4, n=max(proc_h - 3, 1))
-        sections.append(Layout(_panel(procs, "processes", C_PROC, "by cpu"), name="proc"))
+        sections.append(Layout(_panel(procs, "processes", THEME.panel("processes"), "by cpu"), name="proc"))
 
     # ⚠️ The budget above is a plan, not a guarantee: a narrow terminal, a machine with
     # several mountpoints or Linux's extra steal row can all push the fixed sizes past the
@@ -1077,9 +1073,24 @@ def _fail(message):
     sys.exit(2)
 
 
+_RICH_COLOR_SYSTEM = {"truecolor": "truecolor", "256": "256", "16": "standard", "mono": None}
+
+
+def configure_console():
+    """Hand rich the colour depth the capabilities decided on.
+
+    rich's own detection is good, but it does not know NO_COLOR from a request it should
+    honour completely (it keeps bold and dim), and it cannot see TERMSTATS_GLYPHS at all.
+    """
+    global console
+    console = Console(color_system=_RICH_COLOR_SYSTEM[CAPS.color],
+                      force_terminal=None if CAPS.color != "mono" else False)
+
+
 def main():
     _ensure_console_encoding()
     detect_capabilities()
+    configure_console()
     args = sys.argv[1:]
 
     if any(a in _HELP_FLAGS for a in args):

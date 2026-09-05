@@ -325,9 +325,22 @@ def test_a_stream_with_no_encoding_attribute_does_not_raise(monkeypatch):
 
 
 def test_every_glyph_the_dashboard_draws_is_in_the_probe():
-    """If a new glyph is added to the output, the probe must learn about it."""
-    for glyph in ("█", "░", "╭", "\U0001f37b", "▏", "╌"):
-        assert glyph in cli._GLYPH_PROBE
+    """If a new glyph is added to a glyph set, the probe must learn about it.
+
+    Derived from the glyph sets rather than a hand-typed list: the old list still named
+    the beer emoji, which no header has drawn since 0.2.0, and would have kept demanding
+    it forever. The box characters come from rich's box styles and are listed by hand.
+    """
+    from termstats import theme
+    drawn = set()
+    for gs in theme.GLYPH_SETS.values():
+        for field in ("bar_full", "bar_partials", "bar_empty", "bar_secondary", "peak",
+                      "spark", "sep", "legend_fill", "legend_line", "ellipsis", "sigma",
+                      "collecting", "chart_full", "chart_half"):
+            drawn.update(getattr(gs, field))
+    drawn.update("╭╰│─")
+    missing = sorted(ch for ch in drawn if ord(ch) > 127 and ch not in theme.GLYPH_PROBE)
+    assert not missing, f"drawn but not probed: {missing}"
 
 
 def test_capability_detection_follows_the_stream(monkeypatch):
