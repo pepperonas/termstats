@@ -466,16 +466,26 @@ python -m termstats      # same thing without the console script
 ### Tests
 
 ```bash
-pytest                   # the whole suite, well under a second
+pytest                   # the whole suite, about three seconds
 pytest -q tests/test_args.py
+env -u COLORTERM TERM=dumb pytest      # must be green too: the suite pins its own capabilities
 ```
 
 The exact count is on the badge at the top of this file — it is generated, not typed.
 
-The suite is pure unit tests — no sleeping, no live terminal, no network. psutil is stubbed
-with fakes so the collectors can be driven through their failure paths (an unreadable
-mountpoint, `AccessDenied` on connection counts, a process that vanishes mid-iteration), and
-the chart layer is tested both against real plotext and against a simulated plotext 6.x.
+The suite is unit tests — no sleeping, no live terminal, no network — plus three real
+`termstats --demo --once` processes that check the escape codes a 16-, 256- and truecolor
+terminal actually receive (skipped on Windows, where rich renders a pipe through the win32
+API and there is no ANSI to inspect). psutil is stubbed with fakes so the collectors can be
+driven through their failure paths (an unreadable mountpoint, `AccessDenied` on connection
+counts, a process that vanishes mid-iteration), and the chart layer is tested both against
+real plotext and against a simulated plotext 6.x.
+
+The suite **pins its own terminal capabilities** (truecolor, braille) instead of detecting
+them, so it means the same thing on every machine: green under `TERM=dumb`, `NO_COLOR=1`,
+a shell without `COLORTERM`, and on the CI runners. The first 0.4.0 run was red in all four
+CI cells because the fixture took the colour level it found in the runner's environment —
+a test that depends on the environment is not a test of the code.
 
 What it covers:
 
@@ -503,7 +513,7 @@ What it covers:
 | Footer & header | dynamic year, hint only in live mode, ASCII `(c)`, the sparkline centred by width alone |
 | Lifecycle | SIGWINCH guard and restore, sliced waits, immediate relayout with cadence resync, cursor always restored, Ctrl+C quiet |
 | Demo | the psutil surface contract against the source, byte-identical stories per seed, the story's shape, reproducible snapshots |
-| Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes |
+| Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes — in-process and, on Linux/macOS, in a fresh process per colour level |
 
 Every assertion that guards a past bug was verified by re-introducing the bug and watching
 the test go red. Do the same for new ones — a test you have not seen fail is not a guarantee.

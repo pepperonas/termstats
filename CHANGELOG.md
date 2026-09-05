@@ -90,6 +90,18 @@ and default is unchanged.
 - Render + print at 140×50: 40.9–44.1 ms per frame against 40.0–42.5 ms for 0.3.0, measured
   in three alternating rounds — noise, no measurable cost. Ramp lookups are cached.
 
+### Tests
+
+- 582 → 964 tests. New suites for the design tokens and themes, layout stability, peak
+  markers, the frame modes, footer and header, the live lifecycle, `--demo`, and the
+  Definition of Done (no hard-coded colours or glyphs, WCAG contrast per theme, `NO_COLOR`
+  and pipes, every fallback level in-process and — on Linux/macOS — in a fresh process).
+- The suite pins its own terminal capabilities instead of detecting them: the first 0.4.0
+  CI run was red in every cell because the fixture took the colour level of the runner's
+  environment. It is now green under `TERM=dumb`, `NO_COLOR=1` and without `COLORTERM`.
+- The `--no-border` geometry sweep pins what is invariant (no blank line inside the picture,
+  `TOTAL` present) rather than a row count that only held on a ten-core notebook.
+
 ## [0.3.0] - 2026-09-05
 
 Second visual pass. Everything here is additive; the command line is unchanged.

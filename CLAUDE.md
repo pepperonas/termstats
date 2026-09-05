@@ -138,7 +138,9 @@ a bare `io.StringIO()` has no `encoding` and reads as "cannot draw" in `theme.de
 **rich caches a Style's rendered escape string on the instance** (`Style._ansi`) while
 `Style.parse` hands out the same instance for the same text — one process never switches
 colour systems, but the suite does, so `test_dod.fresh_styles()` clears the lru caches, and
-three subprocess tests check the real thing (`FORCE_COLOR=1` stands in for the tty).
+three subprocess tests check the real thing (`FORCE_COLOR=1` stands in for the tty; skipped
+on Windows, where rich renders a pipe in legacy mode through the win32 API and no ANSI
+reaches the parent).
 
 CI (`.github/workflows/tests.yml`) runs Linux/macOS/Windows plus Python 3.9 and prints the
 resolved psutil/plotext/rich versions — a fresh resolve is how the plotext 6.0.0 break arrived.
