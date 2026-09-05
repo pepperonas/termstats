@@ -24,10 +24,14 @@ def test_ramp_returns_a_truecolor_hex():
     assert HEX.match(cli.ramp(1.0))
 
 
-@pytest.mark.parametrize("t", [0.0, 0.55, 1.0])
-def test_ramp_hits_its_own_stops_exactly(t):
-    expected = dict((pos, rgb) for pos, rgb in cli.RAMP)[t]
-    assert cli.ramp(t) == "#%02x%02x%02x" % expected
+def test_ramp_hits_its_own_stops_exactly():
+    """A stop is returned as designed, never re-derived through the interpolation.
+
+    Positions come from the ramp itself: the 0.2.0 version hard-coded 0.0/0.55/1.0 and
+    would have broken the day the ramp gained its desaturated idle stop.
+    """
+    for pos, rgb in cli.RAMP:
+        assert cli.ramp(pos) == "#%02x%02x%02x" % rgb, f"stop at {pos} not returned exactly"
 
 
 @pytest.mark.parametrize("t,expected", [(-5.0, 0.0), (0.0, 0.0), (1.0, 1.0), (99.0, 1.0)])

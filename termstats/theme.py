@@ -9,6 +9,7 @@ decorative glyph of its own.
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 from functools import lru_cache
@@ -261,55 +262,296 @@ class Theme(NamedTuple):
     wordmark_bg: str
     wordmark_fg: str
     bg: str            # the terminal background the theme is designed for (contrast tests)
+    bands16: Tuple[str, ...]   # the ramp on a 16-colour terminal, as rich colour names
 
     def panel(self, name: str) -> str:
         return dict(self.panels).get(name, self.muted)
 
 
-# The 0.3.0 look, moved here verbatim: the greys are rich's grey30/42/54/62/70 as hex, so
-# nothing on screen changed when the tokens left cli.py.
+def _stops(*hexes_at):
+    return tuple((pos, rgb_of(h)) for pos, h in hexes_at)
+
+
+# Every ramp runs idle -> cool -> warm -> hot with OKLab lightness that never decreases,
+# so it still reads as a scale in greyscale. The idle stop is deliberately desaturated:
+# an idle machine should look calm, not cold, so that load stands out when it comes.
+# Red at usable chroma is darker than yellow in sRGB, which is why cool and warm sit a
+# little lower than the vendor palettes' own picks - the alternative is a pink "hot".
 THEMES = {
     "default": Theme(
         name="default",
-        stops=((0.00, (0x5A, 0xD8, 0xC8)), (0.55, (0xF0, 0xBE, 0x5A)), (1.00, (0xF0, 0x6E, 0x78))),
+        stops=_stops((0.00, "#5f7f80"), (0.30, "#3aa898"), (0.60, "#c0922c"), (1.00, "#ff7b78")),
         text="#b2b2b2", soft="#9e9e9e", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
         track="#4e4e4e",
         panels=(("cpu", "#4a6fa5"), ("memory", "#4a9575"), ("network", "#4a6fa5"),
                 ("disk", "#a5904a"), ("processes", "#7a5a95")),
         wordmark_bg="#2d6cdf", wordmark_fg="#ffffff", bg="#1a1b26",
+        bands16=("cyan", "bright_cyan", "yellow", "bright_red"),
+    ),
+    "mono": Theme(
+        name="mono",
+        stops=_stops((0.00, "#5c5c5c"), (0.35, "#8a8a8a"), (0.70, "#b8b8b8"), (1.00, "#e6e6e6")),
+        text="#c8c8c8", soft="#a8a8a8", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
+        track="#3c3c3c",
+        panels=(("cpu", "#7a7a7a"), ("memory", "#7a7a7a"), ("network", "#7a7a7a"),
+                ("disk", "#7a7a7a"), ("processes", "#7a7a7a")),
+        wordmark_bg="#dcdcdc", wordmark_fg="#101010", bg="#121212",
+        bands16=("bright_black", "white", "bright_white"),
+    ),
+    "nord": Theme(
+        name="nord",
+        stops=_stops((0.00, "#4c566a"), (0.30, "#5f8f8f"), (0.60, "#b0925f"), (1.00, "#d08770")),
+        text="#d8dee9", soft="#b8c0cc", dim="#8a94a6", muted="#616e88", faint="#4c566a",
+        track="#3b4252",
+        panels=(("cpu", "#5e81ac"), ("memory", "#8fbcbb"), ("network", "#81a1c1"),
+                ("disk", "#ebcb8b"), ("processes", "#b48ead")),
+        wordmark_bg="#5e81ac", wordmark_fg="#eceff4", bg="#2e3440",
+        bands16=("cyan", "yellow", "red"),
+    ),
+    "gruvbox": Theme(
+        name="gruvbox",
+        stops=_stops((0.00, "#665c54"), (0.30, "#5f8f60"), (0.60, "#b08420"), (1.00, "#fb4934")),
+        text="#ebdbb2", soft="#bdae93", dim="#a89984", muted="#7c6f64", faint="#504945",
+        track="#3c3836",
+        panels=(("cpu", "#83a598"), ("memory", "#b8bb26"), ("network", "#458588"),
+                ("disk", "#fabd2f"), ("processes", "#d3869b")),
+        wordmark_bg="#d79921", wordmark_fg="#1d2021", bg="#282828",
+        bands16=("green", "yellow", "bright_red"),
+    ),
+    "catppuccin-mocha": Theme(
+        name="catppuccin-mocha",
+        stops=_stops((0.00, "#585b70"), (0.30, "#5fa89c"), (0.60, "#bfa878"), (1.00, "#f38ba8")),
+        text="#cdd6f4", soft="#a6adc8", dim="#9399b2", muted="#6c7086", faint="#585b70",
+        track="#313244",
+        panels=(("cpu", "#89b4fa"), ("memory", "#a6e3a1"), ("network", "#89dceb"),
+                ("disk", "#f9e2af"), ("processes", "#cba6f7")),
+        wordmark_bg="#89b4fa", wordmark_fg="#1e1e2e", bg="#1e1e2e",
+        bands16=("cyan", "yellow", "bright_magenta"),
+    ),
+    # Colour-blind safe: the viridis ramp is lightness-monotone by construction and keeps
+    # its order under both deuteranopia and protanopia.
+    "viridis": Theme(
+        name="viridis",
+        stops=_stops((0.00, "#440154"), (0.25, "#3b528b"), (0.50, "#21918c"),
+                     (0.75, "#5ec962"), (1.00, "#fde725")),
+        text="#c8c8c8", soft="#a8a8a8", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
+        track="#3c3c3c",
+        panels=(("cpu", "#5c7aa5"), ("memory", "#4f9d8a"), ("network", "#5c7aa5"),
+                ("disk", "#8f9a3a"), ("processes", "#6d5091")),
+        wordmark_bg="#fde725", wordmark_fg="#1a1a1a", bg="#161616",
+        bands16=("magenta", "blue", "cyan", "green", "bright_yellow"),
     ),
 }
+
+THEME_ENV = "TERMSTATS_THEME"
+
+
+def theme_names() -> Tuple[str, ...]:
+    return tuple(THEMES)
+
+
+def resolve_theme(name: Optional[str]) -> Theme:
+    """Theme by name; None or "" means the default. Unknown names raise KeyError."""
+    return THEMES[name or DEFAULT_THEME]
+
+
+def quantised(ramp: "Ramp", system: str, samples: int = 32) -> Tuple[int, ...]:
+    """The ramp as rich would render it on a 256- or 16-colour terminal.
+
+    Returns the palette index rich picks for each of `samples` positions - the thing to
+    check is not the truecolor design but what survives quantisation.
+    """
+    from rich.color import Color, ColorSystem
+    target = {"256": ColorSystem.EIGHT_BIT, "16": ColorSystem.STANDARD}[system]
+    out = []
+    for i in range(samples):
+        colour = Color.parse(ramp.hex(i / (samples - 1))).downgrade(target)
+        out.append(colour.number if colour.number is not None else -1)
+    return tuple(out)
+
+
+class BandedRamp:
+    """The ramp for a terminal that cannot show truecolor - monotone by construction.
+
+    On 256 colours rich's nearest-colour choice can leave a palette index and come back
+    to it a few cells later, and at that point the meter is no longer a scale. Here the
+    ramp is sampled once, quantised, and any colour that would reappear is replaced by
+    the band before it. On 16 colours nearest-colour is hopeless (a teal->amber->red ramp
+    collapses to two of them), so each theme names its bands outright.
+    """
+
+    def __init__(self, ramp: "Ramp", system: str, bands16: Sequence[str] = ()):
+        self.system = system
+        if system == "16":
+            self._names = tuple(bands16) or ("cyan", "yellow", "red")
+        else:
+            from rich.color import Color, ColorSystem
+            names, seen, last = [], set(), None
+            for i in range(32):
+                colour = Color.parse(ramp.hex(i / 31)).downgrade(ColorSystem.EIGHT_BIT)
+                name = f"color({colour.number})"
+                if name != last and name in seen:
+                    name = last                      # never come back to an earlier band
+                names.append(name)
+                seen.add(name)
+                last = name
+            self._names = tuple(names)
+
+    def name(self, t: float) -> str:
+        t = 0.0 if t != t else max(0.0, min(1.0, t))
+        return self._names[min(int(t * len(self._names)), len(self._names) - 1)]
+
+    @property
+    def band_count(self) -> int:
+        return bands(self._names)
+
+
+def bands(sequence: Sequence) -> int:
+    """How many distinct runs a quantised ramp has - and 0 if a colour ever comes back."""
+    runs, seen = [], set()
+    for value in sequence:
+        if not runs or runs[-1] != value:
+            if value in seen:
+                return 0          # A B A: the quantised ramp is no longer a scale
+            runs.append(value)
+            seen.add(value)
+    return len(runs)
 
 DEFAULT_THEME = "default"
 
 
-def _lerp_rgb(a: RGB, b: RGB, k: float) -> RGB:
-    return tuple(round(a[i] + (b[i] - a[i]) * k) for i in range(3))  # type: ignore[return-value]
+# --- OKLab ---------------------------------------------------------------------------
+#
+# Björn Ottosson's perceptual space, ~30 lines and no dependency. Interpolating in sRGB
+# passes through a grey-brown trough between teal and amber (both channels fall before
+# the other rises) and the ramp reads dirty; in OKLab the path keeps its chroma. L is a
+# genuine lightness, so "monotone L" means the ramp still reads as a scale in greyscale
+# and for colour-blind readers.
+
+Lab = Tuple[float, float, float]
+
+
+def _srgb_to_linear(c: float) -> float:
+    c /= 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _linear_to_srgb(c: float) -> float:
+    c = max(0.0, min(1.0, c))
+    return 255.0 * (12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055)
+
+
+def _cbrt(x: float) -> float:
+    return math.copysign(abs(x) ** (1.0 / 3.0), x)
+
+
+def rgb_to_oklab(rgb: Sequence[int]) -> Lab:
+    r, g, b = (_srgb_to_linear(c) for c in rgb)
+    l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b
+    m = 0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b
+    s_ = 0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b
+    l, m, s_ = _cbrt(l), _cbrt(m), _cbrt(s_)
+    return (0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s_,
+            1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s_,
+            0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s_)
+
+
+def _oklab_to_linear(lab: Lab) -> Tuple[float, float, float]:
+    L, a, b = lab
+    l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s_ = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    return (+4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s_,
+            -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s_,
+            -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s_)
+
+
+def oklab_to_rgb(lab: Lab) -> RGB:
+    return tuple(int(round(_linear_to_srgb(c))) for c in _oklab_to_linear(lab))  # type: ignore[return-value]
+
+
+def _in_gamut(lab: Lab) -> bool:
+    return all(-1e-6 <= c <= 1.0 + 1e-6 for c in _oklab_to_linear(lab))
+
+
+def oklab_to_rgb_in_gamut(lab: Lab) -> RGB:
+    """Map into sRGB by shrinking chroma, never by clipping channels.
+
+    Clipping shifts the hue (a red pushed past the gamut comes back orange); pulling the
+    chroma toward grey at the same L keeps hue and lightness, which is what a lightness
+    repair needs.
+    """
+    if _in_gamut(lab):
+        return oklab_to_rgb(lab)
+    L, a, b = lab
+    lo, hi = 0.0, 1.0
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        if _in_gamut((L, a * mid, b * mid)):
+            lo = mid
+        else:
+            hi = mid
+    return oklab_to_rgb((L, a * lo, b * lo))
+
+
+def lightness(rgb: Sequence[int]) -> float:
+    return rgb_to_oklab(rgb)[0]
+
+
+def monotone_stops(stops: Sequence[Tuple[float, RGB]]) -> Tuple[Tuple[float, RGB], ...]:
+    """Enforce non-decreasing OKLab lightness along the ramp.
+
+    A stop darker than its predecessor is lifted to the predecessor's L (hue and chroma
+    kept, then gamut-mapped). Vendor palettes need this at the hot end: red at usable
+    chroma is darker than yellow in sRGB, so a naive teal -> amber -> red ramp dips at the
+    very point that should stand out most.
+    """
+    out = []
+    floor = -1.0
+    for pos, rgb in stops:
+        L, a, b = rgb_to_oklab(rgb)
+        if L < floor:
+            rgb = oklab_to_rgb_in_gamut((floor, a, b))
+            L = floor
+        floor = max(floor, L)
+        out.append((float(pos), tuple(int(c) for c in rgb)))
+    return tuple(out)
 
 
 class Ramp:
-    """The shared colour ramp of a theme.
+    """The shared colour ramp of a theme, interpolated in OKLab.
 
-    ramp.rgb(t) / ramp.hex(t) for t in 0..1. Positions are rounded to a millionth and
-    cached: bar cells ask for the same i/width positions every frame, so a frame with a
-    few hundred cells costs a few hundred dict lookups, not interpolations. A coarser key
-    (a thousandth was tried) shifts single channels by one - invisible, but not identical.
+    ramp.rgb(t) / ramp.hex(t) for t in 0..1. The stops are made lightness-monotone at
+    construction (see monotone_stops) and returned exactly when hit. Positions are rounded
+    to a millionth and cached: bar cells ask for the same i/width positions every frame, so
+    a frame with a few hundred cells costs a few hundred dict lookups, not interpolations.
     """
 
     def __init__(self, stops: Sequence[Tuple[float, RGB]]):
-        self.stops = tuple((float(p), tuple(int(c) for c in rgb)) for p, rgb in stops)
-        self._rgb = lru_cache(maxsize=2048)(self._compute)
+        self.designed = tuple((float(p), tuple(int(c) for c in rgb)) for p, rgb in stops)
+        self.stops = monotone_stops(self.designed)
+        self._labs = tuple((pos, rgb_to_oklab(rgb)) for pos, rgb in self.stops)
+        self._rgb = lru_cache(maxsize=4096)(self._compute)
+
+    @property
+    def repaired(self) -> bool:
+        """True when monotone_stops had to lift a designed stop."""
+        return self.stops != self.designed
 
     def _compute(self, key: int) -> RGB:
         t = key / 1_000_000.0
         for pos, rgb in self.stops:
             if abs(t - pos) < 1e-9:
                 return rgb                       # a stop is returned exactly, never re-derived
-        for (lo, c_lo), (hi, c_hi) in zip(self.stops, self.stops[1:]):
+        for (lo, lab_lo), (hi, lab_hi) in zip(self._labs, self._labs[1:]):
             if t <= hi:
                 k = 0.0 if hi == lo else (t - lo) / (hi - lo)
-                return _lerp_rgb(c_lo, c_hi, k)
+                lab = tuple(lab_lo[i] + (lab_hi[i] - lab_lo[i]) * k for i in range(3))
+                return oklab_to_rgb_in_gamut(lab)  # type: ignore[arg-type]
         return self.stops[-1][1]
+
+    def lightness(self, t: float) -> float:
+        return lightness(self.rgb(t))
 
     def rgb(self, t: float) -> RGB:
         t = 0.0 if t != t else max(0.0, min(1.0, t))      # t != t catches NaN

@@ -7,6 +7,7 @@ Top Processes, and live history graphs - all in your terminal.
 """
 
 import math
+import os
 import platform
 import sys
 import time
@@ -118,19 +119,30 @@ MUTED = DIM = FAINT = SOFT = TEXT = TRACK = ""
 NET_RX_RGB = NET_TX_RGB = (0, 0, 0)
 
 
-def set_theme(name):
-    """Activate a theme: the ramp, every text tone, and the two network series colours."""
-    global THEME, RAMP_OBJ, RAMP, MUTED, DIM, FAINT, SOFT, TEXT, TRACK, NET_RX_RGB, NET_TX_RGB
-    THEME = T.THEMES[name]
+BANDED = None      # BandedRamp on 256-/16-colour terminals, None on truecolor and mono
+
+
+def set_theme(name, color=None):
+    """Activate a theme: the ramp, every text tone, and the two network series colours.
+
+    `color` is the terminal's colour depth (CAPS.color when omitted). Below truecolor the
+    ramp is served from a banded palette that is monotone by construction - see
+    theme.BandedRamp for why nearest-colour quantisation is not enough.
+    """
+    global THEME, RAMP_OBJ, RAMP, BANDED, MUTED, DIM, FAINT, SOFT, TEXT, TRACK
+    global NET_RX_RGB, NET_TX_RGB
+    THEME = T.resolve_theme(name)
     RAMP_OBJ = T.Ramp(THEME.stops)
     RAMP = RAMP_OBJ.stops
+    color = CAPS.color if color is None else color
+    BANDED = T.BandedRamp(RAMP_OBJ, color, THEME.bands16) if color in ("256", "16") else None
     MUTED, DIM, FAINT = THEME.muted, THEME.dim, THEME.faint
     SOFT, TEXT, TRACK = THEME.soft, THEME.text, THEME.track
     NET_RX_RGB = RAMP_OBJ.rgb(0.0)      # the filled series
     NET_TX_RGB = RAMP_OBJ.rgb(0.55)     # the line drawn over it
 
 
-set_theme(T.DEFAULT_THEME)
+set_theme(T.DEFAULT_THEME, color="truecolor")
 
 
 def ramp_rgb(t):
@@ -139,11 +151,14 @@ def ramp_rgb(t):
 
 
 def ramp(t):
-    """Colour at position t (0..1) on the shared ramp, as a hex string.
+    """Colour at position t (0..1) on the shared ramp, as a rich style string.
 
-    Returned as truecolor; rich quantises it to 256 or 16 colours on terminals that
-    need it, so there is deliberately no palette table here.
+    Truecolor hex on terminals that can show it; a banded palette name on 256- and
+    16-colour terminals, where letting rich pick the nearest colour per cell breaks the
+    monotone scale.
     """
+    if BANDED is not None:
+        return BANDED.name(t)
     return RAMP_OBJ.hex(t)
 
 
@@ -1008,6 +1023,8 @@ _VERSION_FLAGS = ("-V", "--version", "-version")
 _LIVE_FLAGS = ("-l", "--live", "-live")
 _ONCE_FLAGS = ("-1", "--once", "-once")
 _INTERVAL_FLAGS = ("-i", "--interval", "-interval")
+_THEME_FLAGS = ("-t", "--theme", "-theme")
+_LIST_THEMES_FLAGS = ("--list-themes", "-list-themes")
 
 
 def print_help():
@@ -1023,10 +1040,18 @@ def print_help():
     print(f"  -i, --interval N    Live refresh interval in seconds (default: {DEFAULT_INTERVAL:g})")
     print("  -1, --once          Force a single snapshot and exit")
     print("  -l, --live          Force the live dashboard, even when piped")
+    print(f"  -t, --theme NAME    Colour theme: {', '.join(T.theme_names())}")
+    print("      --list-themes   Show every theme with its ramp and exit")
     print("  -V, --version       Show version")
     print("  -h, --help          Show this help")
     print()
-    print("Long options also work with a single dash: -live, -once, -interval, -version, -help")
+    print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
+    print()
+    print("Environment:")
+    print(f"  {T.THEME_ENV}=NAME      Default theme (the flag wins)")
+    print("  TERMSTATS_GLYPHS=LEVEL   braille | block | ascii (default: detected)")
+    print("  TERMSTATS_NERD_FONT=1    Icons in panel titles (needs a Nerd Font)")
+    print("  NO_COLOR=1               No colour at all; TERM=dumb also drops to ASCII")
     print()
     print("Examples:")
     print("  termstats           Live dashboard (Ctrl+C to exit)")
@@ -1087,6 +1112,24 @@ def configure_console():
                       force_terminal=None if CAPS.color != "mono" else False)
 
 
+def print_themes():
+    """`--list-themes`: every theme with its ramp, and how many bands survive quantisation."""
+    swatch_w = 24
+    console.print(f"[{MUTED}]{'theme':18s} ramp{' ' * (swatch_w - 4)}  256  16[/]")
+    for name in T.theme_names():
+        theme = T.resolve_theme(name)
+        r = T.Ramp(theme.stops)
+        swatch = Text(no_wrap=True)
+        for i in range(swatch_w):
+            swatch.append(GLYPHS.bar_full, style=r.hex(i / (swatch_w - 1)))
+        line = Text(f"{name:18s}", style=TEXT if name == THEME.name else DIM)
+        line.append_text(swatch)
+        b256 = T.BandedRamp(r, "256").band_count
+        b16 = T.BandedRamp(r, "16", theme.bands16).band_count
+        line.append(f"  {b256:3d}  {b16:2d}", style=MUTED)
+        console.print(line)
+
+
 def main():
     _ensure_console_encoding()
     detect_capabilities()
@@ -1103,6 +1146,8 @@ def main():
 
     interval = DEFAULT_INTERVAL
     mode = None  # None = decide from the terminal
+    theme_name = os.environ.get(T.THEME_ENV, "").strip() or None
+    list_themes = False
 
     i = 0
     while i < len(args):
@@ -1115,6 +1160,13 @@ def main():
             if mode == "live":
                 _fail("'--live' and '--once' are mutually exclusive")
             mode = "once"
+        elif arg in _LIST_THEMES_FLAGS:
+            list_themes = True
+        elif arg in _THEME_FLAGS:
+            if i + 1 >= len(args):
+                _fail(f"option '{arg}' needs a theme name ({', '.join(T.theme_names())})")
+            theme_name = args[i + 1]
+            i += 1
         elif arg in _INTERVAL_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs an interval in seconds")
@@ -1129,6 +1181,14 @@ def main():
         else:
             _fail(f"unknown option '{arg}'")
         i += 1
+
+    if theme_name is not None and theme_name not in T.THEMES:
+        _fail(f"unknown theme '{theme_name}' - choose one of: {', '.join(T.theme_names())}")
+    set_theme(theme_name)
+
+    if list_themes:
+        print_themes()
+        sys.exit(0)
 
     if mode is None:
         mode = "live" if _stdout_is_interactive() else "once"
