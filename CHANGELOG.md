@@ -11,6 +11,37 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-05
+
+### Fixed
+
+- **Windows Terminal ran in 16 colours.** It exports neither `TERM` nor `COLORTERM`, only
+  `WT_SESSION` ([microsoft/terminal#11057](https://github.com/microsoft/terminal/issues/11057)
+  is still open), and the detection chain read the missing `TERM` as a basic terminal — every
+  theme was quantised to 16 bands on a terminal that draws 24-bit colour. `WT_SESSION` is now
+  a truecolor signal, ranked with `COLORTERM`, and a completely silent environment on Windows
+  (a bare console window) falls back to the Windows build: 24-bit colour from Windows 10 1703
+  (build 15063), 16 colours before. `NO_COLOR` and `TERM=dumb` still win over both.
+- The emulated Windows load average is asked for during priming, so its five-second
+  sampler starts before the first frame rather than with it.
+
+### Added
+
+- A PowerShell smoke test in CI on the Windows runner: `termstats --once > file` under
+  `pwsh` must come back as UTF-8 with the bar glyph intact (proves the cp1252 widening and
+  PowerShell 7.4's byte-preserving redirection together), and a redirected bare `termstats`
+  must still print and exit.
+
+### Documentation
+
+- README: `WT_SESSION` in the environment table and the detection order; the platform table
+  says what the load average is on Windows (psutil's emulation, `0.00` for the first five
+  seconds — the old "requires Python 3.12+" footnote was wrong), that resize lands with the
+  next refresh there, and that the connection count needs root on macOS rather than admin
+  on Windows. Troubleshooting entries for flat colours in Windows Terminal, garbled
+  redirected files in PowerShell 5.1 / 7.0–7.3, boxes in the classic console window, and
+  the PowerShell spelling of the `ts` alias.
+
 ## [0.4.0] - 2026-09-05
 
 Visual polish, end to end: one place for every colour and glyph, six themes, a layout that

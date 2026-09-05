@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.0**, 964 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.1**, 988 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -48,7 +48,7 @@ termstats/
 │   ├── cli.py        # collectors, meters, charts, layout budget, run modes, arg parsing, main()
 │   ├── theme.py      # EVERY colour and glyph: GlyphSets, spacing/format tokens, OKLab, 6 themes
 │   └── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
-├── tests/            # 964 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 988 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/demo.tape   # VHS script: `vhs tools/demo.tape` -> termstats-demo.gif
 ├── .github/workflows/tests.yml   # Linux/macOS/Windows + py3.9; badges.yml refreshes the JSON
@@ -248,6 +248,33 @@ plays 60 frames in a tight loop before the first visible one. Story period 150: 
 spike 46–74, disk fills, processes react; the first visible frame (63) lands on the spike.
 `set_demo(source)` rebinds the module-level `psutil`. A **DEMO** badge sits in the header's
 fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last 60s`).
+
+## Windows (0.4.1)
+
+Windows was "supported" by CI and never looked at in PowerShell. Two things came out of it:
+
+- **Windows Terminal exports neither `TERM` nor `COLORTERM`, only `WT_SESSION`**
+  (microsoft/terminal#11057, still open). `_color_from_env` read the empty `TERM` as a
+  16-colour terminal and `configure_console()` forced rich onto `standard` — every theme ran
+  in 16 bands on a terminal that draws 24-bit colour, and rich alone would have detected it.
+  `WT_SESSION` now ranks with `COLORTERM`; a completely silent environment on Windows (bare
+  conhost) is decided by `_windows_build()` (`sys.getwindowsversion().build`, ≥ 15063 =
+  Windows 10 1703 = truecolor). `NO_COLOR` and `TERM=dumb` still win. `detect()` passes the
+  build in; `_color_from_env(env, windows_build=None)` stays a pure function for the tests.
+- The Windows CI step runs under **Git Bash** (`defaults: run: shell: bash`). A second step
+  under `pwsh` now redirects `termstats --once` to a file and requires the bar glyph back in
+  UTF-8 — that proves `_ensure_console_encoding()` AND PowerShell 7.4's byte-preserving
+  redirection in one go, and a redirected bare `termstats` must still print and exit.
+
+Things that stay Windows-shaped and are documented, not worked around: PowerShell 5.1 and
+7.0–7.3 decode native output through `[Console]::OutputEncoding` (OEM code page) and write
+mojibake for braille/blocks (user fix: set it to UTF-8, or `TERMSTATS_GLYPHS=ascii`); the
+classic conhost fonts have no braille (`TERMSTATS_GLYPHS=block`); no `SIGWINCH`, so a resize
+lands with the next tick; `psutil.getloadavg()` is emulated there and reads `0.00` for its
+first five seconds — `_prime_measurements()` asks for it early so that clock starts before
+the first frame (the README used to blame "Python 3.12+", which was wrong); `net_connections()`
+does not need admin on Windows — it needs **root on macOS**, where the row is omitted.
+Pins: `tests/test_windows.py` (7 mutations caught on the first run).
 
 ## Screenshots
 

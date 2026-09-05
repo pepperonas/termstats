@@ -20,9 +20,12 @@ from typing import NamedTuple, Optional, Sequence, Tuple
 #
 # Colour depth and glyph level are decided ONCE at start-up, from the environment and the
 # stream, and never re-probed per frame. Precedence for colour: NO_COLOR wins over
-# everything (it is a request from the user, not a hint); then TERM=dumb; then FORCE_COLOR
-# / COLORTERM / TERM say how deep. Glyphs: TERMSTATS_GLYPHS overrides, TERM=dumb forces
-# ASCII, and a stream that cannot encode the probe forces ASCII too.
+# everything (it is a request from the user, not a hint); then TERM=dumb; then COLORTERM
+# and WT_SESSION (Windows Terminal exports neither TERM nor COLORTERM, only that one -
+# microsoft/terminal#11057), then TERM says how deep. A silent environment on Windows is a
+# plain conhost, which has drawn 24-bit colour since Windows 10 1703: the build decides.
+# Glyphs: TERMSTATS_GLYPHS overrides, TERM=dumb forces ASCII, and a stream that cannot
+# encode the probe forces ASCII too.
 # ---------------------------------------------------------------------------------
 
 COLOR_LEVELS = ("truecolor", "256", "16", "mono")
@@ -47,7 +50,21 @@ def stream_can_draw(stream, probe: str = GLYPH_PROBE) -> bool:
     return True
 
 
-def _color_from_env(env) -> str:
+CONHOST_TRUECOLOR_BUILD = 15063   # Windows 10 1703: the console host learned 24-bit colour
+
+
+def _windows_build() -> Optional[int]:
+    """The Windows build number, None anywhere else (or when it cannot be read)."""
+    getwindowsversion = getattr(sys, "getwindowsversion", None)
+    if getwindowsversion is None:
+        return None
+    try:
+        return int(getwindowsversion().build)
+    except Exception:
+        return None
+
+
+def _color_from_env(env, windows_build: Optional[int] = None) -> str:
     if env.get("NO_COLOR", "") != "":
         return "mono"
     term = env.get("TERM", "")
@@ -56,9 +73,16 @@ def _color_from_env(env) -> str:
     colorterm = env.get("COLORTERM", "").lower()
     if colorterm in ("truecolor", "24bit"):
         return "truecolor"
+    if env.get("WT_SESSION", "") != "":
+        return "truecolor"
     if "256" in term:
         return "256"
-    if term in ("", "xterm", "screen", "tmux", "linux", "vt100", "ansi"):
+    if term == "":
+        # Nothing spoke. On Windows that is a bare console host; elsewhere assume little.
+        if windows_build is not None and windows_build >= CONHOST_TRUECOLOR_BUILD:
+            return "truecolor"
+        return "16"
+    if term in ("xterm", "screen", "tmux", "linux", "vt100", "ansi"):
         return "16"
     return "256"
 
@@ -78,7 +102,7 @@ def detect(env=None, stream=None) -> Capabilities:
     env = os.environ if env is None else env
     stream = sys.stdout if stream is None else stream
     return Capabilities(
-        color=_color_from_env(env),
+        color=_color_from_env(env, _windows_build()),
         glyphs=_glyphs_from_env(env, stream),
         nerd=env.get("TERMSTATS_NERD_FONT", "") in ("1", "true", "yes"),
     )

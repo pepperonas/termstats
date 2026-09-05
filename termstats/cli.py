@@ -1328,6 +1328,12 @@ def _prime_measurements():
         psutil.disk_io_counters()
     except Exception:
         pass
+    try:
+        # Windows emulates the load average with a sampler that reads 0.00 for its first
+        # five seconds; asking now starts that clock before the first frame, not with it.
+        psutil.getloadavg()
+    except Exception:
+        pass
 
 
 def _schedule_tick(next_tick, now, interval):

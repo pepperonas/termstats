@@ -149,10 +149,33 @@ pipx install --editable .    # or: pip install -e .
 An editable install points at the checkout, so `git pull` (or your own edits)
 take effect immediately — no reinstall needed.
 
+### Windows
+
+The same commands work in PowerShell; pipx puts `termstats.exe` into
+`%USERPROFILE%\.local\bin` (run `pipx ensurepath` once). Use **Windows Terminal**: it draws
+the braille charts and 24-bit colour, and termstats recognises it through `WT_SESSION`. The
+classic console window works too, but its fonts have no braille — start it with
+`$env:TERMSTATS_GLYPHS = 'block'`. Resizing takes effect with the next refresh there
+(Windows has no `SIGWINCH`), and see [Troubleshooting](#troubleshooting) before redirecting
+output in Windows PowerShell 5.1.
+
+### A shorter name
+
+Two letters are enough at the prompt. It is a shell alias, not a second command — there is
+deliberately no `stats` executable:
+
+```bash
+alias ts=termstats          # bash / zsh: put it in ~/.zshrc or ~/.bashrc
+```
+
+```powershell
+Set-Alias ts termstats      # PowerShell: put it in $PROFILE
+```
+
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.4.0
+termstats --version   # -> termstats 0.4.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -251,11 +274,14 @@ is drawn from four named colours the theme chooses itself.
 | `TERMSTATS_NERD_FONT=1` | Prefix panel titles with Nerd Font icons |
 | `NO_COLOR` | Any value: no colour and no bold/dim at all ([no-color.org](https://no-color.org)) |
 | `COLORTERM=truecolor` / `24bit` | Enables 24-bit colour where `TERM` alone would suggest 256 |
+| `WT_SESSION` | Set by Windows Terminal, which exports neither `TERM` nor `COLORTERM`; read as 24-bit colour |
 | `TERM=dumb` | ASCII glyphs and no colour |
 
-Detection order for colour is `NO_COLOR` → `TERM=dumb` → `COLORTERM` → `TERM`, and for
-glyphs `TERMSTATS_GLYPHS` → `TERM=dumb` → whether stdout can encode the drawing characters.
-Nothing is read from a config file; there is none.
+Detection order for colour is `NO_COLOR` → `TERM=dumb` → `COLORTERM` → `WT_SESSION` →
+`TERM`, and for glyphs `TERMSTATS_GLYPHS` → `TERM=dumb` → whether stdout can encode the
+drawing characters. When nothing at all is set on Windows — a bare console window — the
+Windows build decides: 24-bit colour from Windows 10 1703 on, 16 colours before. Nothing is
+read from a config file; there is none.
 
 ### Choosing the mode
 
@@ -330,7 +356,8 @@ ends up last takes the leftover lines so nothing is left blank.
 
 The dashboard therefore looks different on a 24-line terminal than on a 60-line one, by
 design. Widen or lengthen the window and more of it appears — a resize is picked up at once
-(`SIGWINCH`), not at the next refresh.
+(`SIGWINCH`), not at the next refresh. Windows has no `SIGWINCH`; there the new size lands
+with the next refresh, half a second later at most.
 
 When columns are what you are short of, `--compact` drops the padding inside every panel
 (two more bar cells per row) and `--no-border` replaces the frames with a title rule above
@@ -348,12 +375,14 @@ blank line inside the picture, every section whole or absent.
 | Disk usage | Yes | Yes | Yes |
 | Disk I/O speed | Yes | Yes | Yes |
 | Network throughput | Yes | Yes | Yes |
-| Connection count | Yes | Yes | Requires admin |
+| Connection count | Yes | Root only | Yes |
 | Top processes | Yes | Yes | Yes |
 | Live charts | Yes | Yes | Yes |
 | Load average | Yes | Yes | Yes* |
+| Resize | Immediate | Immediate | Next refresh |
 
-\* Windows `getloadavg()` requires Python 3.12+
+\* Windows has no load average; psutil emulates one from a sampler thread that reads
+`0.00` for its first five seconds after start.
 
 Panels that cannot be filled degrade quietly rather than failing: an unreadable partition is
 skipped, and a denied connection count is omitted instead of shown as zero.
@@ -644,8 +673,9 @@ pipx runpip termstats install 'plotext<6'    # or: pip install 'plotext<6'
 **Charts read `Charts need plotext 5.x`** — same cause, but termstats 1.1.1+ now degrades to
 this note instead of crashing. Same fix as above.
 
-**Connection count missing on Windows** — `psutil.net_connections()` needs administrator
-rights there. The row is omitted rather than shown as zero.
+**Connection count missing** — `psutil.net_connections()` needs root on macOS, and any
+platform may answer `AccessDenied` under a restricted account. The row is omitted rather
+than shown as zero.
 
 **Panels are missing** — the layout drops what does not fit rather than drawing it
 off-screen. Make the window taller: the charts need about 13 spare lines, the process list
@@ -678,6 +708,22 @@ table, so a longer interval is also the cheaper one on a small machine.
 (`termstats > out.txt`) and Windows defaults that stream to cp1252, which cannot encode the
 block characters the bars are drawn with. Fixed in 1.1.4; on older versions set
 `PYTHONIOENCODING=utf-8`.
+
+**Colours look flat in Windows Terminal** — fixed in 0.4.1. Windows Terminal announces
+itself only through `WT_SESSION`, and earlier versions read the missing `TERM` as a
+16-colour terminal. On 0.4.0 and older, `$env:COLORTERM = 'truecolor'` restores the ramps.
+
+**A redirected file is full of `Γûê` and `Γá┤` in PowerShell** — that is PowerShell,
+not termstats. Windows PowerShell 5.1 and PowerShell 7.0–7.3 decode a native command's
+output through `[Console]::OutputEncoding` (the OEM code page) before writing the file, so
+the UTF-8 that termstats emits is re-read as cp850 or cp437. PowerShell 7.4 and later pass
+the bytes through unchanged and the file is correct. On the older shells, either switch the
+console to UTF-8 first — `[Console]::OutputEncoding = [Text.Encoding]::UTF8` — or ask for
+plain characters with `$env:TERMSTATS_GLYPHS = 'ascii'`.
+
+**Boxes instead of charts in the classic Windows console** — the old `conhost` window with
+Consolas has no braille glyphs. Windows Terminal draws them itself; in the classic window,
+`$env:TERMSTATS_GLYPHS = 'block'` uses eighth-cell blocks instead.
 
 ## Support this project
 

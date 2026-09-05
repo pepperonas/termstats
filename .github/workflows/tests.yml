@@ -53,6 +53,23 @@ jobs:
           COLUMNS=150 LINES=45 termstats > snapshot.txt
           test -s snapshot.txt
 
+      - name: PowerShell smoke test
+        # The step above runs under Git Bash even on Windows. PowerShell 7.4+ passes a
+        # native command's bytes through to the file, so the snapshot must come back as
+        # UTF-8 with the bar glyph in it - which proves the cp1252 widening AND the
+        # shell's byte redirection in one go.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:COLUMNS = '150'; $env:LINES = '45'
+          termstats --once > ps-snapshot.txt
+          if ((Get-Item ps-snapshot.txt).Length -eq 0) { throw 'empty snapshot' }
+          $text = Get-Content ps-snapshot.txt -Raw -Encoding utf8
+          if ($text -notmatch 'TERMSTATS') { throw 'no header in the snapshot' }
+          if (-not $text.Contains([string][char]0x2588)) { throw 'bar glyph lost on the way to the file' }
+          termstats > ps-live-default.txt
+          if ((Get-Item ps-live-default.txt).Length -eq 0) { throw 'a redirected bare termstats must still print' }
+
       - name: Badge files are up to date
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: python tools/badges.py --check || echo "::notice::badge files will be refreshed by the badges job"
