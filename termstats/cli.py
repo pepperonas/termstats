@@ -1790,12 +1790,10 @@ def _band_of(edges, freq, bands):
         return 0
     if freq <= edges[0]:
         return 0
-    if freq >= edges[-1]:
-        return bands - 1
     for i in range(bands):
         if edges[i] <= freq < edges[i + 1]:
             return i
-    return bands - 1
+    return bands - 1          # at or above the top edge, whichever way it rounded
 
 
 def _eq_labels(an, columns, left, width):
