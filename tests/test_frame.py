@@ -94,11 +94,15 @@ def test_every_frame_mode_keeps_the_layout_invariants(mode, width, height, prime
     rows = out.rstrip("\n").split("\n")
     assert len(rows) <= height, "taller than the terminal"
     assert all(len(r) <= width for r in rows), "wider than the terminal"
+    assert "celox.io" in rows[-1], "the footer is not the last row"
     if mode == "no_border":
-        # Without frames the budget's slack has nowhere to hide. It may sit at the very
-        # bottom (a frame would have wrapped the same rows) - never inside the picture.
+        # Without frames the budget's slack has nowhere to hide. It may sit at the bottom
+        # of the body, above the footer (a frame would have wrapped the same rows) -
+        # never inside the picture.
+        foot = rows.pop()
         while rows and not rows[-1].strip():
             rows.pop()
+        rows.append(foot)
         assert len(rows) >= height - 3, "does not fill the terminal"
     else:
         assert len(rows) >= height - 1, "does not fill the terminal"

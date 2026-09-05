@@ -30,7 +30,7 @@ GLYPH_LEVELS = ("braille", "block", "ascii")
 
 # Every non-ASCII character the dashboard can draw with. The stream must encode all of it,
 # or the glyph level drops to ASCII. Add to this when you add a glyph.
-GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ"
+GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©"
 
 
 class Capabilities(NamedTuple):

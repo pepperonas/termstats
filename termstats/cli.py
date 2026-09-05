@@ -1065,24 +1065,49 @@ def header_line(width):
     clock.append(f"{sample_interval:>4g}s  ", style=MUTED)
     clock.append(f"v{__version__} ", style=FAINT)
 
-    full = Text(no_wrap=True)
     # A SPARK_W-cell CPU sparkline, tmux-status-bar style: the whole recent history in one
     # glance without looking down at the chart. Peaks per cell, tinted by the ramp - and
-    # always the same width, so the clock never drifts while the history fills.
+    # always the same width, so the clock never drifts while the history fills. It sits
+    # in the MIDDLE of the free space: identity left, liveness right, history between.
     spark = sparkline(cpu_history, T.SPARK_W)
     if not spark.cell_len:
         for _ in range(T.SPARK_W):
             spark.append(SPARK[0] if SPARK else " ", style=TRACK)
-    full.append_text(spark)
-    full.append("  ")
-    full.append_text(clock)
 
-    for tail in (full, clock):
-        pad = width - text.cell_len - tail.cell_len
-        if pad >= 2:
-            text.append(" " * pad)
-            text.append_text(tail)
-            break
+    free = width - text.cell_len - clock.cell_len
+    if free >= T.SPARK_W + 4:                         # full: centred sparkline + clock
+        left = (free - T.SPARK_W) // 2
+        text.append(" " * left)
+        text.append_text(spark)
+        text.append(" " * (free - T.SPARK_W - left))
+        text.append_text(clock)
+    elif free >= 2:                                   # clock only
+        text.append(" " * free)
+        text.append_text(clock)
+    return text
+
+
+LIVE = False               # set by the run modes: the footer's exit hint is for a human
+FOOTER_BRAND = "Martin Pfeffer | celox.io"
+
+
+def _current_year():
+    return time.localtime().tm_year
+
+
+def footer_line(width):
+    """`Ctrl+C to exit` on the left in live mode, `© <year> Martin Pfeffer | celox.io`
+    right-aligned - the year from the clock, so it is never stale. Both fixed-width;
+    the hint goes first when the line cannot hold both."""
+    text = Text(no_wrap=True, overflow="crop")
+    hint = " Ctrl+C to exit" if LIVE else ""
+    mark = "(c)" if GLYPHS.name == "ascii" else "©"
+    brand = f"{mark} {_current_year()} {FOOTER_BRAND} "
+    if len(hint) + len(brand) + 2 > width:
+        hint = ""
+    text.append(hint, style=MUTED)
+    text.append(" " * max(width - len(hint) - len(brand), 0))
+    text.append(brand, style=FAINT)
     return text
 
 
@@ -1098,6 +1123,7 @@ def render_dashboard(width=None, height=None):
     th = max(height or size.height, 8)
 
     ch, cw = chrome()
+    body_h = th - 2                                  # header and footer are fixed rows
     narrow = tw < T.NARROW_BELOW
     right_w = 0 if narrow else max(T.RIGHT_COL_MIN, min(int(tw * T.RIGHT_COL_SHARE), T.RIGHT_COL_MAX))
     left_w = tw - right_w
@@ -1118,7 +1144,7 @@ def render_dashboard(width=None, height=None):
     # Exact, not capped: when the cores have to be packed into columns the panel uses
     # ceil(n / cols) rows, which can be one short of the cap - and that row would sit
     # blank under TOTAL. (Invisible inside a frame; a hole once the frame is a rule.)
-    cap = max(8, th // 2)
+    cap = max(8, body_h // 2)
     cpu_wanted = cpu_section_rows(ncores, max(cap - ch - extra_rows, 1)) + ch
 
     # A short CPU panel next to a tall stack is exactly the hole this rewrite exists to
@@ -1132,7 +1158,7 @@ def render_dashboard(width=None, height=None):
         # side-by-side layout would have given them for free. Take only what fits, whole.
         # (A cap on cpu_wanted itself was tried here and removed: 0 differences across
         # 13,608 geometries, because the section-drop loop below already covers it.)
-        room = th - 1 - cpu_wanted
+        room = body_h - cpu_wanted
         stack_h = 0
         kept_stack = 0
         for height in ([mem_h, net_h] + ([disk_h] if disk_in_stack else [])):
@@ -1146,7 +1172,7 @@ def render_dashboard(width=None, height=None):
         top_h = max(cpu_wanted, stack_h)
 
     # --- height budget ---------------------------------------------------------------
-    remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
+    remaining = body_h - top_h - (0 if disk_in_stack else disk_h)
     proc_min = ch + 1 + 2                            # frame, header row, two processes
     charts_h = 0
     if remaining >= T.CHART_MIN_H:
@@ -1227,13 +1253,14 @@ def render_dashboard(width=None, height=None):
     # height available. Drop sections from the bottom until the plan actually fits -
     # otherwise the trailing ratio section is squeezed to two lines and renders as a
     # bordered stump. (Found by CI on Linux, where the steal row tips the balance.)
-    while len(sections) > 2 and sum(s.size or 0 for s in sections) > th:
+    while len(sections) > 2 and sum(s.size or 0 for s in sections) > th - 1:
         sections.pop()
 
     # Whatever section ends up last takes the remaining height instead of a fixed size, so
     # a dropped panel leaves its lines to its neighbour rather than to a blank strip.
     sections[-1].size = None
     sections[-1].ratio = 1
+    sections.append(Layout(footer_line(tw), name="foot", size=1))
 
     root = Layout()
     root.split_column(*sections)
@@ -1279,18 +1306,20 @@ def run_once():
     between two reads, and --interval is the *live refresh rate*, not a sampling window.
     Never smoothed: a report carries raw samples only.
     """
-    global sample_interval, SMOOTHING
+    global sample_interval, SMOOTHING, LIVE
     sample_interval = SNAPSHOT_SAMPLE_S
     SMOOTHING = False
+    LIVE = False
     _prime_measurements()
     time.sleep(SNAPSHOT_SAMPLE_S)
     console.print(render_dashboard())
 
 
 def run_live(interval=DEFAULT_INTERVAL):
-    global sample_interval, SMOOTHING
+    global sample_interval, SMOOTHING, LIVE
     sample_interval = interval
     SMOOTHING = True
+    LIVE = True
     _smoother.reset()
     _peaks.reset()
     _prime_measurements()
