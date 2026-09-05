@@ -110,6 +110,8 @@ class GlyphSet(NamedTuple):
     chart_full: str        # hand-drawn chart: a full cell
     chart_half: str        # hand-drawn chart: a partially covered cell
     box: str               # rich box style name
+    rule: str              # --no-border: the title rule
+    copyright: str         # the footer's mark
 
 
 GLYPH_SETS = {
@@ -117,19 +119,19 @@ GLYPH_SETS = {
         name="braille", bar_full="█", bar_partials="▏▎▍▌▋▊▉", bar_empty="╌", bar_secondary="▒",
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="⠒", chart_marker="braille", chart_full="#", chart_half="=",
-        box="ROUNDED",
+        box="ROUNDED", rule="─", copyright="©",
     ),
     "block": GlyphSet(
         name="block", bar_full="█", bar_partials="▏▎▍▌▋▊▉", bar_empty="╌", bar_secondary="▒",
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="╌", chart_marker="hd", chart_full="#", chart_half="=",
-        box="ROUNDED",
+        box="ROUNDED", rule="─", copyright="©",
     ),
     "ascii": GlyphSet(
         name="ascii", bar_full="#", bar_partials="", bar_empty="-", bar_secondary="=",
         peak="|", spark="", sep="-", legend_fill="#", legend_line="-", ellipsis="~",
         sigma="tot", collecting="-", chart_marker=None, chart_full="#", chart_half="=",
-        box="ASCII",
+        box="ASCII", rule="-", copyright="(c)",
     ),
 }
 
@@ -306,7 +308,7 @@ THEMES = {
     ),
     "nord": Theme(
         name="nord",
-        stops=_stops((0.00, "#4c566a"), (0.30, "#5f8f8f"), (0.60, "#b0925f"), (1.00, "#d08770")),
+        stops=_stops((0.00, "#616e88"), (0.30, "#5f8f8f"), (0.60, "#b0925f"), (1.00, "#d08770")),
         text="#d8dee9", soft="#b8c0cc", dim="#8a94a6", muted="#616e88", faint="#4c566a",
         track="#3b4252",
         border="#4c566a", accent="#88c0d0",
@@ -335,7 +337,7 @@ THEMES = {
     # its order under both deuteranopia and protanopia.
     "viridis": Theme(
         name="viridis",
-        stops=_stops((0.00, "#440154"), (0.25, "#3b528b"), (0.50, "#21918c"),
+        stops=_stops((0.00, "#414487"), (0.25, "#3b528b"), (0.50, "#21918c"),
                      (0.75, "#5ec962"), (1.00, "#fde725")),
         text="#c8c8c8", soft="#a8a8a8", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
         track="#3c3c3c",
@@ -586,3 +588,24 @@ def dim_hex(rgb: Sequence[int], factor: float = DIM_FACTOR) -> str:
     """
     L, a, b = rgb_to_oklab(rgb)
     return hex_of(oklab_to_rgb_in_gamut((L * factor, a, b)))
+
+
+# --- contrast -------------------------------------------------------------------------------
+
+def _rel_luminance(rgb):
+    """WCAG 2.x relative luminance of an sRGB triplet (0-255)."""
+    def lin(c):
+        c = c / 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (lin(c) for c in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast_ratio(fg, bg):
+    """WCAG contrast ratio between two colours (hex strings or RGB triplets), 1..21.
+    The Definition of Done asks every theme's text to clear a minimum against the
+    background it was designed for; this is the number that decides it."""
+    a = _rel_luminance(rgb_of(fg) if isinstance(fg, str) else fg)
+    b = _rel_luminance(rgb_of(bg) if isinstance(bg, str) else bg)
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)

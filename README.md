@@ -74,6 +74,12 @@
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/termstats.png" alt="termstats dashboard screenshot" width="800"/>
+<br/>
+<sub>Rendered with <code>termstats --demo</code> — a scripted machine, so the picture is reproducible.</sub>
+<br/><br/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/termstats-themes.png" alt="the six termstats themes" width="800"/>
+<br/>
+<sub>The six themes: default · mono · nord · gruvbox · catppuccin-mocha · viridis</sub>
 </div>
 
 ---
@@ -82,8 +88,10 @@ A single-command system dashboard that renders CPU, memory, disk, network, top p
 live history charts directly in your terminal. No browser, no GUI, no config needed.
 
 ```bash
-termstats            # live dashboard, refreshing twice a second
-termstats --once     # a single snapshot, then exit
+termstats               # live dashboard, refreshing twice a second
+termstats --once        # a single snapshot, then exit
+termstats --theme nord  # one of six themes; TERMSTATS_THEME=nord does the same
+termstats --demo        # a scripted, repeatable machine - for screenshots and trying themes
 ```
 
 Running it with no arguments gives you the live view. Redirect or pipe it and you get one
@@ -96,13 +104,17 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **Disk** — usage per *real* mountpoint + read/write throughput
 - **Network** — TX/RX throughput + total transferred + connections
 - **Top Processes** — sorted by CPU, with an inline load bar per process
-- **Braille Area Charts** — CPU & network history at 2×4 dots per cell, filled, on a time-labelled axis, with live values in the title
-- **Header Sparkline** — the last 30 s of CPU in sixteen cells, tmux-status-bar style
-- **Fits Your Terminal** — the layout is height-aware; nothing is drawn off-screen
+- **Braille Area Charts** — CPU & network history at 2×4 dots per cell, filled with a vertical gradient, frameless, on a time-labelled axis, with live values in the title
+- **Header Sparkline** — the last 30 s of CPU in sixteen cells, centred between identity and clock
+- **Peak Markers** — every meter carries a hairline at its 30-sample high-water mark that decays with the data
+- **Calm Under Load** — fixed-width numbers, eased fills, stable sort: no element changes width or place when a value moves
+- **Six Themes** — `default`, `mono`, `nord`, `gruvbox`, `catppuccin-mocha`, `viridis`; each an OKLab ramp that is monotone in lightness and checked on truecolor, 256 and 16 colours
+- **Fits Your Terminal** — the layout is height-aware, relayouts on resize, and nothing is drawn off-screen; `--compact` and `--no-border` when space is tight
 - **One Colour Ramp** — cool → warm → hot, shared by every meter, value and chart
-- **Cross-Platform** — Linux, macOS, Windows, with an ASCII fallback when the terminal cannot draw
+- **Cross-Platform** — Linux, macOS, Windows; braille → block → ASCII and truecolor → 256 → 16 → mono fallbacks, `NO_COLOR` honoured
 - **Live by Default** — no flag needed; snapshot mode kicks in automatically when output is piped
-- **Zero Config** — just install and run
+- **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
+- **Zero Config** — flags and environment variables only; no config file, no state on disk
 
 ## Installation
 
@@ -136,7 +148,7 @@ take effect immediately — no reinstall needed.
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.3.0
+termstats --version   # -> termstats 0.4.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -162,6 +174,18 @@ termstats | grep Load
 # Force live even when piped
 termstats --live | tee session.log
 
+# Themes
+termstats --theme gruvbox
+termstats --list-themes           # every theme with its ramp
+TERMSTATS_THEME=nord termstats    # the same, from the environment
+
+# Frames: less padding, or title rules instead of boxes
+termstats --compact
+termstats --no-border --once > report.txt
+
+# A scripted machine - screenshots, trying themes, showing it off
+termstats --demo
+
 # Module form (equivalent, requires the package + deps importable)
 python -m termstats
 ```
@@ -174,6 +198,11 @@ python -m termstats
 | `-i N`, `--interval N`, `-interval N` | Live refresh interval in seconds (default: 0.5) |
 | `-1`, `--once`, `-once` | Force a single snapshot and exit |
 | `-l`, `--live`, `-live` | Force the live dashboard, even when piped |
+| `-t NAME`, `--theme NAME`, `-theme NAME` | Colour theme (see [Themes](#themes)); overrides `TERMSTATS_THEME` |
+| `--list-themes`, `-list-themes` | Print every theme with its ramp and exit |
+| `--compact`, `-compact` | No padding inside the panels — two more bar cells per row |
+| `--no-border`, `-no-border` | Title rules instead of frames; the body gets the full width |
+| `--demo`, `-demo` | Scripted, repeatable metrics instead of this machine's (says **DEMO** in the header) |
 | `-V`, `--version`, `-version` | Show version |
 | `-h`, `--help`, `-help` | Show help |
 
@@ -184,6 +213,45 @@ with `--once` is an **error** — message on stderr, exit code 2 — never a sil
 `--interval` is the *live refresh rate*. A snapshot always samples for one second, because
 throughput figures need a measurable gap between two reads; passing an interval alongside
 `--once` is accepted and ignored.
+
+### Themes
+
+```bash
+termstats --list-themes
+```
+
+| Theme | Character |
+|-------|-----------|
+| `default` | Teal → amber → coral on a blue-black ground; the one in the screenshots |
+| `mono` | Greys only — for terminals, and people, that do not want colour to carry meaning |
+| `nord` | The Nord palette: frost blues, a yellow warning, an aurora red |
+| `gruvbox` | Gruvbox dark: aqua, yellow, orange, red on warm grey |
+| `catppuccin-mocha` | Catppuccin Mocha: teal, yellow, peach, red on mocha |
+| `viridis` | The scientific colour map: purple → teal → green → yellow, perceptually uniform |
+
+Every theme is a **ramp of four stops in OKLab**, interpolated in that space and mapped back
+into the sRGB gamut by reducing chroma, never by clipping. Each ramp is **monotone in
+lightness** — a higher load is always a brighter cell, so the meters still read as a scale
+on a screen with poor colour — and each is checked to survive **quantisation to 256 and 16
+colours** without folding two loads into one colour band. On a 16-colour terminal the ramp
+is drawn from four named colours the theme chooses itself.
+
+`--theme` wins over `TERMSTATS_THEME`; an unknown name is an error that lists the valid ones.
+
+### Environment
+
+| Variable | Effect |
+|----------|--------|
+| `TERMSTATS_THEME=name` | Default theme (the `--theme` flag overrides it) |
+| `TERMSTATS_GLYPHS=braille\|block\|ascii` | Force a glyph level — `block` for fonts without braille, `ascii` for the plainest terminal |
+| `TERMSTATS_NERD_FONT=1` | Prefix panel titles with Nerd Font icons |
+| `NO_COLOR` | Any value: no colour and no bold/dim at all ([no-color.org](https://no-color.org)) |
+| `COLORTERM=truecolor` / `24bit` | Enables 24-bit colour where `TERM` alone would suggest 256 |
+| `TERM=dumb` | ASCII glyphs and no colour |
+
+Detection order for colour is `NO_COLOR` → `TERM=dumb` → `COLORTERM` → `TERM`, and for
+glyphs `TERMSTATS_GLYPHS` → `TERM=dumb` → whether stdout can encode the drawing characters.
+Nothing is read from a config file; there is none.
 
 ### Choosing the mode
 
@@ -199,27 +267,32 @@ print columns.
 
 ### Exit
 
-Live mode runs until you press `Ctrl+C`; the alternate screen buffer is restored on exit,
-so your scrollback stays intact.
+Live mode runs until you press `Ctrl+C` — the footer says so — and exits 0 without a
+traceback; the alternate screen buffer and the cursor are restored, so your scrollback stays
+intact. Resizing the terminal relayouts the dashboard at once rather than at the next tick.
+An interrupted snapshot exits 130, quietly.
 
 ## What the dashboard shows
 
 | Panel | Content |
 |-------|---------|
-| **Header** | Hostname, OS, load average (1/5/15 min), CPU count, uptime, process count, then a **sixteen-cell CPU sparkline** (each cell the *peak* of its slice, tinted by the ramp), the wall clock, the refresh interval and the version. The 1-minute load is coloured by the ramp against `2× CPUs`. |
-| **CPU** | One meter per logical core, plus a total. They sit in one tall column while they fit, split into up to four when they do not, and collapse to a single-line heat strip on machines with more cores than the panel can list. On Linux an additional **steal** meter shows hypervisor-stolen time, computed as a delta from `/proc/stat` between refreshes — the single most useful metric on an oversold VPS. |
+| **Header** | Identity on the left — hostname, OS, load average (1/5/15 min), CPU count, uptime, process count — the wall clock, refresh interval and version on the right, and a **sixteen-cell CPU sparkline** centred between them (each cell the *peak* of its slice, tinted by the ramp). Every field has a fixed width, so nothing to its right moves when a number grows. The 1-minute load is coloured by the ramp against `2× CPUs`. In `--demo` a **DEMO** badge follows the wordmark. |
+| **CPU** | One meter per logical core, plus a total. Every meter carries a **peak hairline** (`╵`) at the highest value of the last 30 samples, which moves down as the spike leaves the window; in live mode the fill eases towards its target while the number and the hairline stay raw. They sit in one tall column while they fit, split into up to four when they do not, and collapse to a single-line heat strip on machines with more cores than the panel can list. On Linux an additional **steal** meter shows hypervisor-stolen time, computed as a delta from `/proc/stat` between refreshes — the single most useful metric on an oversold VPS. |
 | **Memory** | RAM and swap, with used/total beside the bar. The RAM bar has **two segments**: what processes hold (ramp colours) and what the kernel keeps as cache (`▒`, the same hue dimmed). psutil's `percent` counts cache as used, so the number is the sum of both — that is the "how full" everyone means — and the bar shows how it splits; `+5.7G cache` is spelled out in the note when the panel is wide enough. Swap is only shown when the machine actually has swap configured. |
 | **Disk** | One meter per *real* mountpoint, plus system-wide read/write throughput. Pseudo filesystems (`tmpfs`, `devtmpfs`, `squashfs`, `overlay`, `devfs`, `autofs`) and volumes the OS marks `nobrowse`/`dontbrowse` are skipped, duplicate mountpoints collapsed. On macOS `/` reports the Data volume of its APFS group — see [Disk on macOS](#disk-on-macos). |
 | **Network** | TX/RX throughput measured between refreshes, lifetime totals, and the open connection count. |
 | **CPU History** | Braille **area** chart of total CPU over the last 60 samples, on an axis labelled in seconds-ago. The fill is tinted by the ramp at the *mean* load of the window, so a chart that has gone amber says the same thing an amber meter does. The steal series is drawn as a line over it whenever it is non-zero. The title states the newest value: `cpu · last 30s · 42%`. |
 | **Network History** | rx as a filled area, tx as a line over it — two overlapping fills turn to mud where they cross. The axis is rounded (`0 / 300 / 600`, never `466.6`) and switches from KB/s to MB/s when the window's peak passes 2 MB/s. The title is a legend that doubles as a readout: `▇ rx 3.1MB/s  ━ tx 1.2MB/s · MB/s` — the filled glyph for the area, the bar for the line. |
-| **Top Processes** | The hungriest processes by CPU — as many as the remaining height allows — each with an inline load bar and RSS. |
+| **Top Processes** | The hungriest processes by CPU — as many as the remaining height allows — each with an inline load bar and RSS. Ties are broken by PID, so rows do not swap places between frames. |
+| **Footer** | `Ctrl+C to exit` in live mode, and `© <year> Martin Pfeffer \| celox.io` — the year from the clock. |
 
 Everything colour-coded shares **one ramp**: cool at idle, warm under load, hot when
 saturated. Each cell of a bar is tinted by its own position on that ramp, so a long bar
-reads as a scale rather than a block, and the same ramp colours the load average and the
-CPU/memory columns of the process table. Truecolor is emitted and quantised down
-automatically on 256- and 16-colour terminals.
+reads as a scale rather than a block, and the same ramp colours the load average, the chart
+fills and the CPU/memory columns of the process table. The ramp is the theme's — see
+[Themes](#themes) — built in OKLab and quantised down automatically on 256- and 16-colour
+terminals. Values are bright and bold in the ramp tone, their units dim; panel titles are
+the theme's accent, every frame the same quiet border.
 
 ### Disk on macOS
 
@@ -234,8 +307,9 @@ disk that is 98% full.
 
 Throughput and steal are *rates*, so they need two samples. A snapshot primes the counters,
 waits one second, and then prints — which is why `termstats --once` takes about a second. The
-two history charts say `Collecting data...` until the second sample arrives, so they stay
-empty in snapshot mode by design; the live view fills them in.
+two history charts show a dotted baseline and `collecting · 2 samples needed` until the
+second sample arrives, so they stay empty in snapshot mode by design; the live view fills
+them in, and `--demo` opens with sixty samples already drawn.
 
 The history buffer holds **60 samples**, not 60 seconds. At the 0.5 s default that is a
 30-second window, and the panel titles say so — `last 30s`, or `last 3m` at `-i 3`. They are
@@ -251,7 +325,14 @@ of content is **dropped whole** rather than reduced to an empty frame, and which
 ends up last takes the leftover lines so nothing is left blank.
 
 The dashboard therefore looks different on a 24-line terminal than on a 60-line one, by
-design. Widen or lengthen the window and more of it appears.
+design. Widen or lengthen the window and more of it appears — a resize is picked up at once
+(`SIGWINCH`), not at the next refresh.
+
+When columns are what you are short of, `--compact` drops the padding inside every panel
+(two more bar cells per row) and `--no-border` replaces the frames with a title rule above
+each body, which then runs the full width with a one-column gutter between the two columns.
+Both are additive and both keep every layout invariant: nothing wider than the terminal, no
+blank line inside the picture, every section whole or absent.
 
 ## Platform Support
 
@@ -339,7 +420,14 @@ interval to get the window the charts cover.
 Live mode renders into rich's alternate-screen `Live` view, and frames are scheduled on a
 fixed grid: the loop sleeps `interval − render time` rather than a flat `interval`, so the
 real cadence does not drift by the cost of drawing a frame, and it resynchronises instead of
-firing a burst of catch-up frames when one render overruns.
+firing a burst of catch-up frames when one render overruns. The wait runs in 0.1 s slices
+and a `SIGWINCH` handler cuts it short, so a resize is redrawn within a tenth of a second and
+the cadence restarts from that frame.
+
+Colour lives in one place, `termstats/theme.py`: the glyph sets, the spacing and format
+tokens, the OKLab conversions and the six themes. `cli.py` names tokens and never a colour
+or a drawing character — a test reads its source and refuses any hex value or glyph literal.
+Ramp lookups are cached; the whole dashboard renders and prints in about 40 ms at 140×50.
 
 ### Project layout
 
@@ -348,9 +436,12 @@ termstats/
 ├── termstats/
 │   ├── __init__.py      # version - the single source --version and the header read
 │   ├── __main__.py      # python -m termstats
-│   └── cli.py           # collectors, renderers, arg handling, entry point main()
+│   ├── cli.py           # collectors, renderers, layout, arg handling, entry point main()
+│   ├── theme.py         # glyph sets, spacing/format tokens, OKLab ramps, the six themes
+│   └── demo.py          # the scripted machine behind --demo
 ├── tests/               # pytest suite (pure unit tests, psutil stubbed)
 ├── tools/badges.py      # generates .github/badges/*.json for the headline badges
+├── tools/demo.tape      # VHS recording script for the --demo GIF
 ├── .github/
 │   ├── badges/          # shields.io endpoint JSON, refreshed by CI
 │   └── workflows/       # test matrix + badge refresh
@@ -405,6 +496,14 @@ What it covers:
 | Packaging | the two version strings agree, `plotext<6` stays pinned, no `stats` alias, no PyPI claim, README badges match the package |
 | Dashboard | one full render against the real machine, one history sample per render, brand line intact |
 | Output encoding | a cp1252 stdout is widened to UTF-8; unreconfigurable streams degrade quietly |
+| Themes | OKLab round-trips, gamut mapping, monotone lightness of every theme, 256/16-colour band checks, `--theme`/`TERMSTATS_THEME`/`--list-themes`, capability detection |
+| Stability | fixed-width formats, the header's fixed fields and width-only tail tiers, a 20-frame stormy geometry sweep in which no element may change width or place |
+| Peaks | the 30-sample high-water mark, its hairline placement and colour, raw peak over eased fill |
+| Frame | one border tone on every panel, bold-accent titles, dim units, `--compact`/`--no-border` layout invariants, process rows ordered = rows shown |
+| Footer & header | dynamic year, hint only in live mode, ASCII `(c)`, the sparkline centred by width alone |
+| Lifecycle | SIGWINCH guard and restore, sliced waits, immediate relayout with cadence resync, cursor always restored, Ctrl+C quiet |
+| Demo | the psutil surface contract against the source, byte-identical stories per seed, the story's shape, reproducible snapshots |
+| Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes |
 
 Every assertion that guards a past bug was verified by re-introducing the bug and watching
 the test go red. Do the same for new ones — a test you have not seen fail is not a guarantee.
@@ -501,8 +600,8 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc && exec zsh
 running a Python that does not have the dependencies. Use the console script, or activate the
 environment termstats was installed into.
 
-**Charts stay on `Collecting data...`** — expected in snapshot mode; they need two samples.
-Run it in a terminal without `--once`.
+**Charts stay on `collecting · 2 samples needed`** — expected in snapshot mode; they need
+two samples. Run it in a terminal without `--once`, or use `--demo` for a full picture.
 
 **`termstats` printed one screen and exited instead of updating** — stdout was not a
 terminal, so snapshot mode was chosen automatically. That happens when you pipe (`| less`,
@@ -542,12 +641,17 @@ about 5.
 (U+2800–U+28FF). Almost all modern monospace fonts do; switch font, or redirect the output
 (`termstats --once > out.txt`), which is unaffected.
 
-**Colours look flat or wrong** — the ramp is emitted as truecolor and rich quantises it for
-256- and 16-colour terminals. Inside `tmux`, set `default-terminal "tmux-256color"` and start
-it with `tmux -2`, or export `COLORTERM=truecolor`.
+**Colours look flat or wrong** — the ramp is emitted as truecolor and quantised for 256- and
+16-colour terminals. Inside `tmux`, set `default-terminal "tmux-256color"` and start it with
+`tmux -2`, or export `COLORTERM=truecolor`. If colour is not wanted at all, `--theme mono`
+keeps the lightness scale, and `NO_COLOR=1` removes every escape code.
+
+**The charts show boxes, but my font does have braille** — some fonts have the block but
+draw it badly. `TERMSTATS_GLYPHS=block` uses eighth-cell blocks for the charts instead.
 
 **Layout looks cramped or wrapped** — widen the terminal; the two-column arrangement assumes
-roughly 92 columns and the charts look best from about 110.
+roughly 92 columns and the charts look best from about 110. `--compact` buys two bar cells
+per row, `--no-border` a few more and a cleaner look in screenshots.
 
 **The chart says `last 30s` but I expected 60** — the buffer holds 60 *samples*, and the
 default interval is 0.5 s. Run `-i 1` for a 60-second window; the title always states the

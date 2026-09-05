@@ -11,6 +11,85 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-05
+
+Visual polish, end to end: one place for every colour and glyph, six themes, a layout that
+holds still, and a live session that behaves. Additive throughout — every existing flag
+and default is unchanged.
+
+### Added
+
+- **Themes.** `default`, `mono`, `nord`, `gruvbox`, `catppuccin-mocha`, `viridis`; chosen
+  with `--theme NAME` or `TERMSTATS_THEME`, listed with `--list-themes`. Each is a four-stop
+  ramp interpolated in **OKLab** and mapped back into gamut by reducing chroma, monotone in
+  lightness (a higher load is always a brighter cell), and checked to survive quantisation to
+  256 and 16 colours without folding two loads into one band. On 16-colour terminals the
+  ramp is drawn from four named colours the theme picks itself.
+- **Peak markers.** Every meter carries a hairline at the high-water mark of the last 30
+  samples; it moves down as the spike leaves the window. In live mode the bar fill eases
+  towards its target while the number and the hairline stay raw — motion only where it
+  carries data.
+- **`--compact`** (no padding inside panels, two more bar cells per row) and
+  **`--no-border`** (title rules instead of frames, the body at full width with a gutter
+  between the columns). Frame chrome is decided in one function, so the height budget, the
+  body widths and the drawn panels cannot disagree.
+- **A footer:** `Ctrl+C to exit` in live mode, `© <year> Martin Pfeffer | celox.io`
+  right-aligned with the year read from the clock. ASCII mode writes `(c)`.
+- **`--demo`:** a deterministic stand-in for psutil with a scripted story — a network
+  burst, a CPU spike that takes every core and the disk reads with it, a root disk that
+  only fills, processes that react — on a clock of its own, so sixty frames of history are
+  played before the first visible one and rates come out as designed. Says **DEMO** in the
+  header on every frame. The README screenshots come from it; `tools/demo.tape` records it
+  with VHS.
+- **Environment:** `TERMSTATS_THEME`, `TERMSTATS_GLYPHS=braille|block|ascii`,
+  `TERMSTATS_NERD_FONT`, and `NO_COLOR` / `TERM=dumb` honoured completely (no colour *and*
+  no bold/dim).
+- **Resize relayouts at once.** A `SIGWINCH` handler (guarded — Windows has none; the
+  previous handler is restored) cuts the tick wait short, the dashboard is laid out for the
+  new size within a tenth of a second and the cadence restarts from that frame.
+
+### Changed
+
+- **Every colour and glyph lives in `termstats/theme.py`.** `cli.py` names tokens and never
+  a hex value or a drawing character; a test reads its source and refuses either.
+- **The layout holds still.** Every number has a fixed-width format (`  8.3%`, ` 45.2K/s`,
+  `  3d 04h`), the header's fields never move when a value grows, its tail degrades by width
+  alone (sparkline + clock, clock, none), the network unit flips with hysteresis, and process
+  rows are sorted with the PID as tie-breaker so they do not swap places between frames. A
+  20-frame stormy sweep across seven geometries pins that no element changes width or place.
+- **One frame for every panel:** the border in the theme's quiet border tone instead of five
+  competing panel colours, titles bold in the theme's accent, values bright in the ramp tone
+  with their units (`%`, `K/s`) dimmed.
+- **Charts:** a vertical gradient fill (brightest at the top edge, fading into the ground),
+  no plot frame, ticks and axis in the muted tone, fixed-width axis labels, and a designed
+  empty state — a dotted baseline with `collecting · 2 samples needed` — instead of a bare
+  sentence. The ASCII fallback fades the same way.
+- **The header sparkline sits in the middle** of the free space between the identity fields
+  and the clock; its position is a function of the width alone.
+- **The cursor is hidden before the priming pause**, not with the alternate screen, and the
+  whole live session sits in one `try/except KeyboardInterrupt/finally`: Ctrl+C anywhere
+  exits 0 without a traceback, the cursor and the signal handler come back whatever happened.
+  An interrupted snapshot exits 130, quietly.
+- The dimmed cache segment of the memory bar is dimmed in OKLab lightness (same hue, less
+  light) and pinned at a minimum contrast to the used segment; the empty part of a meter is
+  drawn in the theme's track tone, between the background and the dim text.
+
+### Fixed
+
+- In the narrow single-column stack the CPU panel was laid out for the height of the
+  **whole** stack and then cropped by its layout slot: at 60×20 `cpu8`, `cpu9` and `TOTAL`
+  were missing, at 80×24 `TOTAL`. Present since the layout rewrite; every geometry sweep
+  now pins `TOTAL`.
+- A packed two-column CPU panel used one row fewer than its cap and left it blank under
+  `TOTAL`; the panel height is now exact and the row goes to the process list.
+- Ctrl+C during the first half second of live mode (the priming pause) printed a traceback.
+- The process panel's minimum height counted two frame rows even without a frame.
+
+### Performance
+
+- Render + print at 140×50: 40.9–44.1 ms per frame against 40.0–42.5 ms for 0.3.0, measured
+  in three alternating rounds — noise, no measurable cost. Ramp lookups are cached.
+
 ## [0.3.0] - 2026-09-05
 
 Second visual pass. Everything here is additive; the command line is unchanged.

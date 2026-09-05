@@ -1002,7 +1002,7 @@ def _panel(renderable, title, subtitle=""):
         # A title rule above the body and a one-column gutter each side: without the
         # gutter two columns of meters run into each other ("100.0%ram").
         rule = Rule(_title(title, subtitle), style=THEME.border, align="left",
-                    characters=GLYPHS.bar_empty if GLYPHS.name == "ascii" else "─")
+                    characters=GLYPHS.rule)
         return Padding(Group(rule, renderable), (0, T.RULE_CHROME_W // 2))
     return Panel(renderable, title=_title(title, subtitle), title_align="left",
                  border_style=THEME.border, box=getattr(box, GLYPHS.box),
@@ -1112,8 +1112,7 @@ def footer_line(width):
     the hint goes first when the line cannot hold both."""
     text = Text(no_wrap=True, overflow="crop")
     hint = " Ctrl+C to exit" if LIVE else ""
-    mark = "(c)" if GLYPHS.name == "ascii" else "©"
-    brand = f"{mark} {_current_year()} {FOOTER_BRAND} "
+    brand = f"{GLYPHS.copyright} {_current_year()} {FOOTER_BRAND} "
     if len(hint) + len(brand) + 2 > width:
         hint = ""
     text.append(hint, style=MUTED)

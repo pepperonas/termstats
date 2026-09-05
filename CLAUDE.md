@@ -5,78 +5,8 @@ Guidance for Claude Code when working in this repository.
 ## What this is
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
-processes, live 60-sample history charts). Pure Python, no server, no config file, no state on
-disk. Repo `pepperonas/termstats` (public, MIT).
-
-**The rendering layer was rewritten in 0.2.0** (see the Layout section below). `cli.py` is
-still one flat module, but it now has four distinct layers: capability detection → colour
-ramp → meters/charts → a height-aware `rich.Layout`. Collectors take a **width** and return
-rich renderables; they no longer return preformatted strings.
-
-**A bare `termstats` runs the LIVE dashboard** (0.5 s refresh) — but only when stdout is a
-terminal. Piped, redirected or under cron it prints one snapshot and exits, because a live
-loop there never terminates. `--once/-1` forces the snapshot, `--live/-l` forces the loop.
-
-## Layout: the dashboard must fit the terminal
-
-This is the invariant the 0.2.0 rewrite exists to hold, and the one to re-check after any
-change to a panel:
-
-> The rendered dashboard is never taller than the terminal, never wider, has no blank lines,
-> and draws no panel it cannot fill.
-
-Before the rewrite `render_dashboard` composed a fixed grid with no idea how tall the screen
-was — 79 lines on a 40-line terminal — and rich's alternate screen silently cropped the
-overflow, so **the charts and the process list were never on screen** at ordinary sizes.
-`tests/test_dashboard.py` sweeps thirteen geometries for all four properties.
-
-How the height is spent, in order: header (1) → CPU row and the memory/network/disk stack →
-charts (only with ≥13 spare lines) → processes (only with ≥5). Two rules make it hold:
-
-- **Height is decided before the core columns are.** The CPU panel would rather be one tall
-  column of wide bars than two short ones with a hole underneath, so `cpu_wanted` is computed
-  first and `core_columns()` then fits the cores into it. Doing it the other way round leaves
-  four blank lines in the CPU box on a ten-core machine.
-- **The last section on screen takes `ratio=1`, not a fixed size.** Otherwise a dropped
-  process panel leaves its lines as a blank strip (measured: 15 lines used out of 18).
-
-`disk_in_stack` moves the disk panel out of the right-hand stack and across the full width
-when the CPU column would otherwise be much shorter than the stack — same total height, no
-hole. Panels are dropped **whole**; a bordered box with no room for content costs three lines
-to say nothing.
-
-⚠️ **The budget is a plan, not a guarantee.** A narrow terminal, a machine with several
-mountpoints or Linux's extra steal row can each push the fixed sizes past the height
-available, and the trailing `ratio` section is then squeezed to two lines and renders as a
-bordered **stump**. `render_dashboard` drops sections from the bottom until the sum fits.
-This was found by CI on Linux at 60×20 and could not be reproduced on macOS at all — the
-sweep in `test_the_layout_holds_on_any_machine` fakes `IS_LINUX` and the core count for
-exactly that reason.
-
-⚠️ **A rich `Group` does not stretch.** It renders its children at their natural height and
-leaves the remainder blank, so a `Group` inside a `ratio` section produces dead space. Both
-the wide and the narrow branch nest `Layout`s instead, with the last card on `ratio=1`.
-
-⚠️ Every `*_section_rows()` helper must predict exactly what its `get_*_section()` draws.
-`render_dashboard` sizes the row from the prediction before the panel exists, so a
-disagreement clips content or opens a gap. `test_cpu_height_prediction_matches_what_is_drawn`
-pins this.
-
-## Version reset to 0.1.0 (2026-09-04) — read this first
-
-The version went **backwards**, from `1.1.4` to `0.1.0`, in the same release that made live
-mode the default. Two reasons, both deliberate:
-
-- termstats has never been on a package index (see the PyPI note below), so no downstream
-  install could break.
-- 1.x claims a stable interface. A tool that still changes its own default behaviour is a
-  0.x tool. Under SemVer's 0.x rule a **minor** bump may break the CLI and a **patch** bump
-  may not; 1.0.0 will be the first release that promises stability.
-
-`CHANGELOG.md` (Keep a Changelog) records this, and the pre-reset releases are listed at its
-bottom. The git history is untouched — commits still say "v1.1.4". Do not "fix" that.
-
-⚠️ **Do not bump back over 1.0.0 casually.** Reaching 1.0.0 is a promise, not a milestone.
+processes, live history charts). Pure Python, no server, no config file, no state on disk.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.4.0**, 964 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -96,11 +26,17 @@ exactly the ambiguity the rename removed. If a `stats` command is ever wanted ag
 deliberate decision, not a convenience commit.
 
 ⚠️ **Neither `stats-dashboard` nor `termstats` was ever actually published to PyPI** (verified
-via the PyPI JSON API on 2026-08-30 — both return `{"message": "Not Found"}`). The old README
-led with `pip install stats-dashboard`, which never worked for anybody. Install docs therefore
+via the PyPI JSON API on 2026-08-30 — both return `{"message": "Not Found"}`). Install docs
 point at the git URL. Do not re-add PyPI badges or `pip install termstats` until a release is
 actually uploaded — `pypi.org/project/<name>/` returns **200 for everything** through this
 network path, so a status code is not proof; query `https://pypi.org/pypi/<name>/json`.
+
+## The version reset (2026-09-05)
+
+`1.1.4` became **`0.1.0`** when live mode became the default: nothing downstream could break
+(never on a package index), and 1.x claimed a stability the command line had not earned.
+0.x → 0.4.0 in one day: live default + badges (0.1.0), first visual pass (0.2.x), area charts
+(0.3.0), the full visual-polish programme S1–S10 (0.4.0). Every release is a git tag `vX.Y.Z`.
 
 ## Layout
 
@@ -109,325 +45,220 @@ termstats/
 ├── termstats/
 │   ├── __init__.py   # __version__ — the single source the header and --version read
 │   ├── __main__.py   # python -m termstats
-│   └── cli.py        # everything: collectors, rendering, arg parsing, main()
-├── tests/
-│   ├── conftest.py          # autouse state reset + chart-capture fixtures
-│   ├── test_args.py         # flag spellings, mode selection, rejected input
-│   ├── test_badges.py       # LOC/test counting rules and the refusals
-│   ├── test_charts.py       # plotext guard, degradation, series contents
-│   ├── test_collectors.py   # psutil stubs, failure paths, /proc/stat steal
-│   ├── test_dashboard.py    # real renders, chart layout, history accounting, encoding
-│   ├── test_formatting.py   # bar_horizontal, _fmt_bytes_rate boundaries
-│   ├── test_packaging.py    # version/changelog sync, pins, README claims, PayPal link
-│   └── test_timing.py       # window label, frame scheduling, run_live/run_once
-│   └── helpers.py           # plain(): render a renderable and strip the styling
-├── tools/badges.py   # generates .github/badges/*.json (version, LOC, test count)
-├── .github/
-│   ├── badges/*.json                  # shields.io endpoint payloads, committed by CI
-│   └── workflows/tests.yml            # Linux/macOS/Windows + py3.9
-│   └── workflows/badges.yml           # refreshes + commits the badge payloads
-├── CHANGELOG.md      # Keep a Changelog / SemVer
+│   ├── cli.py        # collectors, meters, charts, layout budget, run modes, arg parsing, main()
+│   ├── theme.py      # EVERY colour and glyph: GlyphSets, spacing/format tokens, OKLab, 6 themes
+│   └── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
+├── tests/            # 964 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
+├── tools/demo.tape   # VHS script: `vhs tools/demo.tape` -> termstats-demo.gif
+├── .github/workflows/tests.yml   # Linux/macOS/Windows + py3.9; badges.yml refreshes the JSON
 ├── examples/celox-health-report.example.py   # server health report template, NOT packaged
-├── pyproject.toml    # metadata + [project.scripts] termstats = "termstats.cli:main"
-└── termstats.png     # README hero image (raw.githubusercontent URL)
+├── termstats.png / termstats-themes.png       # README images, rendered from --demo
+└── pyproject.toml    # metadata + [project.scripts] termstats = "termstats.cli:main"
 ```
 
-`cli.py` is deliberately one flat module — collectors return `(text, *values)` tuples that
-`render_dashboard()` composes into rich `Panel`s. There is no framework and no abstraction
-layer; keep it that way unless the file outgrows ~600 lines.
+`cli.py` is one flat module (collectors return `(text, *values)` tuples that `render_dashboard()`
+composes into rich `Panel`s / `Layout`s). **It names tokens and never a colour or a drawing
+character** — `tests/test_dod.py` reads its source and refuses any `#rrggbb` or any character
+from `theme.GLYPH_PROBE`. If you need a new glyph or colour, add it to `theme.py` first.
 
 ## Version bumps
 
-The version lives in **two** places and both must move together, and two more artefacts
-have to follow:
+The version lives in **two** places and both must move together:
 
 - `pyproject.toml` → `version = "X.Y.Z"`
 - `termstats/__init__.py` → `__version__ = "X.Y.Z"`
-- `CHANGELOG.md` → a new `## [X.Y.Z] - YYYY-MM-DD` heading above the previous one
-- `python tools/badges.py` → rewrites `.github/badges/version.json`
 
-All four are pinned by `test_packaging.py` / `test_badges.py`, so a half-finished bump is a
-red test, not a stale badge. Tag the release `vX.Y.Z`.
-
-The dashboard header and `--version` read `__init__.py`; packaging reads `pyproject.toml`. A
-mismatch used to be invisible until someone read the header.
-
-**The three headline README badges are generated, never typed.** `tools/badges.py` writes
-`.github/badges/{version,loc,tests}.json` in the shields.io *endpoint* schema, the README
-points shields at those raw URLs, and `.github/workflows/badges.yml` re-runs the script on
-every push to `main` and commits the result when a number moved (`[skip ci]` in the message,
-so it cannot retrigger itself). A hard-coded `shields.io/badge/version-…` in the README is
-now a **failing test** — that is what used to go stale.
-
-⚠️ `tools/badges.py` **refuses to emit a zero test count.** Run it with an interpreter that
-has pytest (`~/.local/pipx/venvs/termstats/bin/python tools/badges.py` on this Mac); the
-system python3 has no psutil and the collection fails loudly rather than publishing "0 unit
-tests". `--check` exits 1 when the files are stale and writes nothing.
+Then: CHANGELOG entry (top released heading must equal the version), README `# -> termstats X.Y.Z`
+line, `python tools/badges.py` (the committed `version.json` must match — `test_badges` is red
+otherwise), `git tag vX.Y.Z`. The three headline README badges are **generated JSON**, never
+typed; the test count on the badge comes from `pytest --collect-only`.
 
 ## Local install / running
 
 ```bash
 pipx install --editable .    # dev: edits take effect immediately, no reinstall
-termstats                    # live (in a terminal)
-termstats --once             # single snapshot
-termstats -i 2               # live, slower refresh
-python -m termstats          # same, needs deps importable in that interpreter
+termstats                    # live (default in a terminal), Ctrl+C exits 0
+termstats --once             # snapshot; automatic when stdout is not a tty
+termstats --demo             # scripted machine — screenshots, trying themes
+termstats --theme nord --no-border --compact
 ```
 
 Installed on this Mac via `pipx install --editable /Users/martin/claude/termstats`
-→ `~/.local/bin/termstats` (on PATH). ⚠️ Because it is **editable**, moving or deleting this
-checkout breaks the installed command.
-
-`python3 -m termstats` with the *system* Python fails (`No module named 'psutil'`) — the deps
-live in the pipx venv, not in Homebrew's Python. That is expected, not a bug.
+→ `~/.local/bin/termstats`; the shell alias **`ts`** (`~/.zshrc`) runs it. ⚠️ Because it is
+**editable**, moving or deleting this checkout breaks the installed command.
+`python3 -m termstats` with the *system* Python fails (`No module named 'psutil'`) — expected.
 
 ## Testing
 
-**582 pytest tests** in `tests/` (the badge is generated; this number is prose and may lag),
-all pure unit tests — no sleeps, no live terminal, no
-network, well under a second:
-
 ```bash
-pip install -e ".[dev]" && pytest        # or: ~/.local/pipx/venvs/termstats/bin/pytest
+~/.local/pipx/venvs/termstats/bin/pytest -q      # the venv the command itself uses
 ```
 
-pytest is injected into the pipx venv on this Mac (`pipx inject termstats pytest`), so the
-suite runs against the same resolved dependency set the command itself uses — which is the
-point, given that the last two bugs were a dependency resolve and an argument parser.
+pytest is injected into the pipx venv (`pipx inject termstats pytest`), so the suite runs against
+the same resolved dependency set as the command — the point, given that two past bugs were a
+dependency resolve and an argument parser.
 
 `tests/conftest.py` carries the one fixture everything depends on: **`clean_module_state` is
-autouse and resets the four history deques, the two `_steal_last_*` globals and the
-`_last_io`/`_last`/`_last_time` function attributes.** Rate state survives between calls by
-design, so without it a collector test passes or fails depending on what ran before it.
+autouse** and resets the four history deques, the steal globals, `sample_interval`, the
+glyph level, the theme, `SMOOTHING`, `LIVE`, the frame mode (`set_frame`), the demo source
+(`set_demo(None)`), the resize event, the smoother, the peak tracker, the net unit hysteresis
+and the disk/net rate attributes. Rate state survives between calls by design; without the
+reset a collector test passes or fails depending on what ran before it.
 
-⚠️ **Two more from the 0.3.0 round, both mine:**
+⚠️ **Mutation-test every new pin.** Every stage of the S1–S10 programme ran 7–13 mutations
+against its new tests (border in accent, unit in ramp tone, chrome() ignoring --no-border,
+budget forgetting the footer, hasattr guard removed, seed ignored, …) and watched each go red.
+Several pins were grün-blind on the first try and had to be rewritten: a "rows on screen"
+count that also matched chart ticks, a gutter check that a too-narrow body also satisfied, a
+compact check that a right-aligned label always passed, a relayout check that could not tell
+"render now" from "render after the wait". **A test you have not watched fail is not a guarantee.**
 
-- "The cache segment uses a different colour from the primary" is NOT the property. A
-  mutation that painted the secondary with the plain ramp at its own positions ALSO gives
-  different colours, and passed. The property is *darker than the ramp would be at that
-  position*, so the test now compares luminance against `ramp(pos)`.
-- "The cache note is absent on a narrow panel" is only half the property: `meter()` drops
-  any note that does not fit, so removing the width guard also made the note absent — and
-  the test stayed green. The other half is that the SHORT note (`5.2G/16.0G`) must survive;
-  the guard exists so the suffix is left off rather than the whole note being lost.
+Traps hit while writing these (all real): `f"p{i}" in output` matched `p2` inside `p29` — count
+rows; an anchor string whose indentation did not match "proved" nothing; `KeyboardInterrupt`
+escaping a test aborts pytest with rc 2 and no `FAILED` line — convert it to `pytest.fail`;
+a bare `io.StringIO()` has no `encoding` and reads as "cannot draw" in `theme.detect()`; and
+**rich caches a Style's rendered escape string on the instance** (`Style._ansi`) while
+`Style.parse` hands out the same instance for the same text — one process never switches
+colour systems, but the suite does, so `test_dod.fresh_styles()` clears the lru caches, and
+three subprocess tests check the real thing (`FORCE_COLOR=1` stands in for the tty).
 
-⚠️ **A real-machine counter-check must skip by the rule the code DRAWS by.** The
-"memory panel shows the cache segment" check skipped only when there were zero cache bytes;
-but a segment is `int(width * pct / 100)` cells, and at 140 columns the memory bar is about
-eight cells, so anything under ~13% draws nothing. The macOS CI runner has a sliver of
-cache — past a "> 0 bytes" guard, short of one cell — and the test went red there while
-every fixture test stayed green. Counter-checks against live hardware are worth keeping,
-but their skip condition has to be derived from the same arithmetic as the assertion.
+CI (`.github/workflows/tests.yml`) runs Linux/macOS/Windows plus Python 3.9 and prints the
+resolved psutil/plotext/rich versions — a fresh resolve is how the plotext 6.0.0 break arrived.
 
-⚠️ **Two test-writing traps from the 0.2.0 round, both mine:**
-
-- `re.search(r"proc \d+\S", head)` to catch "proc 7080.5s" **always matches**, because `\S`
-  happily matches the number's own digits. The character after the run has to be excluded
-  explicitly: `proc \d+[^\d\s]`.
-- `"x" * 200` is the wrong probe for "does a long process name wrap": rich truncates an
-  unbroken run anyway. Real process names contain **spaces**, and those wrap the row onto
-  five lines without `no_wrap`. Two mutations passed against the x-string version.
-
-⚠️ **Mutation-test every new pin.** Nineteen mutations have been run against this suite
-(dropping `-live`, silencing the unknown-option error, narrowing the chart `except`, relaxing
-the plotext pin, re-adding a `stats` alias, desyncing the two version strings, making the
-terminal check always say yes, removing `--once`, dropping the live/once conflict, handing
-charts to rich as a bare string, widening the chart by one column, hard-coding the chart
-title, removing the scheduler resync, sleeping a flat interval, publishing a zero test count,
-counting comments as code, staling the version badge, drifting the changelog, claiming
-Production/Stable at 0.x). The 0.2.0 rewrite added twenty-two more (height budget, the
-process-panel guard, the trailing `ratio`, the `nobrowse` filter, the macOS Data
-substitution, a flat-coloured bar, the eighth-blocks, the sliced annotation, the braille
-marker, the black chart background, the time axis, the ASCII path, the one-line ASCII chart,
-the core-column preference, blind mountpoint cutting, the header collision, charts as a bare
-string, the chart width, the heat strip, name wrapping, the inline bar, and a lying height
-prediction). All are caught **now** — several were not at first:
-
-**the PayPal pin was green-blind.** The README carries two donate links (headline badge and
-Support section) and the test used `re.search`, so it validated whichever it found first;
-breaking the *other* one changed nothing. It now checks that *every* `paypal.com/donate` URL
-carries the account, that no unchecked PayPal URL exists, and that the Support section holds
-one of its own. Four separate mutations confirm it. A test you have not watched fail is not
-a guarantee.
-
-⚠️ Two traps hit while writing these: an anchor string whose indentation did not match
-reports "ANCHOR MISSING" and quietly proves nothing, and `f"p{i}" in output` matched `p2`
-inside `p29` — count rows (`Table.row_count`), not name substrings.
-
-⚠️ **One unexplained flake (2026-09-05):** `test_no_line_is_wider_than_the_terminal[120-16]`
-failed exactly once, in the first run after the 0.3.0 header sparkline landed, and could not
-be reproduced afterwards — 15 full-file reruns and 240 direct renders at that size were all
-clean. Every line is produced inside a `Layout`, which crops, so a genuine overflow should be
-impossible; the only time-varying inputs are the load figures, the process count and the
-clock, all of which are in the cropped header. If it recurs, capture the offending line
-(the assertion message prints it) before touching anything.
-
-CI (`.github/workflows/tests.yml`) runs the suite on Linux/macOS/Windows plus Python 3.9, and
-prints the resolved psutil/plotext/rich versions — a fresh resolve is exactly how the
-plotext 6.0.0 break arrived.
-
-The manual checks still matter for anything the suite deliberately does not touch (real
-terminal output, the alternate screen):
+Manual checks the suite deliberately leaves out:
 
 ```bash
-termstats --version && termstats --help
-COLUMNS=150 LINES=45 termstats | head -60   # renders all panels non-interactively
+termstats --version && termstats --help && termstats --list-themes
+COLUMNS=100 LINES=30 termstats --demo --once           # every panel, full charts, no tty needed
 ```
 
-⚠️ Snapshot mode does **not** exercise the chart code — both charts short-circuit to
-`Collecting data...`. The `clear_figure` crash of 2026-08-30 lived entirely in a path that
-`termstats | head` never reaches, and so did the `Text.from_ansi` layout bug above. To actually cover it, either drive live mode under a real
-pty (rich renders nothing to a plain pipe, so a `subprocess.PIPE` run proves nothing) or
-prime the deques and call the collectors directly:
+Driving live mode under a pty (resize + Ctrl+C) is scripted in the session scratchpad pattern:
+`pty.fork()`, `TIOCSWINSZ`, **keep draining the master fd while waiting** — a full pty buffer
+blocks the child in `write()` during rich's screen teardown and looks like Ctrl+C is ignored.
+Never measure widths from a pty capture (`screen=True` repositions the cursor; rows concatenate).
+Two shell traps: zsh does not word-split unquoted parameters, and `wait %1` returns 127
+non-interactively — drive multi-step process tests from Python.
 
-```python
-from termstats import cli
-for i in range(60):
-    cli.cpu_history.append(i); cli.net_sent_history.append(1.0); cli.net_recv_history.append(2.0)
-print(cli.get_cpu_chart(70, 12))
-```
+## Design tokens and themes (S1–S2)
 
-⚠️ A `pty.fork()` window starts at **80×24 whatever `$COLUMNS` says**, and plotext clamps to
-the real window size. Set it explicitly or the charts come back narrow and the titles look
-truncated when they are not:
+- `theme.py` owns: `GLYPH_SETS` (braille/block/ascii, each a `GlyphSet` NamedTuple incl.
+  `rule` and `copyright`), `GLYPH_PROBE` (every non-ASCII glyph the dashboard can draw — **add
+  any new glyph here**, `test_dashboard` collects drawn characters and requires them in it),
+  `Capabilities` + `detect()` (`NO_COLOR` > `TERM=dumb` > `COLORTERM` > `TERM`; glyphs via
+  `TERMSTATS_GLYPHS` / `TERM=dumb` / stream encoding probe; `TERMSTATS_NERD_FONT`), spacing
+  constants (`LABEL_W`, `VALUE_W`, `RATE_W`, `SPARK_W`, `PEAK_WINDOW`, `SMOOTH_ALPHA`,
+  `CHART_*`, `PROC_MIN_H`, `PANEL_*`/`COMPACT_*`/`RULE_*` chrome), fixed-width formatters
+  (`fmt_pct` 6 cells, `fmt_gb` 6, `fmt_rate` 8, `fmt_uptime` 8, …), OKLab (`rgb_to_oklab`,
+  `oklab_to_rgb_in_gamut` by chroma bisection, `Ramp`, `dim_hex`, `BandedRamp`, `bands()`),
+  `contrast_ratio()` (WCAG), and `THEMES`.
+- A `Theme` is: `stops` (4–5 OKLab-interpolated stops), text/soft/dim/muted/faint, `track`
+  (the empty part of a meter — between bg and dim), `border` (ONE frame tone), `accent`
+  (panel titles), wordmark colours, `bg` (what the contrast tests measure against), `bands16`.
+- Every theme must stay **monotone in lightness** (a test checks; viridis is exempt as a fixed
+  scientific map) and survive **256/16 quantisation** without folding bands. Contrast floors in
+  `test_dod.py` come from the measured table of all six themes: text/soft/accent ≥ 4.5, dim ≥ 3,
+  muted ≥ 2.2, faint ≥ 1.5, border ≥ 1.5, track ≥ 1.2, **ramp t < 0.4 ≥ 2.0, t ≥ 0.4 ≥ 3.0** —
+  the ramp colours the value digits, so its idle end must read as text (nord's `#4c566a` and
+  viridis' `#440154` failed that at 1.69 / 1.19 and were raised to `#616e88` / `#414487`).
+- Red is darker than yellow at usable sRGB chroma; the warm stops were lowered so "hot" still
+  rises in lightness. Ramp lookups are cached on millionths (thousandths shifted channels ±1).
 
-```python
-fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-```
+## Layout, stability, chrome (S3, S6, S7)
 
-⚠️ Do not assert on **line widths** from a pty capture either: `Live(screen=True)` repositions
-the cursor instead of emitting newlines, so consecutive frames concatenate and every line
-looks 300 characters wide. Measure widths against a fixed-width `rich.Console` (which is what
-`test_dashboard.py` does); use the pty only for behaviour — refresh cadence, alternate screen,
-Ctrl+C, exit status.
+- `render_dashboard(width, height)` budgets **`body_h = th - 2`** (header + footer are fixed
+  rows), decides `chrome()` → `(rows, cols)` per panel in ONE place (`PANEL_CHROME`,
+  `--compact` = border only, `--no-border` = a title `Rule` + one gutter column per side —
+  without the gutter two columns of meters run into each other), computes the CPU panel
+  height **exactly** from `cpu_section_rows()` (a packed 2-column panel used one row fewer
+  than the cap), `proc_min = ch + 3`, drops sections from the bottom, gives the last section
+  `ratio=1`, then appends the footer.
+- ⚠️ In the narrow stack `core_rows` derives from `cpu_wanted`, in the wide row from `top_h`.
+  Deriving from `top_h` in both cases (the 0.1.0–0.3.0 code) laid the cores out for the whole
+  stack's height and the Layout **cropped** the panel — at 60×20 `cpu8`, `cpu9`, `TOTAL` were
+  missing. Every geometry sweep now pins `TOTAL`.
+- In `--no-border` mode the budget's slack is visible: it may sit at the bottom of the body
+  above the footer (≤ 3 rows), never inside the picture; chart plot rows are exempt from the
+  "no blank line" invariant (a curve that does not reach the top leaves the row empty).
+- Nothing may change width on a value change: fixed-width formats, header fields fixed, tail
+  tiers by width alone (sparkline centred + clock / clock / none), net unit hysteresis
+  (KB→MB→GB), stable process sort `(-cpu, pid)`. `test_stability` runs a 20-frame stormy
+  sweep with 2 warm-up frames (frame 1 is "collecting").
+- Value digits bold in the ramp tone, the **unit in its own dim span** (`meter(unit_w=…)`, the
+  chart subtitle the same) — tests that match value text must match the digits, not `"32.0%"`.
+- Footer: `Ctrl+C to exit` (LIVE only) + `© <year> Martin Pfeffer | celox.io`, year via
+  `_current_year()` (patchable). The old `(bottled 🍻 …)` header branding is gone since 0.1.0;
+  the brand test pins `TERMSTATS` + version in the header.
 
-⚠️ When driving live mode under a pty, **keep draining the master fd while waiting for the
-child to exit**. Stop reading and the pty buffer fills; the child then blocks in `write()`
-during rich's screen teardown and never processes the `SIGINT` — the harness hangs and it
-looks like the app ignores Ctrl+C. It does not.
+## Meters, peaks, charts (S4–S5)
 
-Two shell traps that cost time here: **zsh does not word-split unquoted parameters**, so
-`for a in "-l -i abc"; do termstats $a; done` passes one 11-character argument and every case
-comes back "unknown option"; and `wait %1` in a non-interactive shell returns 127 — drive
-multi-step process tests from Python, not from a shell loop.
+- `bar()` = gradient cells + eighth partials + dimmed secondary (cache) + **peak hairline**
+  (`GLYPHS.peak`) at `PeakTracker`'s 30-sample high-water mark, drawn only if `peak_cell >
+  filled`. Live mode eases the *fill* (`Smoother`, EMA, `SMOOTHING` True only in `run_live`);
+  numbers and the hairline are always raw. Snapshot mode never smooths.
+- Charts: plotext 5.x braille/hd marker, `theme("clear")` then `ticks_color()` (order matters),
+  `frame(False)`, fixed-width `fmt_axis` ticks, `axis_w` passed per chart (`AXIS_W_PCT` /
+  `AXIS_W_RATE` — deriving it from the value range made the rate chart jump), vertical
+  gradient via `Style(color=…)` spans, `_collecting()` skeleton (`⠒⠒⠒…` + `collecting · 2
+  samples needed`, height-aware). The ASCII chart fades by row too.
+- **plotext is pinned `<6` — do not relax it.** 6.0.0 (2026-08-23, beta upstream) removed the
+  5.x API (`clear_figure`, `plot`, `ylim`, `plotsize`, `build`); `_render_chart()` guards on
+  `_PLOTEXT_5` and fails soft (a library break costs a chart, not the dashboard).
 
-Snapshot mode always shows `Collecting data...` in both charts — rates need two samples, and a
-snapshot only takes one after priming. That is correct behaviour; do not "fix" it.
+## Lifecycle (S8)
 
-## Gotchas
+- `run_live`: cursor hidden **before** the priming pause, whole session in
+  `try/except KeyboardInterrupt/finally` (Ctrl+C in the first 0.5 s used to print a traceback),
+  `finally` restores cursor + the previous `SIGWINCH` handler. rich's `Live(screen=True)`
+  restores the alternate screen itself. Ctrl+C → exit 0; interrupted `--once` → exit 130.
+- Resize: `_on_resize` sets `_resized` (Event); `_sleep_until(deadline)` sleeps in
+  `RESIZE_SLICE_S = 0.1` slices and returns True when set; the loop then relayouts at once and
+  **resyncs the cadence from that frame** (`next_tick = monotonic()`), rather than rendering an
+  extra frame on the old grid. `hasattr(signal, "SIGWINCH")` guard for Windows.
+- The timing harness (`test_timing.live_harness`) charges `RENDER_COST` **per render** and
+  interrupts at the sixth render so every recorded (sliced) wait is whole; `per_frame()` adds
+  the slices back up.
 
-- **plotext is pinned `<6` — do not relax it.** plotext **6.0.0** (PyPI 2026-08-23, labelled
-  beta upstream) is a full rewrite: the 5.x top-level API the charts are written against
-  (`clear_figure`, `plot`, `ylim`, `plotsize`, `build`) is gone, replaced by a `plt.figure`
-  object with `line`/`signal`/`clear`/`build`. With the old unpinned `plotext>=5.2`, a fresh
-  install picked 6.0.0 and `termstats --live` died with
-  `AttributeError: module 'plotext' has no attribute 'clear_figure'` (fixed in 1.1.1). The
-  latest usable release is **5.3.2**. Porting to the 6.x API is a real option later, but not
-  while it is beta — and it would break every 5.x environment.
-- **Charts fail soft.** `_render_chart()` checks `_PLOTEXT_5` (the five 5.x attributes) and
-  wraps the build in `try/except`, so a library break costs a chart, not the dashboard —
-  the same rule as the OS collectors below. Verify that path by stubbing
-  `sys.modules["plotext"]` with an empty module before importing `termstats.cli`.
-- **Windows redirects stdout as cp1252 — widen it before printing.** The dashboard is drawn
-  from `█ ░ ╭` and the header carries 🍻; none of that exists in cp1252, so `termstats > out.txt`
-  died with `UnicodeEncodeError` on Windows while a real console was fine (rich reaches a
-  console through the win32 API). `_ensure_console_encoding()` runs first in `main()` and
-  reconfigures only a stream that provably cannot carry `_GLYPH_PROBE`, with
-  `errors="replace"` so it can never raise. **Add any new non-ASCII output glyph to
-  `_GLYPH_PROBE`** — a test enforces that the four current ones are in it. Found by CI on its
-  very first run, which is the argument for having CI at all.
-- **Rates need two samples.** CPU %, disk I/O and network throughput are deltas held in
-  function attributes (`get_disk_section._last_io`, `get_network_section._last`) and
-  module-level `deque(maxlen=60)`s. First call always yields 0 — hence `_prime_measurements()`
-  plus a 1 s sleep before the first render. `HISTORY_LEN = 60` is what "last 60s" means at the
-  default interval; changing the interval silently changes the window the charts cover.
-- **Steal time is Linux-only** and is read by hand from `/proc/stat` field 8 as a delta; on
-  macOS/Windows `_read_steal_pct()` returns 0.0 and the bar is not drawn.
-- **Never let a collector raise.** Everything that touches the OS is wrapped: an unreadable
-  partition is skipped, `psutil.AccessDenied` on `net_connections()` (Windows without admin)
-  omits the row rather than printing 0. A dashboard that dies on one bad mountpoint is worse
-  than one missing a line.
-- **Live mode uses rich's alternate screen** (`Live(..., screen=True)`); `KeyboardInterrupt` is
-  caught so the terminal is restored and scrollback survives.
-- **Argument handling is a hand-rolled `sys.argv` loop, not `argparse` — so it validates by
-  hand.** Until 1.1.2 it matched only the exact flag spellings and **silently ignored
-  everything else**: `termstats -live` ran a *snapshot*, which shows `Collecting data...` in
-  both history panels and reads as "live mode is broken" (user report, 2026-08-30). Two
-  siblings of the same defect: `-i` as the last argument was dropped, and `-i abc` raised an
-  uncaught `ValueError`. Now every token must match something, long options are accepted with
-  one dash too (`-live`, `-interval`, `-version`, `-help`), and bad input goes to stderr with
-  exit code 2 via `_fail()`. If you add a flag, add it to the matching `_*_FLAGS` tuple —
-  anything not in a tuple is now a hard error, which is the point.
-- **Charts are area charts, and only ONE series per chart is filled.** plotext's `fillx=True`
-  works with braille markers and with RGB-tuple colours (tested 2026-09-05). Two overlapping
-  fills turn to mud where they cross; rx is the area, tx the line drawn over it, and the
-  filled series must be plotted FIRST or the line disappears under it. The CPU area is
-  tinted by the ramp at the window's *mean* load — a deliberate tie to the meters, not a
-  fixed colour. Tests spy on `plt.plot` kwargs to pin `fillx` and the colour per series.
-- **The memory bar's second segment is the cache, and the number is psutil's `percent`.**
-  `percent` = everything-not-available, which already includes cache. The bar therefore
-  draws `used/total` as the primary and `percent - used%` as the dimmed secondary; the
-  printed figure and its colour describe the SUM. Drawing `percent` as the primary (the
-  first attempt) left a one-cell sliver of cache and lied about the split.
-- **The header sparkline shows PEAKS per slice, not means.** A mean over four samples
-  flattens exactly the spike a sparkline exists to show. It is omitted in ASCII mode —
-  there is no ASCII glyph set with eight heights, and a wrong picture is worse than none.
-- **The header carries a wall clock.** Without it a frozen dashboard and an idle machine look
-  identical. Its absence after the rewrite was found by watching the live view in a pty, not
-  by any unit test — the clock is now pinned.
-- ⚠️ **`Text(no_wrap=True, overflow="crop")` is DISCARDED by `Console.print` for a bare
-  Text.** `Console._collect_renderables` pushes loose Text objects through `Text.join`, which
-  builds a fresh Text and drops both attributes. Inside a `Panel` or `Layout` —
-  the only way the dashboard ever renders them — `__rich_console__` is called directly and
-  honours them. A test that prints a meter on its own will show it wrapping when it does not;
-  `tests/helpers.py::plain` passes the attributes explicitly for that reason.
-- ⚠️ **`overflow="crop"` hides an over-wide chart instead of wrapping it.** That makes the
-  "one column too wide" defect invisible to any line-width assertion — the plot frame is
-  simply cut off the right edge. `test_the_chart_is_sized_to_fit_inside_its_panel` pins the
-  arithmetic directly, and a counter-check looks for plotext's own closing corner.
-- **plotext has no pure-ASCII mode.** Its markers include `dot`, `at`, `dollar` and single
-  characters, but the *axes* are always box-drawing glyphs. There is therefore no marker
-  choice that yields ASCII, which is why `_ascii_chart()` draws columns by hand rather than
-  the fallback dropping the charts.
-- **plotext's `theme("clear")`, not `"dark"`.** "dark" fills the plot with a black rectangle
-  that sits inside the panel whatever the terminal's own background is. Check for it on the
-  parsed **styles**, not on raw escape text — rich re-encodes the colour for the target
-  terminal, so matching a literal `\x1b[48;5;0m` passes by accident.
-- **Colour quantisation is rich's job, not ours.** `ramp()` returns truecolor hex and rich
-  converts it to the nearest 256- or 16-colour value. ⚠️ Verifying that is easy to get wrong:
-  `Style.parse` is `lru_cache`d and `Style.render` caches `self._ansi` from the **first**
-  colour system it sees, so a loop over colour systems reusing one Style reports truecolor
-  every time. Build a fresh `Style(color=...)` per system.
-- **The header string is `" TERMSTATS "`** plus the `(bottled 🍻 by Martin Pfeffer - celox.io)`
-  branding — the branding is deliberate, don't strip it as noise.
-- **`isatty()` decides the mode, and that must stay true.** A bare `termstats` runs live in a
-  terminal and prints one snapshot anywhere else. The CI smoke step passes `--once`
-  explicitly *on purpose*: a bare invocation would also snapshot there, but relying on that
-  would make the step hang forever the day the terminal check regresses. Screen recorders and
-  `script(1)` allocate a pty, so they get the live view — that is correct, use `--once`.
-- **`HISTORY_LEN` is a sample count and the chart titles say the real window.** 60 samples
-  at 0.5 s is `last 30s`; `_window_label()` computes it and flips to minutes above 90 s. The
-  old hard-coded "last 60s" was true for exactly one interval value.
-- **Frames are scheduled on a grid, not with a flat sleep.** `_schedule_tick()` returns
-  `interval − render time`, and resyncs to *now* if a render overran — otherwise the loop
-  banks a backlog and fires a burst of instant redraws to "catch up". A flat sleep drifts by
-  the render cost, ~6% at the default interval.
-- ⚠️ **plotext output must reach rich as `Text.from_ansi`, never as a plain `str`.** This was
-  a live bug for the whole life of the project, found only by rendering into a real pty while
-  verifying the new titles. plotext embeds ~190 escape bytes per line; rich counts those as
-  printable cells, so a 70-column chart measured 259 wide, got re-wrapped into ragged
-  fragments, the axis broke apart and the title was cut mid-word (`CPU Usage (last`). It is
-  invisible in the unit tests unless you assert on *line widths* — `test_dashboard.py` now
-  does, at five terminal widths.
-- **The chart width must leave room for the panel chrome**: `(tw - 1) // 2 - 4` — two columns
-  of border, two of padding, and one column of grid gap shared between the pair. `tw // 2 - 4`
-  is one too many and triggers the rewrap above even with `from_ansi`.
+## --demo (S9)
+
+`demo.DemoSource(seed, interval)` carries the psutil surface `cli.py` uses (`test_demo`
+extracts every `psutil.<name>` from the source and requires it), advances one frame per
+`cpu_percent(percpu=True)`, and has **its own clock** (`now()`); `cli._now()` returns it in
+demo mode so the rate collectors and uptime are wall-clock independent — `_prefill_history()`
+plays 60 frames in a tight loop before the first visible one. Story period 150: burst 22–42,
+spike 46–74, disk fills, processes react; the first visible frame (63) lands on the spike.
+`set_demo(source)` rebinds the module-level `psutil`. A **DEMO** badge sits in the header's
+fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last 60s`).
+
+## Screenshots
+
+`termstats.png` (hero, 140×42) and `termstats-themes.png` (six themes, 100×30 each) are
+rendered from `--demo`: rich `Console(record=True)` → `export_svg` (background swapped to the
+theme's `bg`) → an HTML page served by `python3 -m http.server 8901` from the scratchpad →
+Playwright MCP element screenshot (`#hero` / `#grid`, `scale: css`). ⚠️ Regenerate the SVGs
+**after** the version bump — the header carries the version, and a stale one shipped once.
+Remove `.playwright-mcp/` before committing.
+
+## Gotchas (older, still true)
+
+- **Windows redirects stdout as cp1252 — widen it before printing.** `_ensure_console_encoding()`
+  runs first in `main()` and reconfigures only a stream that cannot carry `GLYPH_PROBE`.
+- **Rates need two samples.** First call always yields 0 — hence `_prime_measurements()` plus
+  a 1 s sleep (snapshot) / 0.5 s (live) before the first render. `HISTORY_LEN = 60` is a sample
+  count; the chart title computes the window from the interval.
+- **Steal time is Linux-only** (`/proc/stat` field 8 delta); elsewhere the bar is not drawn.
+- **Never let a collector raise.** An unreadable partition is skipped; `AccessDenied` on
+  `net_connections()` omits the row.
+- **Argument handling is a hand-rolled `sys.argv` loop** — every token must match a `_*_FLAGS`
+  tuple (long options also with one dash), unknown input exits 2 via `_fail()`. Adding a flag
+  means: tuple + parse branch + `print_help()` + README options table.
+- Snapshot mode always shows the collecting skeleton in both charts — correct, do not "fix".
+- Below ~50 columns the 2-column CPU packing crops values (`core_columns` knows rows, not
+  width); 80×24 is the readability floor and holds.
 
 ## Deploy
 
-None. It is a local CLI: no VPS, no Pi, no systemd unit, no service to restart. "Shipping" is
-`git push`; users install from the git URL.
-
-The one server-side artefact is `examples/celox-health-report.example.py` — a template that
-needs SMTP credentials, is excluded from the package, and must **never** be committed with real
-credentials filled in.
+None. It is a local CLI: "shipping" is `git push origin main --follow-tags`; users install from
+the git URL. The one server-side artefact is `examples/celox-health-report.example.py` — a
+template that needs SMTP credentials, is excluded from the package, and must **never** be
+committed with real credentials filled in.
