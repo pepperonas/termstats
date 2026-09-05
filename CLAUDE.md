@@ -122,7 +122,14 @@ run of 0.4.0 went red in all four cells because `set_theme("default")` took the 
 shell exports `COLORTERM`. Reproduce locally with `env -u COLORTERM TERM=dumb pytest`; the
 suite must now pass under `TERM=dumb`, `TERM=xterm`, `TERM=xterm-256color` and `NO_COLOR=1`.
 Any test that reads the real environment (`detect_capabilities()`, `_color_from_env()`)
-sets `TERM` itself via `monkeypatch.setenv`.
+sets `TERM` itself via `monkeypatch.setenv`. Two more CI-only lessons: **rich honours
+`NO_COLOR` and `legacy_windows` from the real environment even on a Console built with
+`color_system="truecolor"`** — a test Console that wants colour passes `force_terminal=True,
+no_color=False, legacy_windows=False` (on a Windows pipe rich otherwise renders through the
+win32 API and swaps `╭` for `┌`); and how much slack the `--no-border` sweep may leave at
+the bottom is a property of the MACHINE (cores, mounts, swap), not of the frame mode — a
+4-core Linux runner drops the disk section at 60×20 and leaves five rows, so the sweep pins
+"no blank line inside the picture", not a row count.
 
 Traps hit while writing these (all real): `f"p{i}" in output` matched `p2` inside `p29` — count
 rows; an anchor string whose indentation did not match "proved" nothing; `KeyboardInterrupt`

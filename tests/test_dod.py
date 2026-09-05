@@ -165,6 +165,9 @@ def test_the_colour_chain_degrades_in_order():
 
 # --- one real process per colour level ------------------------------------------------------------
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="rich renders a Windows pipe in legacy mode through the win32 API - "
+                           "no ANSI to inspect; the in-process pins cover the escape logic there")
 @pytest.mark.parametrize("term, colorterm, wanted, forbidden", [
     ("xterm", "", "\x1b[3", "38;"),                  # 16 colours: SGR 30-37 only
     ("xterm-256color", "", "38;5;", "38;2;"),        # 256: palette indices, no truecolor
