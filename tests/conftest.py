@@ -27,6 +27,7 @@ def clean_module_state():
     # mode or pushed the unit to MB/s must not leak that into the next one.
     cli.SMOOTHING = False
     cli._smoother.reset()
+    cli._peaks.reset()
     cli._net_unit = "KB/s"
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),

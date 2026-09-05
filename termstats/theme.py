@@ -567,7 +567,15 @@ class Ramp:
         return hex_of(self.rgb(t))
 
 
-def dim_hex(rgb: Sequence[int], factor: float = 0.45) -> str:
-    """The same colour at a fraction of its brightness - for a secondary segment that must
-    read as related to the primary but clearly not the same thing."""
-    return hex_of(tuple(round(c * factor) for c in rgb))
+DIM_FACTOR = 0.55          # secondary segments keep this share of the primary's OKLab L
+
+
+def dim_hex(rgb: Sequence[int], factor: float = DIM_FACTOR) -> str:
+    """The same HUE at a fraction of the lightness - for a secondary segment that must
+    read as related to the primary but clearly not the same thing.
+
+    Done in OKLab: scaling sRGB channels darkens, but also drifts the hue (a dimmed amber
+    turns olive). Lowering L and keeping a/b keeps the colour the eye pairs with the bar.
+    """
+    L, a, b = rgb_to_oklab(rgb)
+    return hex_of(oklab_to_rgb_in_gamut((L * factor, a, b)))

@@ -169,7 +169,7 @@ dim_rgb = T.dim_hex
 # Meters
 # ---------------------------------------------------------------------------------
 
-def bar(pct, width, secondary=0.0):
+def bar(pct, width, secondary=0.0, peak=None):
     """A gradient meter, accurate to an eighth of a character cell.
 
     Each cell is tinted by its own position on the ramp rather than the bar carrying one
@@ -177,6 +177,8 @@ def bar(pct, width, secondary=0.0):
 
     `secondary` is a second percentage drawn after the first in a dimmed tone - used for
     the memory the kernel holds as cache: not free, not the process's, and worth seeing.
+    `peak` is a percentage marked with a hairline on the empty track: the recent maximum,
+    drawn only when it lies beyond what is filled, in the ramp colour of where it sits.
     """
     full_ch, empty_ch, second_ch, partials = BAR_FULL, BAR_EMPTY, BAR_SECONDARY, BAR_PARTIALS
 
@@ -199,7 +201,20 @@ def bar(pct, width, secondary=0.0):
     for i in range(second):
         text.append(second_ch, style=dim_rgb(ramp_rgb((filled + i) / span)))
     filled += second
-    text.append(empty_ch * (width - filled), style=TRACK)
+
+    peak_cell = None
+    if peak is not None and peak == peak:
+        peak_cell = min(int(width * max(0.0, min(100.0, peak)) / 100.0), width - 1)
+        # Only strictly beyond the fill: a peak equal to the value has nothing to mark,
+        # and a hairline in the cell right after the fill is indistinguishable from it.
+        if peak_cell <= filled:
+            peak_cell = None
+    if peak_cell is None:
+        text.append(empty_ch * (width - filled), style=TRACK)
+    else:
+        text.append(empty_ch * (peak_cell - filled), style=TRACK)
+        text.append(GLYPHS.peak, style=ramp(peak_cell / span))
+        text.append(empty_ch * (width - peak_cell - 1), style=TRACK)
     return text
 
 
@@ -243,6 +258,46 @@ SMOOTHING = False           # run_live() switches it on; run_once() never does
 _smoother = Smoother()
 
 
+class PeakTracker:
+    """The high-water mark of each meter over the last PEAK_WINDOW samples.
+
+    A meter shows one instant; the peak marker tells the other half of the story - how
+    high it went in the last quarter minute. It is drawn from RAW samples (never the
+    eased fill), and it decays on its own as old samples leave the window, which is the
+    one animation here that carries data. Keys not drawn in a frame are dropped.
+    """
+
+    def __init__(self, window=T.PEAK_WINDOW):
+        self.window = window
+        self._hist = {}
+        self._touched = set()
+
+    def value(self, key, raw):
+        self._touched.add(key)
+        hist = self._hist.get(key)
+        if hist is None:
+            hist = self._hist[key] = deque(maxlen=self.window)
+        hist.append(raw)
+        return max(hist)
+
+    def end_frame(self):
+        for key in list(self._hist):
+            if key not in self._touched:
+                del self._hist[key]
+        self._touched.clear()
+
+    def reset(self):
+        self._hist.clear()
+        self._touched.clear()
+
+
+_peaks = PeakTracker()
+
+
+def peak_of(key, raw):
+    return _peaks.value(key, raw)
+
+
 def shown(key, raw):
     """The fill to draw for `raw`: eased in live mode, raw everywhere else."""
     if not SMOOTHING:
@@ -251,7 +306,7 @@ def shown(key, raw):
 
 
 def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0,
-          note_w=None, fill=None):
+          note_w=None, fill=None, peak=None):
     """`label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line, budgeted so it never wraps.
 
     The old two-line form (bar, then "6.1G / 16.0G" underneath) doubled the height of
@@ -277,7 +332,7 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondar
 
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"{label[:label_w - 1]:>{label_w - 1}} ", style=DIM)
-    text.append_text(bar(fill_pct, bar_w, secondary))
+    text.append_text(bar(fill_pct, bar_w, secondary, peak=peak))
     text.append(f"{value:>{value_w}}", style=f"bold {ramp(occupied / 100)}")
     if field_w:
         text.append(f"  {note:>{field_w}}", style=MUTED)
@@ -373,7 +428,8 @@ def get_cpu_section(width, max_rows=99):
     if cols == 0:
         rows = [Text("      cores ", style=DIM).append_text(heat_strip(percents, width - 14))]
     elif cols == 1:
-        rows = [meter(f"cpu{i}", p, width, fill=shown(f"cpu{i}", p)) for i, p in enumerate(percents)]
+        rows = [meter(f"cpu{i}", p, width, fill=shown(f"cpu{i}", p), peak=peak_of(f"cpu{i}", p))
+                for i, p in enumerate(percents)]
     else:
         grid = Table.grid(expand=True, padding=(0, 2))
         col_w = (width - 2 * (cols - 1)) // cols
@@ -384,14 +440,17 @@ def get_cpu_section(width, max_rows=99):
             cells = []
             for c in range(cols):
                 i = c * per_col + r
-                cells.append(meter(f"cpu{i}", percents[i], col_w, fill=shown(f"cpu{i}", percents[i]))
+                cells.append(meter(f"cpu{i}", percents[i], col_w, fill=shown(f"cpu{i}", percents[i]),
+                                   peak=peak_of(f"cpu{i}", percents[i]))
                              if i < len(percents) else Text(""))
             grid.add_row(*cells)
         rows = [grid]
 
-    rows.append(meter("TOTAL", total, width, fill=shown("cpu.total", total)))
+    rows.append(meter("TOTAL", total, width, fill=shown("cpu.total", total),
+                      peak=peak_of("cpu.total", total)))
     if IS_LINUX:
-        rows.append(meter("steal", steal_pct, width, fill=shown("cpu.steal", steal_pct)))
+        rows.append(meter("steal", steal_pct, width, fill=shown("cpu.steal", steal_pct),
+                          peak=peak_of("cpu.steal", steal_pct)))
     return Group(*rows), total, steal_pct
 
 
@@ -425,13 +484,15 @@ def get_memory_section(width):
         note += f" +{min(cache / 1024 ** 3, 99.9):4.1f}G cache"
     rows = [meter("ram", used_pct, width, value=T.fmt_pct(mem.percent), note=note,
                   note_w=T.NOTE_MEM_W if wide else T.NOTE_GB_PAIR_W,
-                  secondary=cache_pct, fill=shown("mem.ram", used_pct))]
+                  secondary=cache_pct, fill=shown("mem.ram", used_pct),
+                  peak=peak_of("mem.ram", mem.percent))]
     swap = psutil.swap_memory()
     if swap.total > 0:
         rows.append(meter("swap", swap.percent, width,
                           note=T.fmt_gb_pair(swap.used, swap.total),
                           note_w=T.NOTE_MEM_W if wide else T.NOTE_GB_PAIR_W,
-                          fill=shown("mem.swap", swap.percent)))
+                          fill=shown("mem.swap", swap.percent),
+                          peak=peak_of("mem.swap", swap.percent)))
     return Group(*rows)
 
 
@@ -500,7 +561,8 @@ def get_disk_section(width):
     for label, usage in disk_entries():
         rows.append(meter(short_mount(label), usage.percent, width, label_w=DISK_LABEL_W + 1,
                           note=T.fmt_gb_pair(usage.used, usage.total), note_w=T.NOTE_GB_PAIR_W,
-                          fill=shown(f"disk.{label}", usage.percent)))
+                          fill=shown(f"disk.{label}", usage.percent),
+                          peak=peak_of(f"disk.{label}", usage.percent)))
     io_line = _disk_io_line()
     if io_line is not None:
         rows.append(io_line)
@@ -576,10 +638,10 @@ def get_network_section(width):
     rows = [
         meter("tx", tx_pct, width, value=T.fmt_rate(sent_s), value_w=T.RATE_W,
               note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_sent)}", note_w=T.NOTE_TOTAL_W,
-              fill=shown("net.tx", tx_pct)),
+              fill=shown("net.tx", tx_pct), peak=peak_of("net.tx", tx_pct)),
         meter("rx", rx_pct, width, value=T.fmt_rate(recv_s), value_w=T.RATE_W,
               note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_recv)}", note_w=T.NOTE_TOTAL_W,
-              fill=shown("net.rx", rx_pct)),
+              fill=shown("net.rx", rx_pct), peak=peak_of("net.rx", rx_pct)),
     ]
     if conns >= 0:
         line = Text(no_wrap=True, overflow="crop")
@@ -634,7 +696,8 @@ def get_top_processes(width, n=8):
         # The ellipsis comes from the column, not from here - see the no_wrap column above.
         cells = [str(proc['pid']), Text(proc['name'] or "?")]
         if bar_w:
-            cells.append(bar(shown(f"proc.{proc['pid']}", cpu_pct), bar_w - 1))
+            cells.append(bar(shown(f"proc.{proc['pid']}", cpu_pct), bar_w - 1,
+                             peak=peak_of(f"proc.{proc['pid']}", cpu_pct)))
         cells += [
             Text(f"{min(cpu_pct, 9999.9):5.1f}", style=f"bold {ramp(cpu_pct / 100)}"),
             Text(f"{min(mem_pct, 100.0):5.1f}", style=ramp(mem_pct / 25)),
@@ -982,6 +1045,7 @@ def render_dashboard(width=None, height=None):
     net_sent_history.append(sent_s)
     net_recv_history.append(recv_s)
     _smoother.end_frame()
+    _peaks.end_frame()
 
     # --- height budget ---------------------------------------------------------------
     remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
@@ -1110,6 +1174,7 @@ def run_live(interval=DEFAULT_INTERVAL):
     sample_interval = interval
     SMOOTHING = True
     _smoother.reset()
+    _peaks.reset()
     _prime_measurements()
     time.sleep(min(interval, 0.5))
     refresh = max(1, min(10, round(1 / interval)))

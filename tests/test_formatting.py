@@ -204,9 +204,18 @@ def test_ramp_rgb_returns_integers_in_range():
 
 
 def test_dim_rgb_keeps_the_hue_and_lowers_the_brightness():
-    dimmed = cli.dim_rgb((200, 100, 50), 0.5)
-    assert dimmed == "#643219"
+    """Pinned as a property since S4: the 0.3.0 version asserted the literal result of
+    scaling sRGB channels, which darkens but also drifts the hue (amber turns olive).
+    Dimming now happens in OKLab - lower L, same a/b - so the check is on hue and L."""
+    import math
+    from termstats import theme as T
+    src = (200, 100, 50)
+    dimmed = cli.dim_rgb(src, 0.5)
     assert HEX.match(dimmed)
+    _, a, b = T.rgb_to_oklab(src)
+    L2, a2, b2 = T.rgb_to_oklab(T.rgb_of(dimmed))
+    assert abs(math.atan2(b, a) - math.atan2(b2, a2)) < 0.08
+    assert L2 == pytest.approx(T.lightness(src) * 0.5, abs=0.02)
 
 
 def test_secondary_segment_is_drawn_after_the_primary():

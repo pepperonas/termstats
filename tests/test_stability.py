@@ -80,7 +80,8 @@ def cells(text):
 
 def bar_cells(text):
     drawn = cells(text)
-    return sum(drawn.count(ch) for ch in (cli.BAR_FULL, cli.BAR_EMPTY, cli.BAR_SECONDARY) + tuple(cli.BAR_PARTIALS))
+    glyphs = (cli.BAR_FULL, cli.BAR_EMPTY, cli.BAR_SECONDARY, cli.GLYPHS.peak) + tuple(cli.BAR_PARTIALS)
+    return sum(drawn.count(ch) for ch in glyphs)
 
 
 def test_a_note_gaining_a_digit_does_not_shorten_the_bar():
@@ -331,9 +332,9 @@ def test_stormy_frames_keep_every_bar_the_same_length(stormy_machine):
     """Bars are measured per row: same number of bar cells in every frame."""
     def bars(frame):
         out = []
+        glyphs = (cli.BAR_FULL, cli.BAR_EMPTY, cli.BAR_SECONDARY, cli.GLYPHS.peak) + tuple(cli.BAR_PARTIALS)
         for row in frame.rstrip("\n").split("\n"):
-            n = sum(row.count(ch) for ch in (cli.BAR_FULL, cli.BAR_EMPTY, cli.BAR_SECONDARY) + tuple(cli.BAR_PARTIALS))
-            out.append(n)
+            out.append(sum(row.count(ch) for ch in glyphs))
         return out
     frames = [plain(cli.render_dashboard(130, 40), width=130, height=40) for _ in range(12)]
     reference = bars(frames[0])
