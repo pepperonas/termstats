@@ -114,6 +114,16 @@ count that also matched chart ticks, a gutter check that a too-narrow body also 
 compact check that a right-aligned label always passed, a relayout check that could not tell
 "render now" from "render after the wait". **A test you have not watched fail is not a guarantee.**
 
+⚠️ **The fixture PINS the capabilities** (`cli.CAPS = Capabilities("truecolor", "braille",
+False)` + `set_theme("default", color="truecolor")`), it does not detect them. The first CI
+run of 0.4.0 went red in all four cells because `set_theme("default")` took the colour level
+`detect()` found at import — 256/16 on a runner without `COLORTERM` — and `ramp()` returned
+`color(242)` / `cyan` where the pins expected hex. The same suite was green on the Mac, whose
+shell exports `COLORTERM`. Reproduce locally with `env -u COLORTERM TERM=dumb pytest`; the
+suite must now pass under `TERM=dumb`, `TERM=xterm`, `TERM=xterm-256color` and `NO_COLOR=1`.
+Any test that reads the real environment (`detect_capabilities()`, `_color_from_env()`)
+sets `TERM` itself via `monkeypatch.setenv`.
+
 Traps hit while writing these (all real): `f"p{i}" in output` matched `p2` inside `p29` — count
 rows; an anchor string whose indentation did not match "proved" nothing; `KeyboardInterrupt`
 escaping a test aborts pytest with rc 2 and no `FAILED` line — convert it to `pytest.fail`;

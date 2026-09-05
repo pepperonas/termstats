@@ -8,6 +8,7 @@ fail depending on what ran before them.
 import pytest
 
 from termstats import cli
+from termstats import theme
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +23,13 @@ def clean_module_state():
     cli.sample_interval = cli.DEFAULT_INTERVAL
     # Capability detection is global; a test that drops to ASCII must not leak that.
     cli.set_glyph_level("braille")
-    cli.set_theme("default")
+    # ⚠️ Pin the capabilities, do not detect them: set_theme("default") alone takes the
+    # colour level detect() found at import, and on a CI runner without COLORTERM that
+    # is 256 or 16 - ramp() then returns "color(242)" or "cyan" and every hex pin dies.
+    # The suite must mean the same thing on every machine; a test that wants another
+    # level sets it explicitly.
+    cli.CAPS = theme.Capabilities(color="truecolor", glyphs="braille", nerd=False)
+    cli.set_theme("default", color="truecolor")
     # Display smoothing and the network unit are per-run state; a test that ran live
     # mode or pushed the unit to MB/s must not leak that into the next one.
     cli.SMOOTHING = False

@@ -136,7 +136,7 @@ def test_header_carries_the_brand_and_version():
 def test_header_names_the_host_and_the_platform():
     head = plain(cli.header_line(140), width=140)
     import platform
-    assert platform.node()[:24] in head
+    assert platform.node()[:12] in head       # the host field is twelve cells wide
     assert any(name in head for name in ("Linux", "macOS", "Windows"))
 
 
@@ -346,6 +346,10 @@ def test_every_glyph_the_dashboard_draws_is_in_the_probe():
 
 
 def test_capability_detection_follows_the_stream(monkeypatch):
+    # The environment must not decide this test: under TERM=dumb (a CI runner, a cron
+    # job) ASCII is the RIGHT answer whatever the stream can encode.
+    monkeypatch.setenv("TERM", "xterm-256color")
+    monkeypatch.delenv("TERMSTATS_GLYPHS", raising=False)
     monkeypatch.setattr(cli.sys, "stdout", FakeStream("cp1252"))
     assert cli.detect_capabilities() is False
     monkeypatch.setattr(cli.sys, "stdout", FakeStream("utf-8"))

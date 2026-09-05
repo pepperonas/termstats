@@ -425,7 +425,7 @@ def test_the_plot_has_no_frame_of_its_own(primed_history):
 
 def test_axis_labels_are_in_the_muted_tone(primed_history):
     from rich.console import Console
-    console = Console(width=80, force_terminal=True, color_system="truecolor")
+    console = Console(width=80, force_terminal=True, no_color=False, color_system="truecolor")
     with console.capture() as cap:
         console.print(cli.get_cpu_chart(60, 10))
     r, g, b = cli.T.rgb_of(cli.MUTED)

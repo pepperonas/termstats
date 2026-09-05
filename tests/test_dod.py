@@ -179,8 +179,11 @@ def test_a_fresh_process_speaks_the_terminal_it_is_given(term, colorterm, wanted
     if colorterm:
         env["COLORTERM"] = colorterm
     env.pop("NO_COLOR", None)
+    # The child writes UTF-8 (PYTHONIOENCODING); decode it as such - Windows' default
+    # is cp1252, which cannot hold © or █ and raised UnicodeDecodeError on CI.
     r = subprocess.run([sys.executable, "-m", "termstats", "--demo", "--once"],
-                       env=env, capture_output=True, text=True, timeout=30)
+                       env=env, capture_output=True, encoding="utf-8", errors="replace",
+                       timeout=30)
     assert r.returncode == 0, r.stderr
     assert "DEMO" in r.stdout and wanted in r.stdout
     if forbidden:

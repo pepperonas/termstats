@@ -24,7 +24,7 @@ def test_every_panel_uses_the_same_border_colour(primed_history):
     """Five differently coloured frames were five competing accents. The frame is quiet
     and the same everywhere; the content carries the colour."""
     from rich.console import Console
-    console = Console(width=140, height=50, force_terminal=True, color_system="truecolor")
+    console = Console(width=140, height=50, force_terminal=True, no_color=False, color_system="truecolor")
     with console.capture() as cap:
         console.print(cli.render_dashboard(140, 50))
     out = cap.get()
