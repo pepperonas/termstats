@@ -335,7 +335,8 @@ def test_a_fixed_axis_keeps_its_own_ticks(monkeypatch, primed_history):
 def test_the_cpu_subtitle_names_the_window_and_the_latest_value(primed_history):
     cli.sample_interval = 0.5
     cli.cpu_history.append(42.4)
-    sub = cli.cpu_chart_subtitle()
+    from rich.text import Text
+    sub = Text.from_markup(cli.cpu_chart_subtitle()).plain   # the % has its own dim span
     assert "last 30s" in sub and "42%" in sub
 
 

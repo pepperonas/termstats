@@ -146,6 +146,10 @@ NERD_ICONS = {"cpu": "", "memory": "", "network": "", "disk": "",
 PANEL_PADDING = (0, 1)     # rich Panel padding (vertical, horizontal)
 PANEL_CHROME_W = 4         # 2 border + 2 padding columns a panel spends per side pair
 PANEL_CHROME_H = 2         # top and bottom border rows
+COMPACT_PADDING = (0, 0)   # --compact: the border is the only chrome
+COMPACT_CHROME_W = 2
+RULE_CHROME_H = 1          # --no-border: a title rule above the body, nothing below
+RULE_CHROME_W = 2          # ... but one gutter column per side, or the columns run together
 
 LABEL_W = 9                # "    cpu0 " - right-aligned label plus one space
 VALUE_W = 7                # "  62.5%" - percentage field
@@ -264,14 +268,12 @@ class Theme(NamedTuple):
     muted: str         # annotations, subtitles, table headers
     faint: str         # version tag
     track: str         # the empty part of a meter - its own tone, not the background
-    panels: Tuple[Tuple[str, str], ...]   # (panel name, border colour)
+    border: str        # ONE frame colour for every panel - quiet, so the content leads
+    accent: str        # panel titles
     wordmark_bg: str
     wordmark_fg: str
     bg: str            # the terminal background the theme is designed for (contrast tests)
     bands16: Tuple[str, ...]   # the ramp on a 16-colour terminal, as rich colour names
-
-    def panel(self, name: str) -> str:
-        return dict(self.panels).get(name, self.muted)
 
 
 def _stops(*hexes_at):
@@ -289,8 +291,7 @@ THEMES = {
         stops=_stops((0.00, "#5f7f80"), (0.30, "#3aa898"), (0.60, "#c0922c"), (1.00, "#ff7b78")),
         text="#b2b2b2", soft="#9e9e9e", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
         track="#4e4e4e",
-        panels=(("cpu", "#4a6fa5"), ("memory", "#4a9575"), ("network", "#4a6fa5"),
-                ("disk", "#a5904a"), ("processes", "#7a5a95")),
+        border="#4b5160", accent="#7aa2f7",
         wordmark_bg="#2d6cdf", wordmark_fg="#ffffff", bg="#1a1b26",
         bands16=("cyan", "bright_cyan", "yellow", "bright_red"),
     ),
@@ -299,8 +300,7 @@ THEMES = {
         stops=_stops((0.00, "#5c5c5c"), (0.35, "#8a8a8a"), (0.70, "#b8b8b8"), (1.00, "#e6e6e6")),
         text="#c8c8c8", soft="#a8a8a8", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
         track="#3c3c3c",
-        panels=(("cpu", "#7a7a7a"), ("memory", "#7a7a7a"), ("network", "#7a7a7a"),
-                ("disk", "#7a7a7a"), ("processes", "#7a7a7a")),
+        border="#4e4e4e", accent="#dcdcdc",
         wordmark_bg="#dcdcdc", wordmark_fg="#101010", bg="#121212",
         bands16=("bright_black", "white", "bright_white"),
     ),
@@ -309,8 +309,7 @@ THEMES = {
         stops=_stops((0.00, "#4c566a"), (0.30, "#5f8f8f"), (0.60, "#b0925f"), (1.00, "#d08770")),
         text="#d8dee9", soft="#b8c0cc", dim="#8a94a6", muted="#616e88", faint="#4c566a",
         track="#3b4252",
-        panels=(("cpu", "#5e81ac"), ("memory", "#8fbcbb"), ("network", "#81a1c1"),
-                ("disk", "#ebcb8b"), ("processes", "#b48ead")),
+        border="#4c566a", accent="#88c0d0",
         wordmark_bg="#5e81ac", wordmark_fg="#eceff4", bg="#2e3440",
         bands16=("cyan", "yellow", "red"),
     ),
@@ -319,8 +318,7 @@ THEMES = {
         stops=_stops((0.00, "#665c54"), (0.30, "#5f8f60"), (0.60, "#b08420"), (1.00, "#fb4934")),
         text="#ebdbb2", soft="#bdae93", dim="#a89984", muted="#7c6f64", faint="#504945",
         track="#3c3836",
-        panels=(("cpu", "#83a598"), ("memory", "#b8bb26"), ("network", "#458588"),
-                ("disk", "#fabd2f"), ("processes", "#d3869b")),
+        border="#504945", accent="#83a598",
         wordmark_bg="#d79921", wordmark_fg="#1d2021", bg="#282828",
         bands16=("green", "yellow", "bright_red"),
     ),
@@ -329,8 +327,7 @@ THEMES = {
         stops=_stops((0.00, "#585b70"), (0.30, "#5fa89c"), (0.60, "#bfa878"), (1.00, "#f38ba8")),
         text="#cdd6f4", soft="#a6adc8", dim="#9399b2", muted="#6c7086", faint="#585b70",
         track="#313244",
-        panels=(("cpu", "#89b4fa"), ("memory", "#a6e3a1"), ("network", "#89dceb"),
-                ("disk", "#f9e2af"), ("processes", "#cba6f7")),
+        border="#45475a", accent="#89b4fa",
         wordmark_bg="#89b4fa", wordmark_fg="#1e1e2e", bg="#1e1e2e",
         bands16=("cyan", "yellow", "bright_magenta"),
     ),
@@ -342,8 +339,7 @@ THEMES = {
                      (0.75, "#5ec962"), (1.00, "#fde725")),
         text="#c8c8c8", soft="#a8a8a8", dim="#8a8a8a", muted="#6c6c6c", faint="#4e4e4e",
         track="#3c3c3c",
-        panels=(("cpu", "#5c7aa5"), ("memory", "#4f9d8a"), ("network", "#5c7aa5"),
-                ("disk", "#8f9a3a"), ("processes", "#6d5091")),
+        border="#4e4e4e", accent="#5ec962",
         wordmark_bg="#fde725", wordmark_fg="#1a1a1a", bg="#161616",
         bands16=("magenta", "blue", "cyan", "green", "bright_yellow"),
     ),

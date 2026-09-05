@@ -26,6 +26,7 @@ def clean_module_state():
     # Display smoothing and the network unit are per-run state; a test that ran live
     # mode or pushed the unit to MB/s must not leak that into the next one.
     cli.SMOOTHING = False
+    cli.set_frame(compact=False, no_border=False)
     cli._smoother.reset()
     cli._peaks.reset()
     cli._net_unit = "KB/s"

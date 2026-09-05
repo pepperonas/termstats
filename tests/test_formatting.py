@@ -274,8 +274,9 @@ def test_meter_value_and_colour_describe_the_whole_occupied_part():
 def test_meter_value_colour_follows_the_occupied_total_not_the_primary():
     cool = cli.meter("ram", 32.0, 60)
     hot = cli.meter("ram", 32.0, 60, secondary=60.0)
-    cool_style = [sp.style for sp in cool.spans if "84.0%" in cool.plain[sp.start:sp.end] or "32.0%" in cool.plain[sp.start:sp.end]]
-    hot_style = [sp.style for sp in hot.spans if "92.0%" in hot.plain[sp.start:sp.end]]
+    # Since S6 the unit sits in its own dim span, so the value span reads " 32.0", not "32.0%".
+    cool_style = [sp.style for sp in cool.spans if "32.0" in cool.plain[sp.start:sp.end]]
+    hot_style = [sp.style for sp in hot.spans if "92.0" in hot.plain[sp.start:sp.end]]
     assert cool_style and hot_style and cool_style[0] != hot_style[0]
 
 

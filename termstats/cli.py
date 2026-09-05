@@ -18,10 +18,12 @@ from collections import deque
 from rich import box
 from rich.console import Console, Group
 from rich.layout import Layout
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
+from rich.rule import Rule
 from rich.style import Style
 
 from termstats import __version__
@@ -307,7 +309,7 @@ def shown(key, raw):
 
 
 def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondary=0.0,
-          note_w=None, fill=None, peak=None):
+          note_w=None, fill=None, peak=None, unit_w=1):
     """`label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line, budgeted so it never wraps.
 
     The old two-line form (bar, then "6.1G / 16.0G" underneath) doubled the height of
@@ -334,7 +336,13 @@ def meter(label, pct, total, value=None, note="", label_w=9, value_w=7, secondar
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"{label[:label_w - 1]:>{label_w - 1}} ", style=DIM)
     text.append_text(bar(fill_pct, bar_w, secondary, peak=peak))
-    text.append(f"{value:>{value_w}}", style=f"bold {ramp(occupied / 100)}")
+    # Value bright and bold in the ramp tone; its unit ("%", "K/s") dim, so the digits
+    # carry the weight and the unit is read once and then ignored.
+    padded = f"{value:>{value_w}}"
+    unit_w = min(unit_w, len(padded))
+    text.append(padded[:len(padded) - unit_w], style=f"bold {ramp(occupied / 100)}")
+    if unit_w:
+        text.append(padded[len(padded) - unit_w:], style=DIM)
     if field_w:
         text.append(f"  {note:>{field_w}}", style=MUTED)
     return text
@@ -637,10 +645,10 @@ def get_network_section(width):
     peak = max(list(net_sent_history) + list(net_recv_history) + [sent_s, recv_s, 1.0])
     tx_pct, rx_pct = 100 * sent_s / peak, 100 * recv_s / peak
     rows = [
-        meter("tx", tx_pct, width, value=T.fmt_rate(sent_s), value_w=T.RATE_W,
+        meter("tx", tx_pct, width, value=T.fmt_rate(sent_s), value_w=T.RATE_W, unit_w=3,
               note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_sent)}", note_w=T.NOTE_TOTAL_W,
               fill=shown("net.tx", tx_pct), peak=peak_of("net.tx", tx_pct)),
-        meter("rx", rx_pct, width, value=T.fmt_rate(recv_s), value_w=T.RATE_W,
+        meter("rx", rx_pct, width, value=T.fmt_rate(recv_s), value_w=T.RATE_W, unit_w=3,
               note=f"{GLYPHS.sigma} {T.fmt_gb(net.bytes_recv)}", note_w=T.NOTE_TOTAL_W,
               fill=shown("net.rx", rx_pct), peak=peak_of("net.rx", rx_pct)),
     ]
@@ -954,12 +962,48 @@ def get_net_chart(width, height):
 # Layout
 # ---------------------------------------------------------------------------------
 
-def _panel(renderable, title, colour, subtitle=""):
-    head = f"[b]{title}[/b]"
+COMPACT = False        # --compact: no horizontal padding inside panels
+NO_BORDER = False      # --no-border: a title rule above each body instead of a frame
+
+
+def set_frame(compact=False, no_border=False):
+    global COMPACT, NO_BORDER
+    COMPACT, NO_BORDER = compact, no_border
+
+
+def chrome():
+    """(rows, columns) a panel spends on its own frame - the ONE place this is decided,
+    so the height budget, the body widths and the drawn panels can never disagree."""
+    if NO_BORDER:
+        return T.RULE_CHROME_H, T.RULE_CHROME_W
+    if COMPACT:
+        return T.PANEL_CHROME_H, T.COMPACT_CHROME_W
+    return T.PANEL_CHROME_H, T.PANEL_CHROME_W
+
+
+def _title(title, subtitle=""):
+    """Panel title hierarchy: bold accent for the name, muted for the subtitle."""
+    icon = ""
+    if CAPS.nerd and title in T.NERD_ICONS:
+        icon = T.NERD_ICONS[title] + " "
+    head = f"[b {THEME.accent}]{icon}{title}[/]"
     if subtitle:
         head += f" [{MUTED}]{_sep()} {subtitle}[/{MUTED}]"
-    return Panel(renderable, title=head, title_align="left", border_style=colour,
-                 box=getattr(box, GLYPHS.box), padding=T.PANEL_PADDING)
+    return head
+
+
+def _panel(renderable, title, subtitle=""):
+    """One frame for every panel: the border in the theme's quiet border tone, never in a
+    colour that competes with the content, and the same box and padding everywhere."""
+    if NO_BORDER:
+        # A title rule above the body and a one-column gutter each side: without the
+        # gutter two columns of meters run into each other ("100.0%ram").
+        rule = Rule(_title(title, subtitle), style=THEME.border, align="left",
+                    characters=GLYPHS.bar_empty if GLYPHS.name == "ascii" else "─")
+        return Padding(Group(rule, renderable), (0, T.RULE_CHROME_W // 2))
+    return Panel(renderable, title=_title(title, subtitle), title_align="left",
+                 border_style=THEME.border, box=getattr(box, GLYPHS.box),
+                 padding=T.COMPACT_PADDING if COMPACT else T.PANEL_PADDING)
 
 
 def _sep():
@@ -970,7 +1014,8 @@ def _sep():
 def cpu_chart_subtitle():
     """`last 30s · 42%` - the window, then the value the newest sample carries."""
     now = cpu_history[-1] if cpu_history else 0.0
-    return f"{_window_label()} {_sep()} [{ramp(now / 100)}]{min(now, 999):3.0f}%[/]"
+    # Digits in the ramp tone, the unit dim - the same hierarchy as every meter value.
+    return f"{_window_label()} {_sep()} [{ramp(now / 100)}]{min(now, 999):3.0f}[/][{DIM}]%[/]"
 
 
 def net_chart_subtitle():
@@ -1052,29 +1097,34 @@ def render_dashboard(width=None, height=None):
     tw = max(width or size.width, 40)
     th = max(height or size.height, 8)
 
-    narrow = tw < 92
-    right_w = 0 if narrow else max(36, min(tw * 2 // 5, 52))
+    ch, cw = chrome()
+    narrow = tw < T.NARROW_BELOW
+    right_w = 0 if narrow else max(T.RIGHT_COL_MIN, min(int(tw * T.RIGHT_COL_SHARE), T.RIGHT_COL_MAX))
     left_w = tw - right_w
 
-    # --- collect (widths are panel interiors: minus border and padding) --------------
-    cpu_body_w = (left_w if not narrow else tw) - 4
-    right_body_w = (right_w if not narrow else tw) - 4
+    # --- collect (widths are panel interiors: minus the frame's own columns) ----------
+    cpu_body_w = (left_w if not narrow else tw) - cw
+    right_body_w = (right_w if not narrow else tw) - cw
 
-    mem_h = memory_section_rows() + 2
-    net_h = network_section_rows() + 2
-    disk_h = disk_section_rows() + 2
+    mem_h = memory_section_rows() + ch
+    net_h = network_section_rows() + ch
+    disk_h = disk_section_rows() + ch
 
     # Height is decided before the columns are, not after: the CPU panel would rather be
     # one tall column of wide bars than two short ones with a hole underneath, so first
     # work out how tall the row wants to be, then fit the cores into it.
     ncores = psutil.cpu_count() or 1
     extra_rows = 1 + (1 if IS_LINUX else 0)          # TOTAL, plus steal on Linux
-    cpu_wanted = min(ncores + extra_rows + 2, max(8, th // 2))
+    # Exact, not capped: when the cores have to be packed into columns the panel uses
+    # ceil(n / cols) rows, which can be one short of the cap - and that row would sit
+    # blank under TOTAL. (Invisible inside a frame; a hole once the frame is a rule.)
+    cap = max(8, th // 2)
+    cpu_wanted = cpu_section_rows(ncores, max(cap - ch - extra_rows, 1)) + ch
 
     # A short CPU panel next to a tall stack is exactly the hole this rewrite exists to
     # remove. When that happens the disk panel leaves the stack and takes the full width -
     # same total height, no dead space.
-    disk_in_stack = cpu_wanted + 2 >= mem_h + net_h + disk_h
+    disk_in_stack = cpu_wanted + ch >= mem_h + net_h + disk_h
     stack_h = mem_h + net_h + (disk_h if disk_in_stack else 0)
 
     if narrow:
@@ -1095,11 +1145,25 @@ def render_dashboard(width=None, height=None):
         kept_stack = 3 if disk_in_stack else 2
         top_h = max(cpu_wanted, stack_h)
 
-    core_rows = max(top_h - 2 - extra_rows, 1)
+    # --- height budget ---------------------------------------------------------------
+    remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
+    proc_min = ch + 1 + 2                            # frame, header row, two processes
+    charts_h = 0
+    if remaining >= T.CHART_MIN_H:
+        charts_h = min(T.CHART_MAX_H, remaining - proc_min)
+    proc_h = remaining - charts_h
+
+    # ⚠️ The CPU panel gets cpu_wanted rows in the narrow stack, top_h in the wide row.
+    # Deriving core_rows from top_h in BOTH cases laid the cores out for the height of
+    # the whole stack and let the Layout crop the panel: at 60x20 cpu8, cpu9 and TOTAL
+    # were simply missing (found by the --no-border sweep, present since the layout
+    # rewrite).
+    cpu_h = cpu_wanted if narrow else top_h
+    core_rows = max(cpu_h - ch - extra_rows, 1)
     cpu_body, cpu_total, steal_pct = get_cpu_section(cpu_body_w, max_rows=core_rows)
     mem_body = get_memory_section(right_body_w)
     net_body, sent_s, recv_s = get_network_section(right_body_w)
-    disk_body = get_disk_section(right_body_w if disk_in_stack else tw - 4)
+    disk_body = get_disk_section(right_body_w if disk_in_stack else tw - cw)
 
     cpu_history.append(cpu_total)
     steal_history.append(steal_pct)
@@ -1108,22 +1172,15 @@ def render_dashboard(width=None, height=None):
     _smoother.end_frame()
     _peaks.end_frame()
 
-    # --- height budget ---------------------------------------------------------------
-    remaining = th - 1 - top_h - (0 if disk_in_stack else disk_h)
-    charts_h = 0
-    if remaining >= 13:
-        charts_h = min(12, remaining - 5)
-    proc_h = remaining - charts_h
-
     sections = [Layout(header_line(tw), name="head", size=1)]
 
-    stack_panels = [(_panel(mem_body, "memory", THEME.panel("memory")), mem_h),
-                    (_panel(net_body, "network", THEME.panel("network")), net_h)]
+    stack_panels = [(_panel(mem_body, "memory"), mem_h),
+                    (_panel(net_body, "network"), net_h)]
     if disk_in_stack:
-        stack_panels.append((_panel(disk_body, "disk", THEME.panel("disk")), disk_h))
+        stack_panels.append((_panel(disk_body, "disk"), disk_h))
     stack_panels = stack_panels[:kept_stack]
 
-    cpu_panel = _panel(cpu_body, "cpu", THEME.panel("cpu"))
+    cpu_panel = _panel(cpu_body, "cpu")
     top = Layout(name="top", size=top_h)
 
     # ⚠️ The last card everywhere takes ratio instead of a fixed size, so slack is absorbed
@@ -1145,25 +1202,25 @@ def render_dashboard(width=None, height=None):
     sections.append(top)
 
     if not disk_in_stack and kept_stack:
-        sections.append(Layout(_panel(disk_body, "disk", THEME.panel("disk")), name="disk", size=disk_h))
+        sections.append(Layout(_panel(disk_body, "disk"), name="disk", size=disk_h))
 
     if charts_h:
-        chart_w = (tw - 1) // 2 - 4
-        chart_h = charts_h - 2
+        chart_w = (tw - 1) // 2 - cw
+        chart_h = charts_h - ch
         charts = Layout(name="charts", size=charts_h)
         charts.split_row(
-            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu", THEME.panel("cpu"),
+            Layout(_panel(get_cpu_chart(chart_w, chart_h), "cpu",
                           cpu_chart_subtitle()), name="c1"),
-            Layout(_panel(get_net_chart(chart_w, chart_h), "network", THEME.panel("network"),
+            Layout(_panel(get_net_chart(chart_w, chart_h), "network",
                           net_chart_subtitle()), name="c2"),
         )
         sections.append(charts)
 
-    # A panel needs its two borders, a header row and at least two rows of content before
-    # it is worth drawing; below that it is a stump, and a stump is worse than the space.
-    if proc_h >= 5:
-        procs = get_top_processes(tw - 4, n=max(proc_h - 3, 1))
-        sections.append(Layout(_panel(procs, "processes", THEME.panel("processes"), "by cpu"), name="proc"))
+    # A panel needs its frame, a header row and at least two rows of content before it is
+    # worth drawing; below that it is a stump, and a stump is worse than the space.
+    if proc_h >= proc_min:
+        procs = get_top_processes(tw - cw, n=max(proc_h - ch - 1, 1))
+        sections.append(Layout(_panel(procs, "processes", "by cpu"), name="proc"))
 
     # ⚠️ The budget above is a plan, not a guarantee: a narrow terminal, a machine with
     # several mountpoints or Linux's extra steal row can all push the fixed sizes past the
@@ -1265,6 +1322,8 @@ _ONCE_FLAGS = ("-1", "--once", "-once")
 _INTERVAL_FLAGS = ("-i", "--interval", "-interval")
 _THEME_FLAGS = ("-t", "--theme", "-theme")
 _LIST_THEMES_FLAGS = ("--list-themes", "-list-themes")
+_COMPACT_FLAGS = ("--compact", "-compact")
+_NO_BORDER_FLAGS = ("--no-border", "-no-border")
 
 
 def print_help():
@@ -1282,6 +1341,8 @@ def print_help():
     print("  -l, --live          Force the live dashboard, even when piped")
     print(f"  -t, --theme NAME    Colour theme: {', '.join(T.theme_names())}")
     print("      --list-themes   Show every theme with its ramp and exit")
+    print("      --compact       No padding inside panels (narrow terminals)")
+    print("      --no-border     Title rules instead of frames (screenshots, tiny terminals)")
     print("  -V, --version       Show version")
     print("  -h, --help          Show this help")
     print()
@@ -1388,6 +1449,7 @@ def main():
     mode = None  # None = decide from the terminal
     theme_name = os.environ.get(T.THEME_ENV, "").strip() or None
     list_themes = False
+    compact = no_border = False
 
     i = 0
     while i < len(args):
@@ -1402,6 +1464,10 @@ def main():
             mode = "once"
         elif arg in _LIST_THEMES_FLAGS:
             list_themes = True
+        elif arg in _COMPACT_FLAGS:
+            compact = True
+        elif arg in _NO_BORDER_FLAGS:
+            no_border = True
         elif arg in _THEME_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs a theme name ({', '.join(T.theme_names())})")
@@ -1425,6 +1491,7 @@ def main():
     if theme_name is not None and theme_name not in T.THEMES:
         _fail(f"unknown theme '{theme_name}' - choose one of: {', '.join(T.theme_names())}")
     set_theme(theme_name)
+    set_frame(compact=compact, no_border=no_border)
 
     if list_themes:
         print_themes()
