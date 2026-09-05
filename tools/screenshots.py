@@ -23,7 +23,8 @@ from termstats import __version__, demo
 
 OUT = sys.argv[1]
 HERO = (140, 42)
-TILE = (100, 30)
+TILE = (100, 16)   # 16 rows: cpu (two columns), memory, network and disk fill the tile with no empty rows;
+                   # flat enough that a 2x3 grid keeps roughly the hero's 5:3 aspect
 COMPACT = (80, 24)
 
 

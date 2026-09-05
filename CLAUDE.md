@@ -251,7 +251,7 @@ fixed fields. Snapshots set the demo interval to 1 s (the chart title says `last
 
 ## Screenshots
 
-`termstats.png` (hero, 140×42), `termstats-themes.png` (six themes, 100×30 each) and
+`termstats.png` (hero, 140×42), `termstats-themes.png` (six themes, 100×16 each — 16 rows fill the tile without empty panels, and the 2×3 grid keeps roughly the hero's 5:3 aspect for the website stage) and
 `docs/screenshots/{compact,help}.png` (80×24, `--help` at its natural width) all come from
 **`tools/screenshots.py OUT_DIR`** (run with the pipx venv python): `--demo` with the default
 seed → `_prime_measurements()` + `_prefill_history()` (so the first visible frame sits on the
