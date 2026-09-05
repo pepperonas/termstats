@@ -211,6 +211,14 @@ design, so without it a collector test passes or fails depending on what ran bef
   the test stayed green. The other half is that the SHORT note (`5.2G/16.0G`) must survive;
   the guard exists so the suffix is left off rather than the whole note being lost.
 
+⚠️ **A real-machine counter-check must skip by the rule the code DRAWS by.** The
+"memory panel shows the cache segment" check skipped only when there were zero cache bytes;
+but a segment is `int(width * pct / 100)` cells, and at 140 columns the memory bar is about
+eight cells, so anything under ~13% draws nothing. The macOS CI runner has a sliver of
+cache — past a "> 0 bytes" guard, short of one cell — and the test went red there while
+every fixture test stayed green. Counter-checks against live hardware are worth keeping,
+but their skip condition has to be derived from the same arithmetic as the assertion.
+
 ⚠️ **Two test-writing traps from the 0.2.0 round, both mine:**
 
 - `re.search(r"proc \d+\S", head)` to catch "proc 7080.5s" **always matches**, because `\S`

@@ -374,9 +374,18 @@ def test_the_chart_panels_state_the_current_values(monkeypatch, primed_history):
 
 
 def test_the_memory_panel_shows_the_cache_segment_in_the_dashboard():
-    """Counter-check against the real machine: only asserts when there IS cache."""
+    """Counter-check against the real machine.
+
+    ⚠️ The skip has to follow the DRAWING rule, not merely "is there any cache": the
+    segment is `int(width * pct / 100)` cells, and the memory bar at 140 columns is about
+    eight cells wide, so anything under ~13% rounds to nothing. The macOS CI runner has a
+    sliver of cache - enough to pass a "> 0 bytes" guard, not enough for one cell - and
+    that is exactly how this test went red there while the fixture tests stayed green.
+    """
     import psutil
     mem = psutil.virtual_memory()
-    if mem.total - mem.used - mem.available <= 0:
-        pytest.skip("no cache on this machine")
+    used_pct = 100.0 * mem.used / mem.total if mem.total else 0.0
+    cache_pct = max(0.0, mem.percent - used_pct)
+    if cache_pct < 13.0:
+        pytest.skip(f"cache is {cache_pct:.1f}% - below one bar cell at this width")
     assert cli.BAR_SECONDARY in dash(140, 50)
