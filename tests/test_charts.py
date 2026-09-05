@@ -60,8 +60,9 @@ def test_charts_wait_for_two_samples(samples):
         cli.cpu_history.append(1.0)
         cli.net_sent_history.append(1.0)
         cli.net_recv_history.append(1.0)
-    assert "Collecting data" in plain(cli.get_cpu_chart(40, 8))
-    assert "Collecting data" in plain(cli.get_net_chart(40, 8))
+    # Since S5 the empty state is a designed skeleton, not the sentence "Collecting data".
+    assert "collecting" in plain(cli.get_cpu_chart(40, 8))
+    assert "collecting" in plain(cli.get_net_chart(40, 8))
 
 
 def test_two_samples_are_enough(captured_series):
@@ -367,3 +368,99 @@ def test_subtitles_are_ascii_in_ascii_mode(ascii_mode, primed_history):
 def test_every_subtitle_glyph_is_in_the_probe():
     for glyph in ("▇", "━", "·"):
         assert glyph in cli._GLYPH_PROBE or glyph == "·", glyph
+
+
+# --- S5: gradient fill, quiet scaffolding, the designed empty state -------------------------
+
+def _fill_lightness_by_row(chart, fill_rgb):
+    """OKLab lightness of the fill spans on each plot row, top to bottom."""
+    from termstats import theme as T
+    from rich.style import Style
+    muted = T.rgb_of(cli.MUTED)
+    rows = []
+    for line in chart.split("\n"):
+        styles = [Style.parse(sp.style) if isinstance(sp.style, str) else sp.style for sp in line.spans]
+        cols = [st.color.triplet for st in styles
+                if st and getattr(st, "color", None) is not None and st.color.triplet is not None]
+        # the axis label shares the row with the fill; it is the muted tone, skip it
+        cols = [c for c in cols if (c.red, c.green, c.blue) != muted]
+        if cols:
+            most = max(set(cols), key=cols.count)
+            rows.append(T.lightness((most.red, most.green, most.blue)))
+    return rows
+
+
+def test_the_filled_area_fades_toward_the_background_at_the_top(primed_history):
+    """Weight where the data is: solid at the base, thinner up top, so the line can read
+    over it. On a dark theme that means the top rows are darker."""
+    from termstats import theme as T
+    cli.cpu_history.clear(); cli.cpu_history.extend([100.0] * 60)      # fill every row
+    chart = cli.get_cpu_chart(60, 10)
+    Ls = _fill_lightness_by_row(chart, cli.cpu_chart_colour())
+    assert len(Ls) >= 4
+    assert Ls[0] < Ls[-1], "top of the fill is not thinner than the base"
+    assert all(b >= a - 1e-6 for a, b in zip(Ls, Ls[1:])), "the fade is not monotone"
+    assert Ls[-1] == pytest.approx(T.lightness(cli.cpu_chart_colour()), abs=0.02)
+
+
+def test_the_line_series_keeps_its_colour_over_the_fade(primed_history):
+    """Only the FILL fades; tx is a line and must stay in its own colour everywhere."""
+    from termstats import theme as T
+    cli.net_recv_history.clear(); cli.net_recv_history.extend([1024.0 * 500] * 60)
+    cli.net_sent_history.clear(); cli.net_sent_history.extend([1024.0 * 50] * 60)
+    chart = cli.get_net_chart(60, 10)
+    tx_hex = T.hex_of(cli.NET_TX_RGB)
+    seen = {sp.style.color.triplet.hex for line in chart.split("\n") for sp in line.spans
+            if sp.style and getattr(sp.style, "color", None) is not None and sp.style.color.triplet is not None}
+    assert tx_hex in seen
+
+
+def test_the_plot_has_no_frame_of_its_own(primed_history):
+    """The panel border is the frame; a second box inside it was clutter and cost a row
+    and two columns of data."""
+    out = plain(cli.get_cpu_chart(60, 10))
+    assert "┌" not in out and "┘" not in out and "┤" not in out
+
+
+def test_axis_labels_are_in_the_muted_tone(primed_history):
+    from rich.console import Console
+    console = Console(width=80, force_terminal=True, color_system="truecolor")
+    with console.capture() as cap:
+        console.print(cli.get_cpu_chart(60, 10))
+    r, g, b = cli.T.rgb_of(cli.MUTED)
+    assert f"\x1b[38;2;{r};{g};{b}m" in cap.get(), "tick labels are not muted"
+
+
+def test_the_empty_state_takes_the_charts_space():
+    """Eight rows asked for, eight rows drawn - the blank ones included, so the panel
+    does not change shape when the plot replaces the skeleton."""
+    out = plain(cli._collecting(40, 8), width=60)
+    assert out.count("\n") == 8
+    assert all(len(line) <= 40 for line in out.split("\n"))
+
+
+def test_the_empty_state_is_a_skeleton_with_a_hint():
+    out = plain(cli._collecting(40, 8), width=60)
+    assert cli.GLYPHS.collecting * 10 in out
+    assert "collecting" in out and "2 samples" in out
+
+
+def test_the_empty_state_is_ascii_in_ascii_mode(ascii_mode):
+    assert plain(cli._collecting(40, 8), width=60).isascii()
+
+
+def test_a_first_frame_shows_the_skeleton_not_a_bare_sentence():
+    out = plain(cli.render_dashboard(140, 50), width=140, height=50)
+    assert cli.GLYPHS.collecting * 10 in out
+    assert "Collecting data" not in out
+
+
+def test_the_ascii_chart_fades_as_well(ascii_mode):
+    from termstats import theme as T
+    chart = cli._ascii_chart([100.0] * 60, (0, 100), 40, 8)
+    Ls = []
+    for line in chart.renderables:
+        cols = [sp.style for sp in line.spans if line.plain[sp.start] == cli.GLYPHS.chart_full]
+        if cols:
+            Ls.append(T.lightness(T.rgb_of(str(cols[0]))))
+    assert len(Ls) >= 3 and Ls[0] < Ls[-1]

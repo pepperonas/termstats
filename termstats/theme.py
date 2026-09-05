@@ -504,6 +504,17 @@ def lightness(rgb: Sequence[int]) -> float:
     return rgb_to_oklab(rgb)[0]
 
 
+def mix_rgb(a: Sequence[int], b: Sequence[int], k: float) -> RGB:
+    """a blended toward b by k (0 = a, 1 = b), in OKLab so the midpoint stays clean."""
+    k = max(0.0, min(1.0, k))
+    la, lb = rgb_to_oklab(a), rgb_to_oklab(b)
+    return oklab_to_rgb_in_gamut(tuple(la[i] + (lb[i] - la[i]) * k for i in range(3)))  # type: ignore[arg-type]
+
+
+CHART_FADE_TOP = 0.55      # how far the top row of a filled area blends toward the background
+CHART_FRAME = False        # the panel border is the frame; a second box inside it is clutter
+
+
 def monotone_stops(stops: Sequence[Tuple[float, RGB]]) -> Tuple[Tuple[float, RGB], ...]:
     """Enforce non-decreasing OKLab lightness along the ramp.
 

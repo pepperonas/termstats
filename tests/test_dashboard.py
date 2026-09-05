@@ -193,11 +193,11 @@ def test_history_is_capped_at_the_window_length():
 
 
 def test_first_render_shows_the_collecting_notice():
-    assert "Collecting data" in dash(140, 50)
+    assert "collecting" in dash(140, 50)
 
 
 def test_charts_appear_once_there_is_history(primed_history):
-    assert "Collecting data" not in dash(140, 50)
+    assert "collecting" not in dash(140, 50)
 
 
 def test_dashboard_survives_a_dead_chart_backend(monkeypatch, primed_history):
@@ -243,10 +243,12 @@ def test_the_chart_is_sized_to_fit_inside_its_panel(monkeypatch, width):
     assert asked[0][0] <= (width - 1) // 2 - 4
 
 
-def test_a_chart_that_fits_keeps_its_frame(primed_history):
-    """Counter-check for the sizing rule: the closing corner of plotext's own frame has
-    to survive into the panel."""
-    assert "┘" in dash(140, 50), "the plot frame was cropped away"
+def test_a_chart_that_fits_keeps_its_right_edge(primed_history):
+    """Counter-check for the sizing rule. Since S5 the plot has no frame of its own (the
+    panel border is the frame), so the anchor is the rightmost x-axis label: "now" sits
+    at the right edge of the plot and is the first thing a crop would eat."""
+    out = dash(140, 50)
+    assert out.count("now") >= 2, "an x-axis end label was cropped away"
 
 
 # --- degrading ------------------------------------------------------------------------------

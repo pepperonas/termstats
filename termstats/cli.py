@@ -22,6 +22,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.live import Live
+from rich.style import Style
 
 from termstats import __version__
 from termstats import theme as T
@@ -756,16 +757,19 @@ def _ascii_chart(values, ylim, width, height):
               for i in range(0, len(values), step)]
 
     rows, plot_h = [], max(height - 1, 1)
+    bg = T.rgb_of(THEME.bg)
     for r in range(plot_h):
         top = (plot_h - r) / plot_h
         bottom = (plot_h - r - 1) / plot_h
+        # The same fade as the braille fill: solid at the base, toward the background up top.
+        fade = T.CHART_FADE_TOP * (plot_h - 1 - r) / max(plot_h - 1, 1)
         label = f"{hi:.0f}" if r == 0 else (f"{lo:.0f}" if r == plot_h - 1 else "")
         line = Text(f"{label:>{axis_w - 1}} ", style=MUTED, no_wrap=True, overflow="crop")
         for t in levels:
             if t >= top:
-                line.append(GLYPHS.chart_full, style=ramp(t))
+                line.append(GLYPHS.chart_full, style=T.hex_of(T.mix_rgb(ramp_rgb(t), bg, fade)))
             elif t > bottom:
-                line.append(GLYPHS.chart_half, style=ramp(t))
+                line.append(GLYPHS.chart_half, style=T.hex_of(T.mix_rgb(ramp_rgb(t), bg, fade)))
             else:
                 line.append(" ")
         rows.append(line)
@@ -826,16 +830,73 @@ def _render_chart(series, ylim, width, height, axis_w=None):
         plt.yticks([lo, (lo + hi) / 2, hi],
                    [T.fmt_axis(v, axis_w, top=hi) for v in (lo, (lo + hi) / 2, hi)])
         plt.theme("clear")
+        # ticks_color must come AFTER theme(): the theme resets it. Labels sit in the
+        # muted tone so the data, not the scaffolding, is what the eye lands on.
+        plt.ticks_color(T.rgb_of(MUTED))
+        plt.frame(T.CHART_FRAME)
         plt.plotsize(width, height)
         positions, labels = _time_ticks(len(series[0][0]))
         plt.xticks(positions, labels)
-        return Text.from_ansi(plt.build(), no_wrap=True, overflow="crop")
+        text = Text.from_ansi(plt.build(), no_wrap=True, overflow="crop")
+        for entry in series:
+            if len(entry) > 3 and entry[3] and isinstance(entry[2], tuple):
+                text = _vertical_gradient(text, entry[2])
+        return text
     except Exception:
         return Text("  Chart unavailable", style=MUTED)
 
 
-def _collecting():
-    return Text(f"  Collecting data{GLYPHS.ellipsis if GLYPHS.name != 'ascii' else '...'}", style=MUTED)
+def _collecting(width=40, height=6):
+    """The empty state while the second sample is still on its way.
+
+    A designed skeleton rather than a bare sentence: a flat baseline where the plot will
+    be, in the track tone, and one quiet line saying why. It takes the same space as the
+    chart it stands in for, so the panel does not change shape when the data arrives.
+    """
+    width, height = max(width, 8), max(height, 1)
+    rows = [Text("", no_wrap=True, overflow="crop") for _ in range(height)]
+    baseline = max(0, (height - 1) // 2)
+    rows[baseline] = Text(GLYPHS.collecting * width, style=TRACK, no_wrap=True, overflow="crop")
+    hint = f"collecting {GLYPHS.sep} 2 samples needed"
+    if baseline + 1 < height:
+        rows[baseline + 1] = Text(hint.center(width)[:width], style=MUTED, no_wrap=True, overflow="crop")
+    return Group(*rows)
+
+
+def _vertical_gradient(text, fill_rgb):
+    """Fade a filled area toward the background from the bottom up.
+
+    plotext paints a series in one colour. Re-tinting each row of the fill by its height
+    - solid at the base, CHART_FADE_TOP of the way to the background at the top - gives
+    the area weight where the data is and lets the line read on top of it. Only spans in
+    the fill colour are touched; lines and axes keep theirs.
+    """
+    lines = text.split("\n")
+    if len(lines) < 2:
+        return text
+    fill_hex = T.hex_of(fill_rgb)
+    bg = T.rgb_of(THEME.bg)
+    plot_rows = [i for i, line in enumerate(lines)
+                 if any(sp.style and getattr(sp.style, "color", None) is not None
+                        and sp.style.color.triplet is not None
+                        and sp.style.color.triplet.hex == fill_hex for sp in line.spans)]
+    if not plot_rows:
+        return text
+    top, bottom = plot_rows[0], plot_rows[-1]
+    span_rows = max(bottom - top, 1)
+    for i in plot_rows:
+        k = T.CHART_FADE_TOP * (bottom - i) / span_rows
+        tint = Style(color=T.hex_of(T.mix_rgb(fill_rgb, bg, k)))   # a Style, like from_ansi's
+        line = lines[i]
+        line.spans = [
+            sp._replace(style=tint) if (sp.style and getattr(sp.style, "color", None) is not None
+                                         and sp.style.color.triplet is not None
+                                         and sp.style.color.triplet.hex == fill_hex) else sp
+            for sp in line.spans
+        ]
+    joined = Text("\n", no_wrap=True, overflow="crop").join(lines)
+    joined.no_wrap, joined.overflow = True, "crop"
+    return joined
 
 
 def cpu_chart_colour():
@@ -848,7 +909,7 @@ def cpu_chart_colour():
 
 def get_cpu_chart(width, height):
     if len(cpu_history) < 2:
-        return _collecting()
+        return _collecting(width, height)
     series = [(list(cpu_history), "CPU %", cpu_chart_colour(), True)]
     if IS_LINUX and any(s > 0 for s in steal_history):
         series.append((list(steal_history), "Steal %", ramp_rgb(1.0), False))
@@ -880,7 +941,7 @@ def net_scale():
 
 def get_net_chart(width, height):
     if len(net_sent_history) < 2:
-        return _collecting()
+        return _collecting(width, height)
     div, _unit = net_scale()
     series = [
         ([x / div for x in net_recv_history], "RX", NET_RX_RGB, True),
