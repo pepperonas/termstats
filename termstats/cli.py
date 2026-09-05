@@ -29,6 +29,7 @@ from rich.rule import Rule
 from rich.style import Style
 
 from termstats import __version__
+from termstats import demo
 from termstats import theme as T
 
 IS_LINUX = platform.system() == "Linux"
@@ -600,12 +601,12 @@ def _disk_io_line():
         return None
     read_s = write_s = None
     if hasattr(get_disk_section, "_last_io"):
-        dt = time.time() - get_disk_section._last_time
+        dt = _now() - get_disk_section._last_time
         if dt > 0:
             read_s = (io.read_bytes - get_disk_section._last_io.read_bytes) / dt
             write_s = (io.write_bytes - get_disk_section._last_io.write_bytes) / dt
     get_disk_section._last_io = io
-    get_disk_section._last_time = time.time()
+    get_disk_section._last_time = _now()
     placeholder = f"{'n/a':>{T.RATE_W - 1}}"
     line = Text(no_wrap=True, overflow="crop")
     line.append(f"{'io':>{DISK_LABEL_W}} ", style=DIM)
@@ -631,13 +632,13 @@ def _fmt_bytes_rate(b):
 def get_network_section(width):
     net = psutil.net_io_counters()
     if hasattr(get_network_section, '_last'):
-        dt = time.time() - get_network_section._last_time
+        dt = _now() - get_network_section._last_time
         sent_s = (net.bytes_sent - get_network_section._last.bytes_sent) / dt if dt > 0 else 0
         recv_s = (net.bytes_recv - get_network_section._last.bytes_recv) / dt if dt > 0 else 0
     else:
         sent_s = recv_s = 0
     get_network_section._last = net
-    get_network_section._last_time = time.time()
+    get_network_section._last_time = _now()
 
     try:
         conns = len(psutil.net_connections())
@@ -1038,15 +1039,23 @@ def net_chart_subtitle():
 def header_line(width):
     load1, load5, load15 = psutil.getloadavg()
     ncpu = psutil.cpu_count() or 1
-    uptime_s = time.time() - psutil.boot_time()
-    os_name = {"Linux": "Linux", "Darwin": "macOS", "Windows": "Windows"}.get(
-        platform.system(), platform.system())
+    uptime_s = _now() - psutil.boot_time()
+    if DEMO is not None:
+        host, os_name = DEMO.node, DEMO.system
+    else:
+        host = platform.node()
+        os_name = {"Linux": "Linux", "Darwin": "macOS", "Windows": "Windows"}.get(
+            platform.system(), platform.system())
 
     # Every field has a fixed width. The load can gain a digit, the uptime a day, the
     # process count a thousand - none of it may move the fields to its right.
     text = Text(no_wrap=True, overflow="crop")
     text.append(" TERMSTATS ", style=f"bold {THEME.wordmark_fg} on {THEME.wordmark_bg}")
-    text.append(f"  {platform.node()[:12]:12s}", style=f"bold {THEME.wordmark_fg}")
+    if DEMO is not None:
+        # Scripted numbers must never pass for a real machine: the badge is part of the
+        # fixed fields, so it is on every frame at every width.
+        text.append(" DEMO ", style=f"bold {THEME.wordmark_fg} on {ramp(1.0)}")
+    text.append(f"  {host[:12]:12s}", style=f"bold {THEME.wordmark_fg}")
     text.append(f" {os_name:7s}", style=MUTED)
     text.append(" load ", style=MUTED)
     text.append(T.fmt_load(load1), style=f"bold {ramp(load1 / (ncpu * 2))}")
@@ -1273,6 +1282,40 @@ def render_dashboard(width=None, height=None):
 # Run modes
 # ---------------------------------------------------------------------------------
 
+DEMO = None                # a demo.DemoSource while --demo runs, else None
+_REAL_PSUTIL = psutil
+
+
+def set_demo(source):
+    """Swap the metrics source: a DemoSource, or None for the real psutil. Every
+    collector looks psutil up on this module at call time, so rebinding is enough."""
+    global psutil, DEMO
+    DEMO = source
+    psutil = source if source is not None else _REAL_PSUTIL
+
+
+def _now():
+    """Wall clock for the rate deltas and the uptime: the demo's own clock in demo mode
+    (one interval per frame), so rates come out as designed however fast the frames are
+    produced - the prefill plays sixty of them in a tight loop."""
+    return DEMO.now() if DEMO is not None else time.time()
+
+
+def _prefill_history(frames=HISTORY_LEN):
+    """Demo only: play `frames` frames through the collectors before the first visible
+    one, so the charts open full instead of with "collecting"."""
+    for _ in range(frames):
+        _, total, steal = get_cpu_section(80, max_rows=99)
+        _, sent_s, recv_s = get_network_section(80)
+        get_disk_section(80)
+        cpu_history.append(total)
+        steal_history.append(steal)
+        net_sent_history.append(sent_s)
+        net_recv_history.append(recv_s)
+        _smoother.end_frame()
+        _peaks.end_frame()
+
+
 def _prime_measurements():
     psutil.cpu_percent(percpu=True)
     psutil.cpu_percent()
@@ -1357,7 +1400,11 @@ def run_once():
     SMOOTHING = False
     LIVE = False
     _prime_measurements()
-    time.sleep(SNAPSHOT_SAMPLE_S)
+    if DEMO is not None:
+        DEMO.interval = SNAPSHOT_SAMPLE_S   # one frame = one second, as the chart title says
+        _prefill_history()             # a demo snapshot with empty charts shows nothing
+    else:
+        time.sleep(SNAPSHOT_SAMPLE_S)
     console.print(render_dashboard())
 
 
@@ -1380,7 +1427,10 @@ def run_live(interval=DEFAULT_INTERVAL):
     console.show_cursor(False)
     try:
         _prime_measurements()
-        time.sleep(min(interval, 0.5))
+        if DEMO is not None:
+            _prefill_history()
+        else:
+            time.sleep(min(interval, 0.5))
         with Live(render_dashboard(), console=console, refresh_per_second=refresh, screen=True) as live:
             next_tick = time.monotonic()
             while True:
@@ -1414,6 +1464,7 @@ _THEME_FLAGS = ("-t", "--theme", "-theme")
 _LIST_THEMES_FLAGS = ("--list-themes", "-list-themes")
 _COMPACT_FLAGS = ("--compact", "-compact")
 _NO_BORDER_FLAGS = ("--no-border", "-no-border")
+_DEMO_FLAGS = ("--demo", "-demo")
 
 
 def print_help():
@@ -1433,6 +1484,7 @@ def print_help():
     print("      --list-themes   Show every theme with its ramp and exit")
     print("      --compact       No padding inside panels (narrow terminals)")
     print("      --no-border     Title rules instead of frames (screenshots, tiny terminals)")
+    print("      --demo          Scripted, repeatable metrics instead of this machine's")
     print("  -V, --version       Show version")
     print("  -h, --help          Show this help")
     print()
@@ -1539,7 +1591,7 @@ def main():
     mode = None  # None = decide from the terminal
     theme_name = os.environ.get(T.THEME_ENV, "").strip() or None
     list_themes = False
-    compact = no_border = False
+    compact = no_border = use_demo = False
 
     i = 0
     while i < len(args):
@@ -1558,6 +1610,8 @@ def main():
             compact = True
         elif arg in _NO_BORDER_FLAGS:
             no_border = True
+        elif arg in _DEMO_FLAGS:
+            use_demo = True
         elif arg in _THEME_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs a theme name ({', '.join(T.theme_names())})")
@@ -1582,6 +1636,7 @@ def main():
         _fail(f"unknown theme '{theme_name}' - choose one of: {', '.join(T.theme_names())}")
     set_theme(theme_name)
     set_frame(compact=compact, no_border=no_border)
+    set_demo(demo.DemoSource(demo.DEFAULT_SEED, interval) if use_demo else None)
 
     if list_themes:
         print_themes()
