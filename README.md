@@ -83,7 +83,18 @@
 <br/><br/>
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/compact.png" alt="termstats in an 80 by 24 terminal" width="560"/>
 <br/>
-<sub>The same dashboard in an 80×24 terminal: panels are dropped whole, nothing is squeezed. All three pictures come from <code>tools/screenshots.py</code>.</sub>
+<sub>The same dashboard in an 80×24 terminal: panels are dropped whole, nothing is squeezed.</sub>
+<br/><br/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/eq.png" alt="termstats -eq: a 28-band spectrum analyser" width="800"/>
+<br/>
+<sub><code>termstats -eq</code> — 28 bands from 40 Hz to 16 kHz with peak-hold markers</sub>
+<br/><br/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/db.png" alt="termstats -db: the level meter" width="390"/>
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/bpm.png" alt="termstats -bpm: the tempo detector" width="390"/>
+<br/>
+<sub><code>termstats -db</code> and <code>termstats -bpm</code> — the level and the tempo, drawn five rows tall, eased between samples, flaring on the beat</sub>
+<br/><br/>
+<sub>Every picture comes from <code>tools/screenshots.py</code>, which renders them from <code>--demo</code>.</sub>
 </div>
 
 ---
