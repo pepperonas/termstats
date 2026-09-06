@@ -11,6 +11,33 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-06
+
+### Added
+
+- **A motion layer for the microphone screens** (`termstats/motion.py`). Every quantity the
+  screens draw is now a function of elapsed time: bars ease towards their target (20 ms
+  attack, 120 ms release), a falling bar leaves a dim afterglow that falls under gravity,
+  peak markers hold 400 ms then fall under gravity, the level meter has VU ballistics, and a
+  beat is an impulse decaying to 1/e in 250 ms that every reaction reads — the dot lights hot
+  and cools through two tones, the tempo digits flare and fade, every bar is nudged up by up
+  to 12 %. The tempo screen gained a **metronome**: a head sweeping between two beats at the
+  detected tempo. Frame-rate independent by construction; a long pause is clamped to one
+  short step. None of it runs in a snapshot.
+
+### Changed
+
+- The microphone screens refresh **30 times a second** (was 20), and the loop paints every
+  frame itself — rich's own refresh thread is off, which had painted each frame about twice.
+- Live, a history chart is built on a **worker thread** twice a second; the frame draws the
+  last finished one and never waits. A failed rebuild keeps the chart that is up.
+
+### Fixed
+
+- **The level screen ran at about ten frames a second**, not twenty: plotext needs ~37 ms for
+  its chart and the frame paid that every time (87 ms median per frame, measured). Now 2 ms.
+- The beat dot and the tempo flare used to switch on and off; both fade.
+
 ## [0.5.1] - 2026-09-06
 
 ### Changed

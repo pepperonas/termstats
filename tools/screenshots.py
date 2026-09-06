@@ -121,6 +121,7 @@ def dashboard(out, name, size, theme=T.DEFAULT_THEME, color="truecolor", glyphs=
 AUDIO = (120, 36)
 AUDIO_SMALL = (80, 12)   # too short for five rows of digits: the one-line fallback
 AUDIO_SECONDS = 8.0      # scripted music before the frame: the tempo needs ~5 s to lock
+AUDIO_LIVE_FRAMES = 12   # frames of live motion before the one that is exported
 
 # An invented sound card for the --list-devices picture. Rendering the real one would put
 # whatever audio software this machine has into the README, and change with every install.
@@ -158,6 +159,17 @@ def audio_view(out, name, mode, size=AUDIO, glyphs="braille", seconds=AUDIO_SECO
     w, h = size
     con = console(w, h)
     cli.console = con
+    # A LIVE frame, not a snapshot: the motion layer needs a few frames of music to show what
+    # it does - the afterglow above a falling bar, the metronome between two beats, the
+    # eased meter. LIVE also puts the live footer under it, which is what the screen shows.
+    cli.SMOOTHING = cli.LIVE = True
+    cli._get_motion().reset()
+    for _ in range(AUDIO_LIVE_FRAMES):
+        if seconds:
+            for _ in range(2):                            # ~2 blocks per frame at 30 fps
+                an.feed(source.read(audio.BLOCK), source.now())
+        cli.render_audio(mode, an, source.now(), w, h)
+    cli.wait_for_chart_workers()
     con.print(cli.render_audio(mode, an, source.now(), w, h))
     return write(out, con, name, theme_bg(cli))
 

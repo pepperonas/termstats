@@ -215,3 +215,33 @@ def test_help_and_readme_mention_esc(capsys):
     cli.print_help()
     assert "Esc" in capsys.readouterr().out
     assert "Esc" in (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+
+
+# --- one paint per frame -----------------------------------------------------------------------
+
+def test_the_audio_loop_paints_once_per_frame(monkeypatch):
+    """rich's Live has its own refresh thread. With that on AND `live.update(refresh=True)` in
+    the loop, every frame was painted about twice (a pty counted ~50 paints a second at 30
+    planned) - double the work for the same picture. The loop paints; the thread stays off."""
+    pytest.importorskip("numpy")
+    from termstats import audio
+    seen = {}
+
+    class Live:
+        def __init__(self, *a, **kw):
+            seen.update(kw)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def update(self, *a, **kw):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "Live", Live)
+    monkeypatch.setattr(cli, "render_audio", lambda *a, **kw: "frame")
+    monkeypatch.setattr(cli, "_sleep_until", lambda d: False)
+    cli.run_audio("db", 1 / 30, audio.DemoAudio(seed=1), once=False)
+    assert seen.get("auto_refresh") is False, seen

@@ -33,7 +33,7 @@ GLYPH_LEVELS = ("braille", "block", "ascii")
 
 # Every non-ASCII character the dashboard can draw with. The stream must encode all of it,
 # or the glyph level drops to ASCII. Add to this when you add a glyph.
-GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©▔●○"
+GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©▔●○◆"
 
 
 class Capabilities(NamedTuple):
@@ -139,6 +139,7 @@ class GlyphSet(NamedTuple):
     vpeak: str             # -eq: peak-hold marker above a vertical bar
     beat_on: str           # -bpm: the beat indicator, lit
     beat_off: str          # -bpm: the beat indicator, at rest
+    metro_head: str        # -bpm: the metronome's moving head
 
 
 GLYPH_SETS = {
@@ -147,21 +148,21 @@ GLYPH_SETS = {
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="⠒", chart_marker="braille", chart_full="#", chart_half="=",
         box="ROUNDED", rule="─", copyright="©",
-        vpeak="▔", beat_on="●", beat_off="○",
+        vpeak="▔", beat_on="●", beat_off="○", metro_head="◆",
     ),
     "block": GlyphSet(
         name="block", bar_full="█", bar_partials="▏▎▍▌▋▊▉", bar_empty="╌", bar_secondary="▒",
         peak="╵", spark="▁▂▃▄▅▆▇█", sep="·", legend_fill="▇", legend_line="━", ellipsis="…",
         sigma="Σ", collecting="╌", chart_marker="hd", chart_full="#", chart_half="=",
         box="ROUNDED", rule="─", copyright="©",
-        vpeak="▔", beat_on="●", beat_off="○",
+        vpeak="▔", beat_on="●", beat_off="○", metro_head="◆",
     ),
     "ascii": GlyphSet(
         name="ascii", bar_full="#", bar_partials="", bar_empty="-", bar_secondary="=",
         peak="|", spark="", sep="-", legend_fill="#", legend_line="-", ellipsis="~",
         sigma="tot", collecting="-", chart_marker=None, chart_full="#", chart_half="=",
         box="ASCII", rule="-", copyright="(c)",
-        vpeak="-", beat_on="*", beat_off="o",
+        vpeak="-", beat_on="*", beat_off="o", metro_head=">",
     ),
 }
 
@@ -221,6 +222,7 @@ BIG_FONT = {
     "?": ("###", "..#", ".##", "...", ".#."),
 }
 BIG_DIGIT_MIN_ROWS = 9     # hud + blank + five rows + meter + a stats line: below this, one line
+METRO_W = 40               # cells of the tempo screen's metronome sweep, at most
 
 DEVICE_MARK = "default"    # which input --list-devices would pick without --device
 

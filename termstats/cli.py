@@ -12,6 +12,7 @@ import platform
 import signal
 import sys
 import threading
+from typing import NamedTuple
 import time
 import shutil
 import psutil
@@ -1608,7 +1609,10 @@ def run_live(interval=DEFAULT_INTERVAL):
 # ---------------------------------------------------------------------------------
 
 AUDIO_MODES = ("eq", "bpm", "db")
-AUDIO_INTERVAL = 0.05        # 20 frames a second: a spectrum at the dashboard's 0.5 s is a slideshow
+AUDIO_INTERVAL = 1 / 30      # thirty frames a second: the eye reads a bar's motion, not its steps
+CHART_REFRESH_S = 0.5        # a history chart is rebuilt this often, live, on a worker: two builds a second
+                             # is 1/120 of a 60 s window per build - nothing the eye could miss
+BEAT_DOT_ON = 0.15           # the beat dot is drawn lit while the beat envelope is above this
 AUDIO_READOUT_S = 0.2        # the big number's own, slower clock - a digit redrawn 20 times a
                              # second is a blur, while the bars and the beat flash need every frame
 AUDIO_SNAPSHOT_S = 1.5       # --once: listen this long, then print one frame
@@ -1630,6 +1634,38 @@ def _load_audio():
 def _mic_source(device):
     from termstats import capture
     return capture.MicSource(device)
+
+
+_motion = None               # the motion layer, created with the audio module's floor
+_chart_cache = {}            # (name, width, height) -> (built at, renderable), live only
+
+
+def _get_motion():
+    global _motion
+    if _motion is None:
+        from termstats import motion
+        _motion = motion.Motion(_load_audio().DB_FLOOR)
+    return _motion
+
+
+class View(NamedTuple):
+    """What a microphone screen draws from: live, the motion layer's eased quantities;
+    in a snapshot, the analyzer's numbers as they are (nothing moves, nothing trails)."""
+    levels: list
+    trails: object           # list, or None when nothing is meant to trail
+    peaks: list
+    beat_env: float
+    meter: float             # 0..100
+    phase: object            # 0..1 between beats, or None
+
+
+def _audio_view(an, now):
+    if SMOOTHING:
+        m = _get_motion()
+        m.update(an, now)
+        return View(m.shown_levels(), m.trails, m.peaks, m.beat_env, m.meter, m.phase)
+    lit = 1.0 if an.beat_age(now) <= BEAT_LIT_S else 0.0
+    return View(list(an.levels), None, list(an.peaks), lit, _db_pct(an.db), None)
 
 
 def _list_devices():
@@ -1779,17 +1815,30 @@ def shown_tempo(bpm):
     return _smoother.value("audio.bpm.readout", bpm) if SMOOTHING else bpm
 
 
-def tempo_tone(an, now):
-    """The colour of the big tempo: it flares on every detected beat, so the number itself
-    keeps the pulse instead of only the little dot in the HUD."""
-    return ramp(1.0) if an.beat_age(now) <= BEAT_LIT_S else ramp(0.75)
+def tempo_tone(an, now, view=None):
+    """The colour of the big tempo: it flares on every detected beat and cools back down,
+    so the number itself keeps the pulse instead of only the little dot in the HUD."""
+    view = view or _audio_view(an, now)
+    return ramp(0.75 + 0.25 * view.beat_env)
 
 
-def audio_hud(an, now, width):
+def beat_dot(view):
+    """The beat as a glyph and a tone: lit and hot on the beat, cooling as the envelope falls,
+    at rest below BEAT_DOT_ON - a fade, not a switch."""
+    env = view.beat_env
+    if env > 0.6:
+        return GLYPHS.beat_on, f"bold {ramp(1.0)}"
+    if env > BEAT_DOT_ON:
+        return GLYPHS.beat_on, ramp(0.8)
+    return GLYPHS.beat_off, DIM
+
+
+def audio_hud(an, now, width, view=None):
     """One line every microphone screen shares: beat dot, BPM, level, confidence."""
-    lit = an.beat_age(now) <= BEAT_LIT_S
+    view = view or _audio_view(an, now)
+    glyph, tone = beat_dot(view)
     t = Text(no_wrap=True, overflow="crop")
-    t.append(GLYPHS.beat_on if lit else GLYPHS.beat_off, style=ramp(1.0) if lit else DIM)
+    t.append(glyph, style=tone)
     t.append("  BPM ", style=DIM)
     if an.bpm:
         t.append(f"{an.bpm:>3d}", style=f"bold {ramp(0.75)}")
@@ -1841,16 +1890,23 @@ def _eq_labels(an, columns, left, width):
     return Text("".join(row).rstrip(), style=MUTED, no_wrap=True, overflow="crop")
 
 
-def eq_body(an, now, width, rows):
-    """The analyser: HUD, a spacer, the bars, the frequency axis - exactly `rows` lines."""
+def eq_body(an, now, width, rows, view=None):
+    """The analyser: HUD, a spacer, the bars, the frequency axis - exactly `rows` lines.
+
+    Live, the bars are the motion layer's eased heights, a falling bar leaves an afterglow
+    (`bar_secondary`, dim) up to where it was, and every beat nudges all bars up a little.
+    """
+    view = view or _audio_view(an, now)
     n = eq_columns(width, len(an.levels))
-    levels, peaks = _group_bands(an.levels, n), _group_bands(an.peaks, n)
+    levels, peaks = _group_bands(view.levels, n), _group_bands(view.peaks, n)
+    trails = _group_bands(view.trails, n) if view.trails is not None else None
     plot_h = max(1, rows - 3)
     span = n * EQ_BAR_W + (n - 1) * EQ_GAP
     left = max(0, (width - span) // 2)
     fulls = [_eighths(v, plot_h) for v in levels]
     peak_cells = [int(math.ceil(max(0.0, min(1.0, p)) * plot_h)) for p in peaks]
-    lines = [audio_hud(an, now, width), Text("")]
+    trail_cells = [int(math.ceil(max(0.0, min(1.0, t)) * plot_h)) for t in trails] if trails else None
+    lines = [audio_hud(an, now, width, view), Text("")]
     for r in range(plot_h):
         h = plot_h - r                                       # 1 = the bottom row
         tone = ramp((h - 0.5) / plot_h)
@@ -1865,6 +1921,8 @@ def eq_body(an, now, width, rows):
                 glyph, style = GLYPHS.bar_full, tone
             elif peak_cells[c] == h:                          # only reached above the bar: the branches
                 glyph, style = GLYPHS.vpeak, tone              # before took every cell the bar owns
+            elif trail_cells is not None and h <= trail_cells[c]:
+                glyph, style = GLYPHS.bar_secondary, DIM      # the afterglow of where the bar was
             else:
                 glyph, style = " ", ""
             line.append(glyph * EQ_BAR_W, style=style)
@@ -1905,15 +1963,64 @@ def _audio_chart(title, history, now, ylim, width, height, fill=True):
     return Group(label, chart)
 
 
-def db_body(an, now, width, rows):
+_chart_workers = {}          # key -> the Thread rebuilding that chart right now
+
+
+def _build_chart_later(key, now, build):
+    """Run `build` on a worker and, if it succeeds, make its chart the cached one."""
+    def job():
+        try:
+            chart = build()
+        except Exception:
+            chart = None                     # a failed rebuild keeps the chart that is up
+        if chart is not None:
+            _chart_cache[key] = (now, chart)
+        elif key in _chart_cache:
+            _chart_cache[key] = (now, _chart_cache[key][1])
+        _chart_workers.pop(key, None)
+    worker = threading.Thread(target=job, name=f"termstats-chart-{key[0]}", daemon=True)
+    _chart_workers[key] = worker
+    worker.start()
+
+
+def wait_for_chart_workers(timeout=2.0):
+    """Join the chart workers - at the end of a session, and in tests."""
+    for worker in list(_chart_workers.values()):
+        worker.join(timeout)
+
+
+def _cached_chart(key, now, build):
+    """Live, a history chart is the last one a worker finished; a rebuild is started at most
+    every CHART_REFRESH_S seconds and never on the render path - plotext needs ~37 ms for
+    one chart, more than a whole 33 ms frame, and paying that on the frame made the level
+    screen stutter four times a second. The very first chart is built synchronously (there
+    is nothing older to show). A snapshot builds its chart exactly once, right here.
+
+    `build` must not touch the analyzer: it runs on another thread while the audio thread
+    keeps appending. Callers hand it a finished list (see level_history / tempo_hist).
+    """
+    if not SMOOTHING:
+        return build()
+    built_at, chart = _chart_cache.get(key, (None, None))
+    if built_at is None:
+        chart = build()
+        _chart_cache[key] = (now, chart)
+        return chart
+    if now - built_at >= CHART_REFRESH_S and key not in _chart_workers:
+        _build_chart_later(key, now, build)
+    return chart
+
+
+def db_body(an, now, width, rows, view=None):
     """The level meter: the number big and centred, a meter with its peak, extremes, history."""
     audio = _load_audio()
+    view = view or _audio_view(an, now)
     pct = _db_pct(an.db)
     stats = Text(no_wrap=True, overflow="crop")
     stats.append("min ", style=DIM); stats.append(f"{_shown_db(an.db_min):.1f}", style=SOFT)
     stats.append("   max ", style=DIM); stats.append(f"{_shown_db(an.db_max):.1f}", style=SOFT)
     stats.append(f"   {GLYPHS.sep}   beats ", style=DIM); stats.append(f"{an.beats}", style=SOFT)
-    lines = [audio_hud(an, now, width), Text("")]
+    lines = [audio_hud(an, now, width, view), Text("")]
     if rows >= T.BIG_DIGIT_MIN_ROWS:
         eased = readout("audio.db", shown_level(an.db), now)
         lines.extend(big_number(f"{_shown_db(eased):.1f}", ramp(_db_pct(eased) / 100.0), width))
@@ -1925,32 +2032,53 @@ def db_body(an, now, width, rows):
         one.append(" dB", style=DIM)
         one.append(f"   {GLYPHS.sep}   smoothed {_shown_db(an.db_smooth):.1f}", style=MUTED)
         lines.append(one)
+    # the meter's FILL follows the needle (VU ballistics from the motion layer); the number
+    # beside it stays the raw sample, and the hairline is the recent peak
     lines.append(meter("level", pct, width, value=f"{_shown_db(an.db):6.1f}dB", value_w=8, unit_w=2,
-                       fill=shown("audio.db", pct), peak=peak_of("audio.db", pct)))
+                       fill=view.meter, peak=peak_of("audio.db", pct)))
     lines.append(stats)
     remaining = rows - len(lines) - 2
     if remaining >= AUDIO_CHART_MIN_H:
-        chart = _audio_chart("level", level_history(an), now,
-                             (audio.spl(audio.DB_FLOOR), audio.spl(0.0)), width, remaining)
+        history = level_history(an)          # a finished LIST, taken here on the render thread
+        chart = _cached_chart(("level", width, remaining), now, lambda: _audio_chart(
+            "level", history, now, (audio.spl(audio.DB_FLOOR), audio.spl(0.0)), width, remaining))
         if chart is not None:
             lines.extend([Text(""), chart])
     return Group(*lines[:rows])
 
 
-def bpm_body(an, now, width, rows):
-    """The tempo screen: the number big and centred, flaring on the beat, then the meters."""
+def metronome(view, width):
+    """A head that sweeps from left to right between two beats - the tempo made visible.
+
+    Only live (the phase is a function of the clock) and only once a tempo exists.
+    """
+    mw = max(8, min(T.METRO_W, width - 4))
+    head = min(mw - 1, int(view.phase * mw))
+    pad = max(0, (width - mw) // 2)
+    row = Text(" " * pad, no_wrap=True, overflow="crop")
+    row.append(GLYPHS.bar_empty * head, style=TRACK)
+    row.append(GLYPHS.metro_head, style=f"bold {ramp(0.75 + 0.25 * view.beat_env)}")
+    row.append(GLYPHS.bar_empty * (mw - head - 1), style=TRACK)
+    return row
+
+
+def bpm_body(an, now, width, rows, view=None):
+    """The tempo screen: the number big and centred, flaring on the beat, a metronome, meters."""
     audio = _load_audio()
+    view = view or _audio_view(an, now)
     detail = f"BPM   {GLYPHS.sep}   {an.tempo.onset_rate():.1f} beats/s   {GLYPHS.sep}   {an.beats} beats"
     if not an.music:
         detail += f"   {GLYPHS.sep}   waiting for music"
-    lines = [audio_hud(an, now, width), Text("")]
+    lines = [audio_hud(an, now, width, view), Text("")]
     if rows >= T.BIG_DIGIT_MIN_ROWS:
         eased = readout("audio.bpm", shown_tempo(an.bpm), now)
-        lines.extend(big_number(f"{eased:.0f}" if eased else "---", tempo_tone(an, now), width))
+        lines.extend(big_number(f"{eased:.0f}" if eased else "---", tempo_tone(an, now, view), width))
         lines.append(centred(detail, width))
+        if view.phase is not None and an.bpm:
+            lines.append(metronome(view, width))
         lines.append(Text(""))
     else:
-        lit = an.beat_age(now) <= BEAT_LIT_S
+        lit = view.beat_env > BEAT_DOT_ON
         one = Text(no_wrap=True, overflow="crop")
         one.append(GLYPHS.beat_on if lit else GLYPHS.beat_off, style=f"bold {ramp(1.0)}" if lit else DIM)
         one.append("  ")
@@ -1965,7 +2093,8 @@ def bpm_body(an, now, width, rows):
     remaining = rows - len(lines) - 2
     tempo_hist = [(t, b) for t, b in an.bpm_history if b > 0]
     if remaining >= AUDIO_CHART_MIN_H and len(tempo_hist) >= 2:
-        chart = _audio_chart("tempo", tempo_hist, now, (audio.BPM_MIN, audio.BPM_MAX), width, remaining, fill=False)
+        chart = _cached_chart(("tempo", width, remaining), now, lambda: _audio_chart(
+            "tempo", tempo_hist, now, (audio.BPM_MIN, audio.BPM_MAX), width, remaining, fill=False))
         if chart is not None:
             lines.extend([Text(""), chart])
     return Group(*lines[:rows])
@@ -1987,7 +2116,8 @@ def render_audio(mode, an, now, width=None, height=None):
     title, subtitle = _AUDIO_TITLES[mode]
     if mode == "eq":
         subtitle = f"{len(an.levels)} {subtitle}"
-    body = _AUDIO_BODIES[mode](an, now, max(10, tw - cw), max(1, body_h - ch))
+    view = _audio_view(an, now)                    # ONE motion step per frame, shared by hud and body
+    body = _AUDIO_BODIES[mode](an, now, max(10, tw - cw), max(1, body_h - ch), view)
     root = Layout()
     root.split_column(Layout(header_line(tw, badge=mode.upper()), name="head", size=1),
                       Layout(_panel(body, title, subtitle), name="main"),
@@ -2002,6 +2132,8 @@ def run_audio(mode, interval, source, once=False):
     audio = _load_audio()
     pull = hasattr(source, "read")
     an = audio.Analyzer(getattr(source, "samplerate", audio.SAMPLE_RATE), audio.BLOCK)
+    _get_motion().reset()
+    _chart_cache.clear()
     lock = threading.Lock()
     clock = source.now if pull else time.monotonic
 
@@ -2039,7 +2171,9 @@ def run_audio(mode, interval, source, once=False):
         refresh = max(1, min(30, round(1 / interval)))
         with lock:
             first = render_audio(mode, an, clock())
-        with Live(first, console=console, refresh_per_second=refresh, screen=True) as live:
+        # auto_refresh off: the loop paints every frame itself with update(refresh=True); with
+        # rich's refresh thread on as well, every frame was painted about twice.
+        with Live(first, console=console, refresh_per_second=refresh, screen=True, auto_refresh=False) as live:
             next_tick = time.monotonic()
             while True:
                 next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
@@ -2061,6 +2195,7 @@ def run_audio(mode, interval, source, once=False):
             _restore_resize_handler(previous)
         if not pull:
             source.stop()
+        wait_for_chart_workers(0.5)
         LIVE = False
 
 

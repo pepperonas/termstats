@@ -87,12 +87,12 @@
 <br/><br/>
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/eq.png" alt="termstats -eq: a 28-band spectrum analyser" width="800"/>
 <br/>
-<sub><code>termstats -eq</code> — 28 bands from 40 Hz to 16 kHz with peak-hold markers</sub>
+<sub><code>termstats -eq</code>, a live frame — 28 bands from 40 Hz to 16 kHz, peak-hold markers above the bars, and the dim afterglow a falling bar leaves behind</sub>
 <br/><br/>
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/db.png" alt="termstats -db: the level meter" width="390"/>
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/bpm.png" alt="termstats -bpm: the tempo detector" width="390"/>
 <br/>
-<sub><code>termstats -db</code> and <code>termstats -bpm</code> — the level and the tempo, drawn five rows tall, eased between samples, flaring on the beat</sub>
+<sub><code>termstats -db</code> and <code>termstats -bpm</code> — the level and the tempo, drawn five rows tall, eased between samples, flaring on the beat; under the tempo the metronome head (<code>◆</code>) sweeps from beat to beat</sub>
 <br/><br/>
 <sub>Every picture comes from <code>tools/screenshots.py</code>, which renders them from <code>--demo</code>.</sub>
 </div>
@@ -150,6 +150,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **Leaves Cleanly** — `Esc`, `q` or `Ctrl+C`; alternate screen, cursor and input mode all restored
 - **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
 - **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
+- **They Move** — 30 frames a second; bars ease in seconds not frames, leave an afterglow that falls under gravity, peak markers hold then drop, every beat is an envelope that nudges the bars, lights the dot and flares the tempo, and a metronome sweeps between beats
 - **Zero Config** — flags and environment variables only; no config file, no state on disk
 
 ## Installation
@@ -207,7 +208,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.5.1
+termstats --version   # -> termstats 0.6.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -547,6 +548,30 @@ five rows of digits and the screen falls back to a single line:
 <sub>The same screen at 80×12. The value, the meter and the extremes stay; the big digits and the history are what give way.</sub>
 </div>
 
+### What moves, and how
+
+The analyser produces numbers about 43 times a second, the screen draws 30 times a second,
+and reading the newest numbers on every frame gives a picture that *steps*: a bar that jumps
+to its new height, a peak marker that slides down a ruler, a beat that is a dot switching on
+and off. A small motion layer (`termstats/motion.py`) sits between the two and makes every
+quantity a function of **elapsed time**, so the look is the same at 20 and 30 frames a second
+and a suspended laptop does not produce a jump on wake:
+
+| | |
+|---|---|
+| **Bars** | ease towards their target — a 20 ms attack, a 120 ms release — so a rise is nearly instant and a fall is what the eye follows |
+| **Afterglow** | where a bar was, a dim trail (`▒`) remains and falls under gravity, accelerating; it never sits below the bar |
+| **Peak markers** | ride up with the bar, hold for 400 ms, then fall under gravity rather than at a constant rate |
+| **The beat** | an impulse that decays to 1/e in 250 ms; everything that reacts to a beat reads this envelope — the dot lights hot and cools through two tones before it rests, the tempo digits flare and fade, and every bar is nudged up by up to 12 % |
+| **Metronome** | on the tempo screen a head (`◆`) sweeps from left to right between two beats, at the tempo the detector found — the beat grid made visible |
+| **Level meter** | VU-like ballistics: 30 ms up, 350 ms down |
+
+The history charts are the one expensive thing in a frame (plotext needs about 37 ms for one,
+more than a whole 33 ms frame), so live they are built on a worker thread twice a second and
+each frame draws the last finished one; the render thread never waits. In a snapshot none of
+this runs — the analyzer's numbers are drawn as they are, the chart is built once, and two
+renders of the same state are identical.
+
 ### Devices, snapshots, refresh
 
 `--list-devices` prints every input with its channel count and sample rate, and marks the one
@@ -559,7 +584,7 @@ that would be used without `--device`:
 </div>
 
 `--device NAME` picks one by any part of its name (`-d usb`), the default is the system input. The analyser
-runs at the device's own sample rate. The screens refresh 20 times a second (`-i` changes
+runs at the device's own sample rate. The screens refresh 30 times a second (`-i` changes
 that); `--once`, or a pipe, listens for 1.5 s and prints one frame — enough for a level, not
 for a tempo, which the HUD shows as `---`. `--demo -eq` plays eight seconds of scripted
 music before the first frame, so a tempo is already on screen.
@@ -758,6 +783,8 @@ What it covers:
 | Device listing | index, name, channels and rate in the output, the default marked once, the empty case, and `--list-devices` going through that one renderer |
 | Audio DSP | dBFS of silence/full scale/quiet tones, log-spaced edges, a pure tone lights its own band and no distant one, unit interval, silence settles, attack faster than release, peaks hold then fall and never sit below the level, the tempo estimator locks onto a metronome, folds octaves, ignores steady noise and the quiet room, forgets after silence, the demo synth is deterministic, within full scale, loud enough, and has the tempo it claims |
 | Audio screens | every mode fits every size, badge and HUD in every mode, bars follow the levels, columns adapt to the width, peak markers only above the bar, ASCII stays 7-bit, the level screen shows value/min/max/meter and drops the chart before the meter, the tempo screen shows the number or `---` and a beat dot that lights and rests |
+| Motion | the beat envelope fires to one and decays with time not frames, bars rise fast and fall slowly at 15 and 30 fps alike, trails snap up and fall with gravity and never sink below the bar, peaks hold then fall, the meter has VU ballistics, the phase sweeps and wraps, a minute-long pause is one short step |
+| Live vs snapshot | live bars ease towards a jump, a falling bar leaves a trail, a beat nudges every bar, the dot and the tempo digits fade instead of switching, the metronome moves right and exists only live with a tempo, the meter falls like a needle, the chart is built on a worker off the render path and a failed rebuild keeps the old chart; a snapshot stands perfectly still and builds its chart every time |
 | Audio arguments & capture | every flag spelling, one mode at a time, faster default refresh, `-i` still wins, `--device` needs a value and an audio mode, `--demo` needs no microphone, `--once` and a pipe measure briefly, `--list-devices`, the missing-extra message names the install; the microphone opens mono float32 at the device's own rate, resolves by substring or default, explains a missing library, PortAudio or device, and never lets a consumer error reach the audio thread |
 | Demo | the psutil surface contract against the source, byte-identical stories per seed, the story's shape, reproducible snapshots |
 | Definition of Done | no hard-coded colours or glyphs in `cli.py`, WCAG contrast of every theme against its background, no escapes under `NO_COLOR` or in a pipe, every fallback level renders and speaks only its own escapes — in-process and, on Linux/macOS, in a fresh process per colour level |

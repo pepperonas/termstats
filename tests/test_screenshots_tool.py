@@ -252,3 +252,16 @@ def test_the_quiet_tempo_view_shows_what_silence_looks_like(tool, tmp_path):
     tool.render(tmp_path, ["bpm-quiet"])
     text = svg_text(read_svg(tmp_path / "bpm-quiet.svg"))
     assert "---" in text and "waiting for music" in text and "quiet" in text
+
+
+def test_the_audio_pictures_are_live_frames(tool, tmp_path):
+    """A still of a live screen should show what moves: the equalizer's afterglow above a
+    falling bar and the metronome on the tempo screen. Rendering the analyzer's raw numbers
+    (a snapshot) would show neither and misrepresent the screen."""
+    pytest.importorskip("numpy")
+    tool.render(tmp_path, ["eq", "bpm"])
+    eq = svg_text(read_svg(tmp_path / "eq.svg"))
+    bpm = svg_text(read_svg(tmp_path / "bpm.svg"))
+    assert "\u2592" in eq, "no afterglow trail in the equalizer picture"
+    assert "\u25c6" in bpm, "no metronome head in the tempo picture"
+    assert "Esc" in eq and "Esc" in bpm, "a live frame carries the live footer"

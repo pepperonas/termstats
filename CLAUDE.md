@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.5.1**, 1207 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.6.0**, 1241 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -49,8 +49,9 @@ termstats/
 │   ├── theme.py      # EVERY colour and glyph: GlyphSets, spacing/format tokens, OKLab, 6 themes
 │   ├── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
-│   └── capture.py    # the microphone via sounddevice, lazy import, actionable errors
-├── tests/            # 1207 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+│   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
+│   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
+├── tests/            # 1241 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -316,6 +317,45 @@ hid the tone, which looked like a resolution bug and was the test's fault. The a
 `importorskip("numpy")`; CI installs `.[dev]`, which carries numpy and sounddevice.
 Live-checked: pty run of `--demo -eq` (98 frames/3 s, alt screen once, exit 0 on Ctrl+C), real
 mic `-db --once` and `-bpm --once --device MacBook`, the wrong-device message.
+
+## Motion (0.6.0)
+
+`termstats/motion.py` sits between the analyzer (one set of numbers per audio block, ~43/s)
+and the screen (30 frames/s). Everything it hands the renderer is a function of ELAPSED TIME,
+never of the frame count: bars ease with `ATTACK_TAU` 0.02 / `RELEASE_TAU` 0.12 s, a trail
+falls under `TRAIL_G` and never sinks below the bar, peaks hold `PEAK_HOLD_S` 0.4 then fall
+under `PEAK_G`, the meter has VU ballistics (0.03 up / 0.35 down), `beat_env` is an impulse
+decaying with `BEAT_TAU` 0.25 s and snapped to 0 below `ENV_FLOOR` (an e^-8 tail is a
+different colour from 0.75 - the "cool" tone was never exact until that snap), `phase` is
+`(now - last_beat) / period % 1`. `MAX_DT` clamps a frame gap to 0.25 s (suspended laptop).
+numpy-free on purpose: the floor comes in as a parameter, `DEFAULT_DB_FLOOR` is pinned equal
+to `audio.DB_FLOOR`.
+
+In cli.py: `View` is what a screen draws from; `_audio_view(an, now)` returns the motion
+layer's eased quantities when `SMOOTHING` is on and the analyzer's raw numbers otherwise, and
+`render_audio` computes it ONCE per frame and hands it to hud and body. Trails are drawn in
+`GLYPHS.bar_secondary` (DIM) above the bar, the metronome head is `GLYPHS.metro_head`
+(`◆`/`>`), the beat dot goes hot → warm → rest by envelope (`beat_dot`), `tempo_tone` is
+`ramp(0.75 + 0.25·env)`. **`AUDIO_INTERVAL` is 1/30** and the audio `Live` runs with
+`auto_refresh=False` - with rich's refresh thread on as well, a pty counted ~50 paints/s at 30
+planned: every frame painted about twice.
+
+⚠️ **plotext costs ~37 ms per chart** (measured; bucketing is 0.4 ms) - more than a whole
+33 ms frame. The level screen ran at ~10 fps because it paid that every frame (87 ms median).
+Live, `_cached_chart` builds the first chart synchronously and every later one on a worker
+thread every `CHART_REFRESH_S` = 0.5 s (`_build_chart_later`); the frame draws the last
+finished one. ⚠️ The worker must never touch the analyzer: the audio thread appends to
+`db_history` and a deque mutated during iteration raises - `db_body` takes `level_history(an)`
+as a finished list ON THE RENDER THREAD and the lambda closes over that (a pin checks the
+thread `level_history` runs on). `wait_for_chart_workers()` joins them at session end and in
+tests. Snapshot: synchronous build every render, nothing eased, two renders identical.
+
+⚠️ Testing the motion layer: step frames REALISTICALLY (1/30 s). A test that jumps the clock
+1.7 s in one `render_audio` hits the `MAX_DT` clamp and sees a half-faded envelope - two pins
+did that and failed on the fade they meant to prove; `advance()` in test_audio_motion.py
+renders every frame in between. The screenshot tool renders the audio views as LIVE frames
+(`SMOOTHING = LIVE = True`, 12 frames of music first), so the pictures show trail, metronome
+and the live footer; a pin requires both glyphs in the SVGs.
 
 ## Leaving a session (0.5.0)
 

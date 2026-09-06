@@ -37,6 +37,9 @@ def clean_module_state():
     cli.set_demo(None)
     cli._resized.clear()
     cli.set_frame(compact=False, no_border=False)
+    if getattr(cli, "_motion", None) is not None:
+        cli._motion.reset()
+    getattr(cli, "_chart_cache", {}).clear()
     cli._smoother.reset()
     cli._peaks.reset()
     cli._net_unit = "KB/s"
