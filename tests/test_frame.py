@@ -23,13 +23,18 @@ def styles_of(text):
 def test_every_panel_uses_the_same_border_colour(primed_history):
     """Five differently coloured frames were five competing accents. The frame is quiet
     and the same everywhere; the content carries the colour."""
+    from rich.color import Color
     from rich.console import Console
-    console = Console(width=140, height=50, force_terminal=True, no_color=False, legacy_windows=False, color_system="truecolor")
-    with console.capture() as cap:
-        console.print(cli.render_dashboard(140, 50))
-    out = cap.get()
-    r, g, b = T.rgb_of(cli.THEME.border)
-    assert out.count(f"\x1b[38;2;{r};{g};{b}m╭") >= 5, "not every panel frame is in the border tone"
+    # The colour, not the escape: rich caches a Style's rendered bytes on the instance, so
+    # whichever console rendered it first in the session decides the form (see the same
+    # lesson in test_charts.test_axis_labels_are_in_the_muted_tone).
+    console = Console(width=140, height=50, force_terminal=True, no_color=False,
+                      legacy_windows=False, color_system="truecolor")
+    want = Color.parse(cli.THEME.border).get_truecolor()
+    corners = sum(seg.text.count("\u256d") for seg in console.render(cli.render_dashboard(140, 50))
+                  if seg.style is not None and seg.style.color is not None
+                  and seg.style.color.get_truecolor() == want)
+    assert corners >= 5, f"not every panel frame is in the border tone ({corners} corners)"
 
 
 @pytest.mark.parametrize("name", T.theme_names())

@@ -20,6 +20,12 @@ line will be 1.0.0.
   be used without `--device` is marked `default`. It goes through one function (`print_devices`)
   so the picture in the README shows what the command prints.
 
+### Fixed
+
+- Two colour pins matched a literal escape sequence, which rich caches per Style instance —
+  so the form depended on TERM and on which test ran first. Green locally, red on all four CI
+  cells. They compare the colour itself now.
+
 ### Documentation
 
 - Four new rendered pictures of what 0.5.0 added: the device listing, the tempo screen in a

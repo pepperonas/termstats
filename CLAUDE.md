@@ -110,6 +110,14 @@ glyph level, the theme, `SMOOTHING`, `LIVE`, the frame mode (`set_frame`), the d
 and the disk/net rate attributes. Rate state survives between calls by design; without the
 reset a collector test passes or fails depending on what ran before it.
 
+⚠️ **Assert a COLOUR, never an escape sequence.** rich caches a Style's rendered bytes on
+the instance, so whichever console rendered that style first in the session decides the form
+— a 256-colour console earlier in the suite leaves `\x1b[38;5;242m` where a truecolor one
+would have written `\x1b[38;2;108;108;108m`, and a pin matching the literal then passes or
+fails by TERM and test ORDER. Two pins did exactly that and went red in CI on all four cells
+while staying green locally (my shell exports `COLORTERM`). Render to segments and compare
+`seg.style.color.get_truecolor()`; the triplet is the same whichever depth was used.
+
 ⚠️ **A mutation batch needs a timeout, a cache purge and a `git` check.** Three ways a probe
 has already gone wrong in this repo: a mutation that removes a loop's exit condition makes
 pytest run FOREVER (use `subprocess.run(..., timeout=90)`, and bound the fake `Live` in the

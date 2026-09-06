@@ -424,12 +424,23 @@ def test_the_plot_has_no_frame_of_its_own(primed_history):
 
 
 def test_axis_labels_are_in_the_muted_tone(primed_history):
+    """Asks rich for the COLOUR, not for the bytes.
+
+    Matching a literal "\x1b[38;2;108;108;108m" looked equivalent and was not: rich caches a
+    Style's rendered escape on the instance, so whichever console rendered that style FIRST
+    in the session decides the form - a 256-colour one earlier in the suite leaves
+    "\x1b[38;5;242m" behind, and this test then failed depending on TERM and on test order.
+    The colour is the same either way, and the colour is what the pin is about.
+    """
+    from rich.color import Color
     from rich.console import Console
-    console = Console(width=80, force_terminal=True, no_color=False, legacy_windows=False, color_system="truecolor")
-    with console.capture() as cap:
-        console.print(cli.get_cpu_chart(60, 10))
-    r, g, b = cli.T.rgb_of(cli.MUTED)
-    assert f"\x1b[38;2;{r};{g};{b}m" in cap.get(), "tick labels are not muted"
+    console = Console(width=80, force_terminal=True, no_color=False, legacy_windows=False,
+                      color_system="truecolor")
+    want = Color.parse(cli.MUTED).get_truecolor()
+    tones = {seg.style.color.get_truecolor()
+             for seg in console.render(cli.get_cpu_chart(60, 10))
+             if seg.style is not None and seg.style.color is not None}
+    assert want in tones, f"tick labels are not muted: {sorted(tones)}"
 
 
 def test_the_empty_state_takes_the_charts_space():
