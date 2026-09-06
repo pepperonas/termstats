@@ -124,3 +124,46 @@ def test_help_documents_the_audio_modes(capsys):
     for flag in ("--equalizer", "--bpm", "--db", "--device", "--list-devices"):
         assert flag in text, flag
     assert "termstats[audio]" in text
+
+
+# --- the device listing is a rendered thing, not a print statement ---------------------------
+
+DEVICES = [(1, "MacBook Pro Microphone", 1, 48000.0), (2, "USB Audio Device", 2, 44100.0)]
+
+
+def seen(capsys):
+    """What a reader sees - the listing is printed through the console, so it carries styling."""
+    import re
+    return re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)
+
+
+def test_print_devices_shows_index_name_channels_and_rate(capsys):
+    cli.print_devices(DEVICES)
+    out = seen(capsys)
+    assert "MacBook Pro Microphone" in out and "USB Audio Device" in out
+    assert "48000" in out and "44100" in out
+    assert " 1 " in out and " 2 " in out                    # channel counts
+    assert out.splitlines()[0].split()[0] == "1", "the index leads each row"
+
+
+def test_print_devices_says_so_when_there_are_none(capsys):
+    cli.print_devices([])
+    assert "no input device" in seen(capsys).lower()
+
+
+def test_print_devices_marks_the_default(capsys):
+    cli.print_devices(DEVICES, default=2)
+    rows = [l for l in seen(capsys).splitlines() if "Device" in l or "Microphone" in l]
+    marked = [l for l in rows if cli.DEVICE_MARK in l]
+    assert len(marked) == 1 and "USB Audio Device" in marked[0]
+
+
+def test_the_listing_is_what_the_flag_prints(invoke, monkeypatch, capsys):
+    """--list-devices must go through the same renderer the screenshots use, or the picture
+    in the README drifts away from what the command actually prints."""
+    seen = {}
+    monkeypatch.setattr(cli, "_list_devices", lambda: DEVICES)
+    monkeypatch.setattr(cli, "print_devices", lambda devices, default=None: seen.update(devices=devices))
+    with pytest.raises(SystemExit) as e:
+        invoke("--list-devices")
+    assert e.value.code == 0 and seen["devices"] == DEVICES

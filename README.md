@@ -196,7 +196,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.5.0
+termstats --version   # -> termstats 0.5.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -337,6 +337,15 @@ terminal gets, or to work around a font:
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/colours.png" alt="the same dashboard on truecolor, 256, 16 colours and without colour" width="800"/>
 <br/>
 <sub>Colour levels: <code>truecolor</code>, <code>256</code>, <code>16</code> (named colours the theme chooses itself), <code>mono</code> (what <code>NO_COLOR=1</code> prints — the lightness scale alone still reads as a scale). <code>COLORTERM</code>, <code>WT_SESSION</code> and <code>TERM</code> decide; <code>--theme mono</code> keeps greys with colour escapes, <code>NO_COLOR</code> removes every escape.</sub>
+</div>
+
+The microphone screens degrade with everything else — bars, peak markers, the big digits and
+the frequency axis all survive a terminal that can only draw 7-bit characters:
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/eq-ascii.png" alt="the equalizer drawn in ASCII only" width="620"/>
+<br/>
+<sub><code>TERMSTATS_GLYPHS=ascii termstats -eq</code>: the bars become <code>#</code>, the peak markers <code>-</code>, and nothing outside 7-bit is drawn.</sub>
 </div>
 
 ### Choosing the mode
@@ -496,6 +505,12 @@ A tempo needs about five seconds of music. Halving and doubling are a genuine am
 (a 60 BPM ballad and a 120 BPM track with a kick on every beat produce the same intervals);
 the fold prefers the 60–200 range and snaps to the tempo already shown.
 
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/bpm-quiet.png" alt="the tempo screen in a silent room" width="700"/>
+<br/>
+<sub>Before any music plays: dashes instead of a number, <code>quiet</code> in the HUD and <code>waiting for music</code> under it. Onsets are gated on the level, so a silent room never invents a tempo.</sub>
+</div>
+
 ### The headline number
 
 `-db` and `-bpm` put their one important number in the middle of the screen, five rows tall,
@@ -513,12 +528,26 @@ everything else). Three things happen to it while a session runs:
 The HUD line above keeps the raw sample, so the exact measurement is always on screen next
 to the eased one. In a snapshot (`--once`, or a pipe) nothing is eased and nothing is held:
 one frame, one number, the one that was measured. Below about ten rows there is no room for
-five rows of digits and the screen falls back to a single line.
+five rows of digits and the screen falls back to a single line:
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/db-small.png" alt="the level meter on a short terminal" width="620"/>
+<br/>
+<sub>The same screen at 80×12. The value, the meter and the extremes stay; the big digits and the history are what give way.</sub>
+</div>
 
 ### Devices, snapshots, refresh
 
-`--list-devices` prints every input with its channel count and sample rate; `--device NAME`
-picks one by any part of its name (`-d usb`), the default is the system input. The analyser
+`--list-devices` prints every input with its channel count and sample rate, and marks the one
+that would be used without `--device`:
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/devices.png" alt="the output of termstats --list-devices" width="560"/>
+<br/>
+<sub><code>termstats --list-devices</code> — an invented sound card, so the picture is the same on every machine.</sub>
+</div>
+
+`--device NAME` picks one by any part of its name (`-d usb`), the default is the system input. The analyser
 runs at the device's own sample rate. The screens refresh 20 times a second (`-i` changes
 that); `--once`, or a pipe, listens for 1.5 s and prints one frame — enough for a level, not
 for a tempo, which the HUD shows as `---`. `--demo -eq` plays eight seconds of scripted
@@ -713,7 +742,9 @@ What it covers:
 | Lifecycle | SIGWINCH guard and restore, sliced waits, immediate relayout with cadence resync, cursor always restored, Ctrl+C quiet |
 | Windows | `WT_SESSION` and the conhost build in the colour chain, load-average priming, the docs and CI keep the PowerShell path honest |
 | Docs sync | every parser flag has a README row and a `--help` line, every `TERMSTATS_*` variable and theme is documented, every README image exists and every screenshot is shown, the table of contents matches the headings, the changelog is dated and descending |
-| Screenshot tool | importable, one SVG per view, no window chrome, byte-identical on repeat, the ASCII tile is 7-bit, the mono tile has no colour, the snapshot shows the skeleton, the audio views carry a tempo |
+| Screenshot tool | importable, one SVG per view, no window chrome, byte-identical on repeat, the ASCII tile is 7-bit, the mono tile has no colour, the snapshot shows the skeleton, the audio views carry a tempo, the device listing invents its devices |
+| Keys | which bytes mean quit and which only start an arrow key, the watcher's states and its restore, both loops leaving, the footer and `--help` naming `Esc` |
+| Device listing | index, name, channels and rate in the output, the default marked once, the empty case, and `--list-devices` going through that one renderer |
 | Audio DSP | dBFS of silence/full scale/quiet tones, log-spaced edges, a pure tone lights its own band and no distant one, unit interval, silence settles, attack faster than release, peaks hold then fall and never sit below the level, the tempo estimator locks onto a metronome, folds octaves, ignores steady noise and the quiet room, forgets after silence, the demo synth is deterministic, within full scale, loud enough, and has the tempo it claims |
 | Audio screens | every mode fits every size, badge and HUD in every mode, bars follow the levels, columns adapt to the width, peak markers only above the bar, ASCII stays 7-bit, the level screen shows value/min/max/meter and drops the chart before the meter, the tempo screen shows the number or `---` and a beat dot that lights and rests |
 | Audio arguments & capture | every flag spelling, one mode at a time, faster default refresh, `-i` still wins, `--device` needs a value and an audio mode, `--demo` needs no microphone, `--once` and a pipe measure briefly, `--list-devices`, the missing-extra message names the install; the microphone opens mono float32 at the device's own rate, resolves by substring or default, explains a missing library, PortAudio or device, and never lets a consumer error reach the audio thread |

@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.5.0**, 1193 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.5.1**, 1207 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -50,7 +50,7 @@ termstats/
 │   ├── demo.py       # --demo: a deterministic psutil stand-in with a scripted story
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   └── capture.py    # the microphone via sounddevice, lazy import, actionable errors
-├── tests/            # 1193 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1207 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -401,9 +401,16 @@ and the 2×3 grid keeps roughly the hero's 5:3 aspect), `compact` (80×24), `no-
 `snapshot` (120×36; the snapshot is the un-prefilled first frame with the collecting skeleton,
 sampled at 1 s like `run_once`), `narrow` (100×26 — the charts are dropped whole),
 `list-themes`, `glyph-{braille,block,ascii}` (100×34 — the glyph levels differ in the CHARTS,
-which the budget only fits from 32 rows on), `color-{truecolor,256,16,mono}` (100×16) and
-`help` (at its natural width). `write_index` lays them out under `#hero #grid #compact
-#no-border #narrow #snapshot #list-themes #glyphs #colours #help`.
+which the budget only fits from 32 rows on), `color-{truecolor,256,16,mono}` (100×16),
+`help` (at its natural width), the microphone screens `eq` / `bpm` / `db` (120×36, fed eight
+seconds of `DemoAudio` so a tempo is locked), and the four 0.5.1 additions: `db-small`
+(80×12, the one-line fallback), `eq-ascii` (the `ascii` glyph level), `bpm-quiet`
+(`seconds=0` — silence, so the screen shows `---` / `quiet` / `waiting for music`) and
+`devices`. ⚠️ **`devices` feeds `cli.print_devices` an INVENTED sound card** (`DEMO_DEVICES`):
+rendering the real one would publish whatever audio software this machine has and change with
+every install; a test asserts the private names are absent. `write_index` lays them out under
+`#hero #grid #compact #no-border #narrow #snapshot #list-themes #glyphs #colours #eq #bpm #db
+#db-small #eq-ascii #bpm-quiet #devices #help`.
 
 Rasterise that page in a real browser: `python3 -m http.server 8901` in OUT_DIR, then Playwright
 element screenshots (`locator('#hero').screenshot({scale:'css'})`); `file://` is blocked in the

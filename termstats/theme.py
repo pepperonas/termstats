@@ -222,6 +222,8 @@ BIG_FONT = {
 }
 BIG_DIGIT_MIN_ROWS = 9     # hud + blank + five rows + meter + a stats line: below this, one line
 
+DEVICE_MARK = "default"    # which input --list-devices would pick without --device
+
 RIGHT_COL_MIN, RIGHT_COL_MAX, RIGHT_COL_SHARE = 36, 52, 0.4
 NARROW_BELOW = 92          # single-column layout under this width
 CHART_MIN_H, CHART_MAX_H = 13, 12   # spare lines needed to show charts / chart row height

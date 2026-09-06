@@ -1637,6 +1637,34 @@ def _list_devices():
     return capture.list_devices()
 
 
+def _default_device():
+    """The input `--device` would pick if it were not given - None when it cannot be read."""
+    try:
+        from termstats import capture
+        return capture.resolve_device(None)
+    except Exception:
+        return None
+
+
+DEVICE_MARK = T.DEVICE_MARK
+
+
+def print_devices(devices, default=None):
+    """`--list-devices`, in one place so the screenshot shows what the command prints."""
+    if not devices:
+        console.print("no input devices found", style=MUTED)
+        return
+    name_w = max(len(name) for _, name, _, _ in devices)
+    for index, name, channels, rate in devices:
+        row = Text(no_wrap=True, overflow="crop")
+        row.append(f"{index:>3}  ", style=DIM)
+        row.append(f"{name:<{name_w}}", style=TEXT if index == default else SOFT)
+        row.append(f"   {channels} ch   {rate:>6.0f} Hz", style=MUTED)
+        if index == default:
+            row.append(f"   {DEVICE_MARK}", style=ramp(0.5))
+        console.print(row)
+
+
 def eq_columns(width, bands=28):
     """How many bars fit in `width` (two cells each plus a gap, inside the panel chrome).
 
@@ -2273,10 +2301,7 @@ def main():
             _fail(f"the microphone modes need the audio extra: {AUDIO_HINT} ({exc})")
         except Exception as exc:              # capture.AudioUnavailable, without importing it here
             _fail(str(exc))
-        if not devices:
-            print("no input devices found")
-        for index, name, channels, rate in devices:
-            print(f"{index:>3}  {name}  ({channels} ch, {rate:.0f} Hz)")
+        print_devices(devices, _default_device())
         sys.exit(0)
 
     if device is not None and audio_mode is None:

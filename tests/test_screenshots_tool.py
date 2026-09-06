@@ -53,7 +53,7 @@ def test_every_view_has_a_renderer(tool):
 EXPECTED_VIEWS = {"hero", "compact", "help", "no-border", "narrow", "snapshot", "list-themes",
                   "glyph-braille", "glyph-block", "glyph-ascii",
                   "color-truecolor", "color-256", "color-16", "color-mono",
-                  "eq", "bpm", "db"}
+                  "eq", "bpm", "db", "devices", "db-small", "eq-ascii", "bpm-quiet"}
 
 
 def test_the_view_set_covers_the_readme(tool):
@@ -181,7 +181,8 @@ def test_index_page_has_a_section_per_readme_figure(tool, tmp_path):
     tool.write_index(tmp_path)
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     for sid in ("hero", "grid", "compact", "help", "no-border", "narrow", "snapshot",
-                "list-themes", "glyphs", "colours", "eq", "bpm", "db"):
+                "list-themes", "glyphs", "colours", "eq", "bpm", "db",
+                "devices", "db-small", "eq-ascii", "bpm-quiet"):
         assert f'id="{sid}"' in html, sid
     assert __version__ in html
 
@@ -213,3 +214,41 @@ def test_audio_views_are_reproducible(tool, tmp_path):
     a = tmp_path / "a"; b = tmp_path / "b"
     tool.render(a, ["eq"]); tool.render(b, ["eq"])
     assert (a / "eq.svg").read_bytes() == (b / "eq.svg").read_bytes()
+
+
+# --- the pictures of what 0.5.0 added ------------------------------------------------------
+
+def test_the_device_listing_view_invents_its_devices(tool, tmp_path):
+    """A screenshot of --list-devices must not publish the audio software on the machine
+    that rendered it, and it has to look the same every time - so the view feeds the real
+    renderer an invented list."""
+    tool.render(tmp_path, ["devices"])
+    text = svg_text(read_svg(tmp_path / "devices.svg"))
+    assert "USB" in text and "48000" in text and "default" in text
+    for private in ("BlackHole", "Teams", "boom Audio", "Background Music"):
+        assert private not in text
+
+
+def test_the_small_level_view_shows_the_one_line_fallback(tool, tmp_path):
+    pytest.importorskip("numpy")
+    tool.render(tmp_path, ["db-small"])
+    svg = read_svg(tmp_path / "db-small.svg")
+    text = svg_text(svg)
+    assert "dB" in text and "min" in text
+    big = [l for l in text.splitlines() if "\u2588" in l and set(l.strip()) <= {"\u2588", " "}]
+    assert not big, "at this height the value is one line, not five rows of digits"
+
+
+def test_the_ascii_equalizer_view_draws_no_unicode(tool, tmp_path):
+    pytest.importorskip("numpy")
+    tool.render(tmp_path, ["eq-ascii"])
+    text = svg_text(read_svg(tmp_path / "eq-ascii.svg"))
+    assert "equalizer" in text and "16k" in text
+    assert not {ch for ch in text if ord(ch) > 127}
+
+
+def test_the_quiet_tempo_view_shows_what_silence_looks_like(tool, tmp_path):
+    pytest.importorskip("numpy")
+    tool.render(tmp_path, ["bpm-quiet"])
+    text = svg_text(read_svg(tmp_path / "bpm-quiet.svg"))
+    assert "---" in text and "waiting for music" in text and "quiet" in text

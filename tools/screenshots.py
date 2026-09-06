@@ -119,27 +119,57 @@ def dashboard(out, name, size, theme=T.DEFAULT_THEME, color="truecolor", glyphs=
 
 
 AUDIO = (120, 36)
-AUDIO_SECONDS = 8.0   # scripted music before the frame: the tempo needs ~5 s to lock
+AUDIO_SMALL = (80, 12)   # too short for five rows of digits: the one-line fallback
+AUDIO_SECONDS = 8.0      # scripted music before the frame: the tempo needs ~5 s to lock
+
+# An invented sound card for the --list-devices picture. Rendering the real one would put
+# whatever audio software this machine has into the README, and change with every install.
+DEMO_DEVICES = [
+    (0, "Built-in Microphone", 1, 48000.0),
+    (1, "USB Audio Device", 2, 44100.0),
+    (2, "Scarlett Solo USB", 2, 48000.0),
+]
+DEMO_DEFAULT = 1
 
 
-def audio_view(out, mode):
-    """One microphone screen fed by the demo synth - no device, same picture every time."""
+def audio_view(out, name, mode, size=AUDIO, glyphs="braille", seconds=AUDIO_SECONDS):
+    """One microphone screen fed by the demo synth - no device, same picture every time.
+
+    `seconds` = 0 renders silence, which is what the screen shows before any music plays.
+    """
     from termstats import audio
     cli = fresh_cli()
+    cli.CAPS = T.Capabilities(color="truecolor", glyphs=glyphs, nerd=False)
+    cli.set_glyph_level(glyphs)
     cli.set_theme(T.DEFAULT_THEME, color="truecolor")
     source = audio.DemoAudio(seed=7)
     an = audio.Analyzer(source.samplerate, audio.BLOCK)
-    while source.now() < AUDIO_SECONDS:
-        an.feed(source.read(audio.BLOCK), source.now())
+    if seconds:
+        while source.now() < seconds:
+            an.feed(source.read(audio.BLOCK), source.now())
+    else:
+        import numpy as np
+        for i in range(40):                       # a quiet room: the level settles, no beats
+            an.feed(np.zeros(audio.BLOCK, dtype=np.float32), i * audio.BLOCK / source.samplerate)
     demo_source = demo.DemoSource(demo.DEFAULT_SEED, 0.5)
     demo_source.T0 = SHOT_T0
     cli.set_demo(demo_source)
     cli._prime_measurements()
-    w, h = AUDIO
+    w, h = size
     con = console(w, h)
     cli.console = con
     con.print(cli.render_audio(mode, an, source.now(), w, h))
-    return write(out, con, mode, theme_bg(cli))
+    return write(out, con, name, theme_bg(cli))
+
+
+def devices_view(out):
+    """`--list-devices`, through the renderer the command itself uses."""
+    cli = fresh_cli()
+    cli.set_theme(T.DEFAULT_THEME, color="truecolor")
+    con = console(56, len(DEMO_DEVICES) + 1)
+    cli.console = con
+    cli.print_devices(DEMO_DEVICES, DEMO_DEFAULT)
+    return write(out, con, "devices", theme_bg(cli))
 
 
 def help_view(out):
@@ -169,9 +199,13 @@ VIEWS = {
     "snapshot": lambda out: dashboard(out, "snapshot", WIDE, prefill=False, interval=1.0),
     "help": help_view,
     "list-themes": list_themes_view,
-    "eq": lambda out: audio_view(out, "eq"),
-    "bpm": lambda out: audio_view(out, "bpm"),
-    "db": lambda out: audio_view(out, "db"),
+    "eq": lambda out: audio_view(out, "eq", "eq"),
+    "bpm": lambda out: audio_view(out, "bpm", "bpm"),
+    "db": lambda out: audio_view(out, "db", "db"),
+    "db-small": lambda out: audio_view(out, "db-small", "db", size=AUDIO_SMALL),
+    "eq-ascii": lambda out: audio_view(out, "eq-ascii", "eq", glyphs="ascii"),
+    "bpm-quiet": lambda out: audio_view(out, "bpm-quiet", "bpm", seconds=0),
+    "devices": devices_view,
 }
 for _theme in T.theme_names():
     VIEWS[f"theme-{_theme}"] = (lambda t: lambda out: dashboard(out, f"theme-{t}", TILE, theme=t))(_theme)
@@ -216,7 +250,9 @@ def write_index(out):
   img{{display:block}}
   #hero img{{width:1700px}}
   #compact img{{width:980px}}
-  #no-border img,#snapshot img,#eq img,#bpm img,#db img{{width:1460px}}
+  #no-border img,#snapshot img,#eq img,#bpm img,#db img,#bpm-quiet img{{width:1460px}}
+  #db-small img,#eq-ascii img{{width:980px}}
+  #devices img{{width:690px}}
   #narrow img{{width:1220px}}
   #list-themes img{{width:732px}}
   #help img{{width:{help_px}px}}   /* rich draws 12.2 px per cell at its 20 px font; the SVG carries no intrinsic size */
@@ -241,6 +277,10 @@ def write_index(out):
 <section id="eq"><img src="eq.svg" alt="termstats -eq: the spectrum analyser"></section>
 <section id="bpm"><img src="bpm.svg" alt="termstats -bpm: the tempo detector"></section>
 <section id="db"><img src="db.svg" alt="termstats -db: the level meter"></section>
+<section id="db-small"><img src="db-small.svg" alt="the level meter on a short terminal"></section>
+<section id="eq-ascii"><img src="eq-ascii.svg" alt="the equalizer drawn in ASCII"></section>
+<section id="bpm-quiet"><img src="bpm-quiet.svg" alt="the tempo screen before any music plays"></section>
+<section id="devices"><img src="devices.svg" alt="termstats --list-devices"></section>
 <section id="help"><img src="help.svg" alt="termstats --help"></section>
 """
     Path(out).mkdir(parents=True, exist_ok=True)

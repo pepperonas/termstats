@@ -11,6 +11,24 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-06
+
+### Changed
+
+- **`--list-devices` is a rendered listing, not a print statement.** Names are aligned in a
+  column, the channel count and sample rate sit in their own fields, and the input that would
+  be used without `--device` is marked `default`. It goes through one function (`print_devices`)
+  so the picture in the README shows what the command prints.
+
+### Documentation
+
+- Four new rendered pictures of what 0.5.0 added: the device listing, the tempo screen in a
+  silent room (dashes, `quiet`, `waiting for music`), the level meter on a short terminal
+  (the one-line fallback), and the equalizer drawn in ASCII only.
+- The screenshot tool grew the matching views (`devices`, `bpm-quiet`, `db-small`,
+  `eq-ascii`); the device view feeds the real renderer an **invented** sound card, so no
+  machine's audio software ends up in the README and the picture is the same everywhere.
+
 ## [0.5.0] - 2026-09-05
 
 ### Added
