@@ -1132,7 +1132,7 @@ def footer_line(width):
     text = Text(no_wrap=True, overflow="crop")
     brand = f"{GLYPHS.copyright} {_current_year()} {FOOTER_BRAND} "
     exit_hint = " Esc or Ctrl+C to exit"
-    switch_hint = "  c performance  b BPM  d dB"
+    switch_hint = "  s stats  b BPM  d dB"
     hint = (exit_hint + switch_hint
             if LIVE and len(exit_hint) + len(switch_hint) + len(brand) + 2 <= width
             else exit_hint if LIVE else "")
@@ -1423,7 +1423,7 @@ def _restore_resize_handler(previous):
 
 QUIT_KEYS = (b"\x1b", b"q", b"Q")     # Esc, or q for the habit of it
 _ESC_SEQUENCE_STARTS = (b"[", b"O")   # Esc is also the first byte of every arrow/function key
-VIEW_KEYS = {b"c": "performance", b"C": "performance",
+VIEW_KEYS = {b"s": "performance", b"S": "performance",
              b"b": "bpm", b"B": "bpm", b"d": "db", b"D": "db"}
 
 
@@ -2303,7 +2303,7 @@ def print_help():
     print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
     print()
     print(f"The microphone modes need the audio extra:  {AUDIO_HINT}")
-    print("Live keys: c performance dashboard, b BPM, d dB; Esc or q exits")
+    print("Live keys: s statistics dashboard, b BPM, d dB; Esc or q exits")
     print()
     print("Environment:")
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")

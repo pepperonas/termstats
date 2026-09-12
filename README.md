@@ -380,7 +380,7 @@ print columns.
 
 ### Exit
 
-In a live session, press **`c`** for the performance dashboard, **`b`** for the BPM display,
+In a live session, press **`s`** for the statistics dashboard, **`b`** for the BPM display,
 or **`d`** for the dB display. Press **`Esc`** or `Ctrl+C` to exit 0 without a traceback; the
 alternate screen buffer, the cursor and the terminal's input mode are restored, so your
 scrollback stays intact. `q` works too. The key is read within a tenth of a second, the same

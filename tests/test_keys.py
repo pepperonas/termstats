@@ -31,7 +31,7 @@ def test_a_quit_key_anywhere_in_a_burst_counts():
 
 
 @pytest.mark.parametrize("data,expected", [
-    (b"c", "performance"),
+    (b"s", "performance"),
     (b"B", "bpm"),
     (b"d", "db"),
     (b"\x1b", None),
