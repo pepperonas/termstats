@@ -380,10 +380,11 @@ print columns.
 
 ### Exit
 
-Live mode runs until you press **`Esc`** or `Ctrl+C` — the footer says so — and exits 0
-without a traceback; the alternate screen buffer, the cursor and the terminal's input mode are
-restored, so your scrollback stays intact. `q` works too. The key is read within a tenth of a
-second, the same slice a resize is noticed in.
+In a live session, press **`c`** for the performance dashboard, **`b`** for the BPM display,
+or **`d`** for the dB display. Press **`Esc`** or `Ctrl+C` to exit 0 without a traceback; the
+alternate screen buffer, the cursor and the terminal's input mode are restored, so your
+scrollback stays intact. `q` works too. The key is read within a tenth of a second, the same
+slice a resize is noticed in.
 
 For a single keypress to arrive at all, the terminal spends the session in cbreak mode. When
 stdout is a terminal but stdin is not (`termstats --live < /dev/null`), or input is redirected,

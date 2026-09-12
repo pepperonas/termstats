@@ -30,6 +30,18 @@ def test_a_quit_key_anywhere_in_a_burst_counts():
     assert cli.is_quit_key(b"aaq") is True
 
 
+@pytest.mark.parametrize("data,expected", [
+    (b"c", "performance"),
+    (b"B", "bpm"),
+    (b"d", "db"),
+    (b"\x1b", None),
+    (b"\x1b[A", None),
+    (b"x", None),
+])
+def test_view_key_selects_a_live_view(data, expected):
+    assert cli.view_key(data) == expected
+
+
 # --- the watcher ------------------------------------------------------------------------
 
 class FakeTTY:
@@ -90,6 +102,18 @@ def test_the_watcher_reads_what_is_waiting(monkeypatch):
     assert w.quit_pressed() is True
     monkeypatch.setattr(cli, "_read_ready", lambda fd: b"\x1b[A")
     assert w.quit_pressed() is False
+    w.stop()
+
+
+def test_the_watcher_reads_a_view_key(monkeypatch):
+    monkeypatch.setattr(cli.sys, "stdin", FakeTTY())
+    monkeypatch.setattr(cli, "_set_cbreak", lambda fd: "SAVED")
+    monkeypatch.setattr(cli, "_restore_tty", lambda fd, saved: None)
+    monkeypatch.setattr(cli, "_read_ready", lambda fd: b"b")
+    w = cli.KeyWatcher()
+    w.start()
+    assert w.quit_pressed() is False
+    assert w.view_pressed() == "bpm"
     w.stop()
 
 
@@ -183,6 +207,23 @@ def test_esc_ends_an_audio_screen(monkeypatch):
     cli._quit.clear()
     cli.run_audio("db", 0.05, audio.DemoAudio(seed=1), once=False)
     assert len(frames) <= 1
+
+
+def test_a_view_key_ends_the_current_dashboard(monkeypatch):
+    frames = []
+    _fake_live(monkeypatch, frames)
+    monkeypatch.setattr(cli, "_prime_measurements", lambda: None)
+    monkeypatch.setattr(cli, "render_dashboard", lambda *a, **kw: "frame")
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+
+    def sleep_until(deadline):
+        cli._view_change = "bpm"
+        return True
+
+    monkeypatch.setattr(cli, "_sleep_until", sleep_until)
+    cli._quit.clear()
+    cli.run_live(0.5)
+    assert len(frames) == 0
 
 
 def test_the_quit_flag_is_cleared_when_a_session_starts(monkeypatch):

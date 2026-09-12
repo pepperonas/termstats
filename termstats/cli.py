@@ -1130,8 +1130,12 @@ def footer_line(width):
     right-aligned - the year from the clock, so it is never stale. Both fixed-width;
     the hint goes first when the line cannot hold both."""
     text = Text(no_wrap=True, overflow="crop")
-    hint = " Esc or Ctrl+C to exit" if LIVE else ""
     brand = f"{GLYPHS.copyright} {_current_year()} {FOOTER_BRAND} "
+    exit_hint = " Esc or Ctrl+C to exit"
+    switch_hint = "  c performance  b BPM  d dB"
+    hint = (exit_hint + switch_hint
+            if LIVE and len(exit_hint) + len(switch_hint) + len(brand) + 2 <= width
+            else exit_hint if LIVE else "")
     if len(hint) + len(brand) + 2 > width:
         hint = ""
     text.append(hint, style=MUTED)
@@ -1419,6 +1423,8 @@ def _restore_resize_handler(previous):
 
 QUIT_KEYS = (b"\x1b", b"q", b"Q")     # Esc, or q for the habit of it
 _ESC_SEQUENCE_STARTS = (b"[", b"O")   # Esc is also the first byte of every arrow/function key
+VIEW_KEYS = {b"c": "performance", b"C": "performance",
+             b"b": "bpm", b"B": "bpm", b"d": "db", b"D": "db"}
 
 
 def is_quit_key(data):
@@ -1433,6 +1439,17 @@ def is_quit_key(data):
     if data.startswith(b"\x1b") and len(data) > 1 and data[1:2] in _ESC_SEQUENCE_STARTS:
         return False
     return any(key in data for key in QUIT_KEYS)
+
+
+def view_key(data):
+    """The requested live view in an input burst, or None when there is none."""
+    if is_quit_key(data):
+        return None
+    for key in data:
+        view = VIEW_KEYS.get(bytes((key,)))
+        if view is not None:
+            return view
+    return None
 
 
 def _set_cbreak(fd):
@@ -1483,9 +1500,11 @@ class KeyWatcher:
         self.active = False
         self._fd = None
         self._saved = None
+        self._pending = None
 
     def start(self):
         stdin = sys.stdin
+        self._pending = None
         try:
             if stdin is None or not stdin.isatty():
                 return
@@ -1502,32 +1521,59 @@ class KeyWatcher:
         self.active = False
         _restore_tty(self._fd, self._saved)
         self._saved = None
+        self._pending = None
+
+    def _action(self):
+        if not self.active:
+            return None
+        if self._pending is not None:
+            return self._pending
+        try:
+            data = _read_ready(self._fd)
+        except Exception:               # the terminal went away mid-session
+            return None
+        if is_quit_key(data):
+            self._pending = "quit"
+        else:
+            self._pending = view_key(data)
+        return self._pending
 
     def quit_pressed(self):
-        if not self.active:
+        if self._action() != "quit":
             return False
-        try:
-            return is_quit_key(_read_ready(self._fd))
-        except Exception:               # the terminal went away mid-session
-            return False
+        self._pending = None
+        return True
+
+    def view_pressed(self):
+        action = self._action()
+        if action in AUDIO_MODES or action == "performance":
+            self._pending = None
+            return action
+        return None
 
 
 _keys = KeyWatcher()
 _quit = threading.Event()
+_view_change = None
 
 
 def _sleep_until(deadline):
     """Sleep in RESIZE_SLICE_S slices until `deadline`.
 
-    True when the wait was cut short - by a resize, or by the quit key, which also sets
-    `_quit` so the caller knows to leave rather than draw one more frame.
+    True when the wait was cut short - by a resize, a view key, or the quit key. The
+    latter sets `_quit`; a view key is stored in `_view_change` for the caller.
     """
+    global _view_change
     while True:
         if _resized.is_set():
             _resized.clear()
             return True
         if _keys.quit_pressed():
             _quit.set()
+            return True
+        view = _keys.view_pressed()
+        if view is not None:
+            _view_change = view
             return True
         remaining = deadline - time.monotonic()
         if remaining <= 0:
@@ -1556,7 +1602,7 @@ def run_once():
 
 
 def run_live(interval=DEFAULT_INTERVAL):
-    global sample_interval, SMOOTHING, LIVE
+    global sample_interval, SMOOTHING, LIVE, _view_change
     sample_interval = interval
     SMOOTHING = True
     LIVE = True
@@ -1566,6 +1612,7 @@ def run_live(interval=DEFAULT_INTERVAL):
     previous = _install_resize_handler()
     _resized.clear()
     _quit.clear()
+    _view_change = None
     _keys.start()
     # The cursor goes away before the priming pause, not with the alternate screen: half a
     # second of blinking cursor on an otherwise empty line read as "nothing is happening".
@@ -1585,7 +1632,7 @@ def run_live(interval=DEFAULT_INTERVAL):
             while True:
                 next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
                 if _sleep_until(next_tick):
-                    if _quit.is_set():
+                    if _quit.is_set() or _view_change is not None:
                         break
                     # Resized: relayout now and resync the cadence from here, rather than
                     # rendering an extra frame and keeping the old tick.
@@ -1597,6 +1644,7 @@ def run_live(interval=DEFAULT_INTERVAL):
         _keys.stop()
         console.show_cursor(True)
         _restore_resize_handler(previous)
+    return _view_change
 
 
 # ---------------------------------------------------------------------------------
@@ -2128,7 +2176,7 @@ def render_audio(mode, an, now, width=None, height=None):
 def run_audio(mode, interval, source, once=False):
     """Drive a microphone screen from `source`: a MicSource (push, its own thread) or a
     DemoAudio (pull, its own clock). Ctrl+C ends a live session quietly with exit 0."""
-    global LIVE, SMOOTHING
+    global LIVE, SMOOTHING, _view_change
     audio = _load_audio()
     pull = hasattr(source, "read")
     an = audio.Analyzer(getattr(source, "samplerate", audio.SAMPLE_RATE), audio.BLOCK)
@@ -2166,6 +2214,7 @@ def run_audio(mode, interval, source, once=False):
         previous = _install_resize_handler()
         _resized.clear()
         _quit.clear()
+        _view_change = None
         _keys.start()
         console.show_cursor(False)
         refresh = max(1, min(30, round(1 / interval)))
@@ -2178,7 +2227,7 @@ def run_audio(mode, interval, source, once=False):
             while True:
                 next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
                 if _sleep_until(next_tick):
-                    if _quit.is_set():
+                    if _quit.is_set() or _view_change is not None:
                         break
                     next_tick = time.monotonic()
                 if pull:
@@ -2197,6 +2246,7 @@ def run_audio(mode, interval, source, once=False):
             source.stop()
         wait_for_chart_workers(0.5)
         LIVE = False
+    return _view_change
 
 
 # ---------------------------------------------------------------------------------
@@ -2253,6 +2303,7 @@ def print_help():
     print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
     print()
     print(f"The microphone modes need the audio extra:  {AUDIO_HINT}")
+    print("Live keys: c performance dashboard, b BPM, d dB; Esc or q exits")
     print()
     print("Environment:")
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
@@ -2445,7 +2496,7 @@ def main():
     if mode is None:
         mode = "live" if _stdout_is_interactive() else "once"
 
-    if audio_mode is not None:
+    if mode == "once" and audio_mode is not None:
         try:
             audio = _load_audio()
         except ImportError as exc:
@@ -2460,15 +2511,41 @@ def main():
         run_audio(audio_mode, interval if interval_given else AUDIO_INTERVAL, source, once=(mode == "once"))
         return
 
-    if mode == "live":
-        run_live(interval)          # Ctrl+C ends it quietly with exit 0 - see run_live
-    else:
+    if mode == "once":
         try:
             run_once()
         except KeyboardInterrupt:
             # An interrupted snapshot is no snapshot: quiet, but not a success either -
             # 130 is what a shell reports for a SIGINT-terminated command.
             sys.exit(130)
+        return
+
+    # A live session can move between the performance dashboard and the microphone
+    # screens. The audio source is deliberately opened only after b or d is pressed:
+    # the ordinary dashboard should not claim the microphone just because switching is
+    # available.
+    active_view = audio_mode or "performance"
+    while True:
+        if active_view == "performance":
+            next_view = run_live(interval)
+        else:
+            try:
+                audio = _load_audio()
+            except ImportError as exc:
+                _fail(f"the microphone modes need the audio extra: {AUDIO_HINT} ({exc})")
+            if use_demo:
+                source = audio.DemoAudio(demo.DEFAULT_SEED)
+            else:
+                try:
+                    source = _mic_source(device)
+                except Exception as exc:      # capture.AudioUnavailable: library, PortAudio or device
+                    _fail(str(exc))
+            next_view = run_audio(active_view,
+                                  interval if interval_given else AUDIO_INTERVAL,
+                                  source)
+        if next_view is None:
+            return
+        active_view = next_view
 
 if __name__ == "__main__":
     main()
