@@ -45,7 +45,7 @@ def test_audio_frames_fit_the_terminal(mode, w, h, played):
 def test_every_mode_carries_its_badge_in_the_header(mode, played):
     an, now = played
     first = render(mode, an, now, 120, 36).splitlines()[0]
-    assert f" {mode.upper()} " in first
+    assert f" {cli.audio_badge(mode)} " in first
     assert "TERMSTATS" in first
 
 

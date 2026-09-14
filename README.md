@@ -123,7 +123,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [Installation](#installation) — pipx, pip, from source, Windows, the `ts` alias
 - [Usage](#usage) — options, themes, environment, choosing the mode, fallbacks, exit
 - [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
-- [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level; the audio extra
+- [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
 - [Health Report (optional)](#health-report-optional)
@@ -153,7 +153,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **Live by Default** — no flag needed; snapshot mode kicks in automatically when output is piped
 - **Leaves Cleanly** — `Esc`, `q` or `Ctrl+C`; alternate screen, cursor and input mode all restored
 - **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
-- **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
+- **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter, `-x` level and tempo side by side; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
 - **They Move** — 30 frames a second; bars ease in seconds not frames, leave an afterglow that falls under gravity, peak markers hold then drop, every beat is an envelope that nudges the bars, lights the dot and flares the tempo, and a metronome sweeps between beats
 - **Zero Config** — flags and environment variables only; no config file, no state on disk
 
@@ -212,7 +212,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.6.0
+termstats --version   # -> termstats 0.7.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -270,6 +270,7 @@ python -m termstats
 | `-eq`, `--equalizer` | Live microphone spectrum analyser: 28 bands, peak hold, BPM and dBFS in the HUD ([audio extra](#microphone-modes)) |
 | `-bpm`, `--bpm` | Tempo detector: BPM, confidence, beat indicator, kick-band meter, tempo history |
 | `-db`, `--db` | Level meter: dBFS with a peak hairline, session min/max, level history |
+| `-x`, `--x`, `--mix` | Level and tempo together: both headline numbers, meters and histories side by side; stacked on a narrow terminal |
 | `-d`, `--device NAME` | Microphone to use, by any part of its name; default is the system input |
 | `--list-devices` | List the input devices and exit |
 | `-V`, `--version`, `-version` | Show version |
@@ -385,7 +386,7 @@ print columns.
 ### Exit
 
 In a live session, press **`s`** for the statistics dashboard, **`b`** for the BPM display,
-or **`d`** for the dB display. Press **`Esc`** or `Ctrl+C` to exit 0 without a traceback; the
+**`d`** for the dB display, or **`x`** for both together. Press **`Esc`** or `Ctrl+C` to exit 0 without a traceback; the
 alternate screen buffer, the cursor and the terminal's input mode are restored, so your
 scrollback stays intact. `q` works too. The key is read within a tenth of a second, the same
 slice a resize is noticed in.
@@ -474,8 +475,10 @@ blank line inside the picture, every section whole or absent.
 
 `termstats -eq`, `-bpm` and `-db` turn the same shell — header, theme, footer, fallbacks,
 `Ctrl+C` — into a spectrum analyser, a tempo detector and a level meter fed by the
-microphone. Nothing is recorded or stored: blocks of 1024 samples are analysed and dropped.
-With the `ts` alias they are `ts -eq`, `ts -bpm`, `ts -db`.
+microphone; `-x` shows the level and the tempo on one screen. Nothing is recorded or
+stored: blocks of 1024 samples are analysed and dropped. With the `ts` alias they are
+`ts -eq`, `ts -bpm`, `ts -db`, `ts -x`, and in a live session the keys `b`, `d` and `x` move
+between them.
 
 <div align="center">
 <img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/eq.png" alt="termstats -eq: a 28-band spectrum analyser with peak-hold markers" width="760"/>
@@ -494,6 +497,33 @@ With the `ts` alias they are `ts -eq`, `ts -bpm`, `ts -db`.
 <br/>
 <sub><code>termstats -db</code>: the level of every block in dBFS, a meter with the recent peak as a hairline, the smoothed value, session minimum and maximum, and a level history. All three pictures come from <code>--demo</code>, which plays scripted music instead of opening a microphone.</sub>
 </div>
+
+### Level and tempo together
+
+`termstats -x` (or `x` in a live session) is for the moment you want both numbers at
+once — how loud, how fast — without looking at two windows or reading a HUD line:
+
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/screenshots/mix.png" alt="termstats -x: level and tempo side by side" width="760"/>
+<br/>
+<sub><code>termstats -x</code>: the level on the left, the tempo on the right, under their own headings. Both headline numbers sit on the same rows, the level meter beside the confidence meter, the extremes beside the kick band, and the two histories start on the same row — everything to compare is on one horizontal line.</sub>
+</div>
+
+The screen is laid out for comparison rather than for a list. On a terminal wide enough
+for two columns of forty cells (about 90 columns) the level takes the left column and the
+tempo the right, and every element has its counterpart on the same row: heading, five
+rows of digits, the line under them, the meters (level | confidence, extremes | kick
+band), and the charts. The HUD line the single screens share is not drawn — everything
+it carried is on screen at full size, and the beat dot moves into the tempo heading. The
+same eased digits, metronome, afterglow and beat flare as on the single screens apply,
+and the charts are still built off the render path.
+
+Narrower than that, the two blocks stack under the shared HUD: level first, then tempo,
+both numbers big when the terminal has about 23 rows for them and both on one line
+otherwise — never one big and one small, which would read as if one mattered more. The
+level history gets the remaining rows, and the tempo history joins it when there is
+room for two charts. On the tightest terminals the breathing lines go before the
+kick-band meter does, so an 80×11 window still shows every number.
 
 ### Installing the audio extra
 

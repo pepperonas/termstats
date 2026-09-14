@@ -214,6 +214,7 @@ VIEWS = {
     "eq": lambda out: audio_view(out, "eq", "eq"),
     "bpm": lambda out: audio_view(out, "bpm", "bpm"),
     "db": lambda out: audio_view(out, "db", "db"),
+    "mix": lambda out: audio_view(out, "mix", "mix"),
     "db-small": lambda out: audio_view(out, "db-small", "db", size=AUDIO_SMALL),
     "eq-ascii": lambda out: audio_view(out, "eq-ascii", "eq", glyphs="ascii"),
     "bpm-quiet": lambda out: audio_view(out, "bpm-quiet", "bpm", seconds=0),
@@ -262,7 +263,7 @@ def write_index(out):
   img{{display:block}}
   #hero img{{width:1700px}}
   #compact img{{width:980px}}
-  #no-border img,#snapshot img,#eq img,#bpm img,#db img,#bpm-quiet img{{width:1460px}}
+  #no-border img,#snapshot img,#eq img,#bpm img,#db img,#mix img,#bpm-quiet img{{width:1460px}}
   #db-small img,#eq-ascii img{{width:980px}}
   #devices img{{width:690px}}
   #narrow img{{width:1220px}}
@@ -289,6 +290,7 @@ def write_index(out):
 <section id="eq"><img src="eq.svg" alt="termstats -eq: the spectrum analyser"></section>
 <section id="bpm"><img src="bpm.svg" alt="termstats -bpm: the tempo detector"></section>
 <section id="db"><img src="db.svg" alt="termstats -db: the level meter"></section>
+<section id="mix"><img src="mix.svg" alt="termstats -x: level and tempo side by side"></section>
 <section id="db-small"><img src="db-small.svg" alt="the level meter on a short terminal"></section>
 <section id="eq-ascii"><img src="eq-ascii.svg" alt="the equalizer drawn in ASCII"></section>
 <section id="bpm-quiet"><img src="bpm-quiet.svg" alt="the tempo screen before any music plays"></section>

@@ -1132,7 +1132,7 @@ def footer_line(width):
     text = Text(no_wrap=True, overflow="crop")
     brand = f"{GLYPHS.copyright} {_current_year()} {FOOTER_BRAND} "
     exit_hint = " Esc or Ctrl+C to exit"
-    switch_hint = "  s stats  b BPM  d dB"
+    switch_hint = "  s stats  b BPM  d dB  x both"
     hint = (exit_hint + switch_hint
             if LIVE and len(exit_hint) + len(switch_hint) + len(brand) + 2 <= width
             else exit_hint if LIVE else "")
@@ -1424,7 +1424,8 @@ def _restore_resize_handler(previous):
 QUIT_KEYS = (b"\x1b", b"q", b"Q")     # Esc, or q for the habit of it
 _ESC_SEQUENCE_STARTS = (b"[", b"O")   # Esc is also the first byte of every arrow/function key
 VIEW_KEYS = {b"s": "performance", b"S": "performance",
-             b"b": "bpm", b"B": "bpm", b"d": "db", b"D": "db"}
+             b"b": "bpm", b"B": "bpm", b"d": "db", b"D": "db",
+             b"x": "mix", b"X": "mix"}
 
 
 def is_quit_key(data):
@@ -1656,7 +1657,14 @@ def run_live(interval=DEFAULT_INTERVAL):
 # come from --demo without a microphone.
 # ---------------------------------------------------------------------------------
 
-AUDIO_MODES = ("eq", "bpm", "db")
+AUDIO_MODES = ("eq", "bpm", "db", "mix")
+_AUDIO_BADGES = {"mix": "DB+BPM"}   # the header badge where the mode's name would say too little
+MIX_GAP = 4                  # blank columns between the level column and the tempo column
+MIX_MIN_COLUMN_W = 40        # the narrowest column that holds "100.0" in the big font above
+                             # a meter; below that the two blocks stack instead
+MIX_STACK_BIG_ROWS = 2 * T.BIG_DIGIT_MIN_ROWS + 5   # stacked: both numbers big, or neither
+MIX_STACK_GAP_ROWS = 9       # stacked: hud, gap, three level rows, gap, three tempo rows - below
+                             # this the gaps go before the kick band does
 AUDIO_INTERVAL = 1 / 30      # thirty frames a second: the eye reads a bar's motion, not its steps
 CHART_REFRESH_S = 0.5        # a history chart is rebuilt this often, live, on a worker: two builds a second
                              # is 1/120 of a 60 s window per build - nothing the eye could miss
@@ -2059,17 +2067,17 @@ def _cached_chart(key, now, build):
     return chart
 
 
-def db_body(an, now, width, rows, view=None):
-    """The level meter: the number big and centred, a meter with its peak, extremes, history."""
-    audio = _load_audio()
-    view = view or _audio_view(an, now)
+def _level_block(an, now, width, view, big):
+    """The level's rows under the HUD: the number (five rows tall when `big`, else one
+    line), the meter with its peak, the extremes. Shared by the level screen and the
+    combined screen, so both draw the level in exactly one way."""
     pct = _db_pct(an.db)
     stats = Text(no_wrap=True, overflow="crop")
     stats.append("min ", style=DIM); stats.append(f"{_shown_db(an.db_min):.1f}", style=SOFT)
     stats.append("   max ", style=DIM); stats.append(f"{_shown_db(an.db_max):.1f}", style=SOFT)
     stats.append(f"   {GLYPHS.sep}   beats ", style=DIM); stats.append(f"{an.beats}", style=SOFT)
-    lines = [audio_hud(an, now, width, view), Text("")]
-    if rows >= T.BIG_DIGIT_MIN_ROWS:
+    lines = []
+    if big:
         eased = readout("audio.db", shown_level(an.db), now)
         lines.extend(big_number(f"{_shown_db(eased):.1f}", ramp(_db_pct(eased) / 100.0), width))
         lines.append(centred(f"dB   {GLYPHS.sep}   smoothed {_shown_db(an.db_smooth):.1f}", width))
@@ -2085,11 +2093,25 @@ def db_body(an, now, width, rows, view=None):
     lines.append(meter("level", pct, width, value=f"{_shown_db(an.db):6.1f}dB", value_w=8, unit_w=2,
                        fill=view.meter, peak=peak_of("audio.db", pct)))
     lines.append(stats)
+    return lines
+
+
+def _level_chart(an, now, width, height):
+    """The level history chart (label + `height` plot rows), or None without history."""
+    audio = _load_audio()
+    history = level_history(an)          # a finished LIST, taken here on the render thread
+    return _cached_chart(("level", width, height), now, lambda: _audio_chart(
+        "level", history, now, (audio.spl(audio.DB_FLOOR), audio.spl(0.0)), width, height))
+
+
+def db_body(an, now, width, rows, view=None):
+    """The level meter: the number big and centred, a meter with its peak, extremes, history."""
+    view = view or _audio_view(an, now)
+    lines = [audio_hud(an, now, width, view), Text("")]
+    lines.extend(_level_block(an, now, width, view, rows >= T.BIG_DIGIT_MIN_ROWS))
     remaining = rows - len(lines) - 2
     if remaining >= AUDIO_CHART_MIN_H:
-        history = level_history(an)          # a finished LIST, taken here on the render thread
-        chart = _cached_chart(("level", width, remaining), now, lambda: _audio_chart(
-            "level", history, now, (audio.spl(audio.DB_FLOOR), audio.spl(0.0)), width, remaining))
+        chart = _level_chart(an, now, width, remaining)
         if chart is not None:
             lines.extend([Text(""), chart])
     return Group(*lines[:rows])
@@ -2110,15 +2132,14 @@ def metronome(view, width):
     return row
 
 
-def bpm_body(an, now, width, rows, view=None):
-    """The tempo screen: the number big and centred, flaring on the beat, a metronome, meters."""
-    audio = _load_audio()
-    view = view or _audio_view(an, now)
+def _tempo_block(an, now, width, view, big):
+    """The tempo's rows under the HUD: the number (big or one line, flaring on the beat),
+    the metronome when there is a tempo to sweep to, confidence and the kick band."""
     detail = f"BPM   {GLYPHS.sep}   {an.tempo.onset_rate():.1f} beats/s   {GLYPHS.sep}   {an.beats} beats"
     if not an.music:
         detail += f"   {GLYPHS.sep}   waiting for music"
-    lines = [audio_hud(an, now, width, view), Text("")]
-    if rows >= T.BIG_DIGIT_MIN_ROWS:
+    lines = []
+    if big:
         eased = readout("audio.bpm", shown_tempo(an.bpm), now)
         lines.extend(big_number(f"{eased:.0f}" if eased else "---", tempo_tone(an, now, view), width))
         lines.append(centred(detail, width))
@@ -2138,20 +2159,127 @@ def bpm_body(an, now, width, rows, view=None):
                        label_w=11, fill=shown("audio.conf", an.confidence * 100.0)))
     lines.append(meter("kick band", an.bass * 100.0, width, value=f"{an.bass * 100.0:5.0f}%", label_w=11,
                        fill=shown("audio.bass", an.bass * 100.0), peak=peak_of("audio.bass", an.bass * 100.0)))
-    remaining = rows - len(lines) - 2
+    return lines
+
+
+def _tempo_chart(an, now, width, height):
+    """The tempo history chart (label + `height` plot rows), or None before two tempos."""
+    audio = _load_audio()
     tempo_hist = [(t, b) for t, b in an.bpm_history if b > 0]
-    if remaining >= AUDIO_CHART_MIN_H and len(tempo_hist) >= 2:
-        chart = _cached_chart(("tempo", width, remaining), now, lambda: _audio_chart(
-            "tempo", tempo_hist, now, (audio.BPM_MIN, audio.BPM_MAX), width, remaining, fill=False))
+    if len(tempo_hist) < 2:
+        return None
+    return _cached_chart(("tempo", width, height), now, lambda: _audio_chart(
+        "tempo", tempo_hist, now, (audio.BPM_MIN, audio.BPM_MAX), width, height, fill=False))
+
+
+def bpm_body(an, now, width, rows, view=None):
+    """The tempo screen: the number big and centred, flaring on the beat, a metronome, meters."""
+    view = view or _audio_view(an, now)
+    lines = [audio_hud(an, now, width, view), Text("")]
+    lines.extend(_tempo_block(an, now, width, view, rows >= T.BIG_DIGIT_MIN_ROWS))
+    remaining = rows - len(lines) - 2
+    if remaining >= AUDIO_CHART_MIN_H:
+        chart = _tempo_chart(an, now, width, remaining)
         if chart is not None:
             lines.extend([Text(""), chart])
     return Group(*lines[:rows])
 
 
-_AUDIO_BODIES = {"eq": eq_body, "db": db_body, "bpm": bpm_body}
+def mix_columns(width):
+    """The column width of the side-by-side layout, or None when the body must stack."""
+    col_w = (width - MIX_GAP) // 2
+    return col_w if col_w >= MIX_MIN_COLUMN_W else None
+
+
+def _column_heading(label, width, dot=None):
+    """A column's name, centred, in the accent - with the beat dot in front when given."""
+    text = Text(no_wrap=True, overflow="crop")
+    body_len = len(label) + (2 if dot else 0)
+    text.append(" " * max(0, (width - body_len) // 2))
+    if dot:
+        glyph, tone = dot
+        text.append(glyph, style=tone)
+        text.append(" ")
+    text.append(label, style=f"bold {THEME.accent}")
+    return text
+
+
+def _mix_stacked(an, now, width, rows, view):
+    """The combined screen on a narrow terminal: the level block above the tempo block,
+    under the HUD they share; the charts get what is left, the level's first."""
+    big = rows >= MIX_STACK_BIG_ROWS
+    roomy = rows >= MIX_STACK_GAP_ROWS          # a breath after the HUD and between the blocks,
+    gap = [Text("")] if roomy else []           # when there is room for one
+    lines = [audio_hud(an, now, width, view)] + gap
+    lines.extend(_level_block(an, now, width, view, big))
+    lines.extend(gap)
+    lines.extend(_tempo_block(an, now, width, view, big))
+    remaining = rows - len(lines) - 2
+    if remaining >= 2 * AUDIO_CHART_MIN_H + 2:
+        each = (remaining - 2) // 2
+        for chart in (_level_chart(an, now, width, each), _tempo_chart(an, now, width, each)):
+            if chart is not None:
+                lines.extend([Text(""), chart])
+    elif remaining >= AUDIO_CHART_MIN_H:
+        chart = _level_chart(an, now, width, remaining)
+        if chart is not None:
+            lines.extend([Text(""), chart])
+    return Group(*lines[:rows])
+
+
+def mix_body(an, now, width, rows, view=None):
+    """Level and tempo on one screen (`-x`).
+
+    Wide enough for two columns of MIX_MIN_COLUMN_W: the level on the left, the tempo on
+    the right, each under its own heading, both headline numbers on the SAME rows, both
+    meters on the same rows and both history charts starting on the same row - the eye
+    compares by glancing across, never by hunting. The HUD is not drawn: everything it
+    carried (beat dot, tempo, level, confidence) is on screen at full size, and the beat
+    dot sits in the tempo heading. Narrower than that, the blocks stack under the HUD.
+    """
+    view = view or _audio_view(an, now)
+    col_w = mix_columns(width)
+    if col_w is None:
+        return _mix_stacked(an, now, width, rows, view)
+    big = rows - 1 >= T.BIG_DIGIT_MIN_ROWS
+    left = [_column_heading("level", col_w)] + _level_block(an, now, col_w, view, big)
+    right = [_column_heading("tempo", col_w, dot=beat_dot(view))] + _tempo_block(an, now, col_w, view, big)
+    # Both blocks end in two meter rows. The tempo's head is one row taller when the
+    # metronome sweeps, so the heads are padded to the same height BEFORE the meters:
+    # the level meter stays beside the confidence meter, the extremes beside the kick band.
+    head_h = max(len(left), len(right)) - 2
+    left[-2:-2] = [Text("") for _ in range(head_h - (len(left) - 2))]
+    right[-2:-2] = [Text("") for _ in range(head_h - (len(right) - 2))]
+    top = len(left)
+    remaining = rows - top - 2
+    if remaining >= AUDIO_CHART_MIN_H:
+        level_chart = _level_chart(an, now, col_w, remaining)
+        tempo_chart = _tempo_chart(an, now, col_w, remaining)
+        if level_chart is not None or tempo_chart is not None:
+            left.append(Text(""))
+            right.append(Text(""))
+            if level_chart is not None:
+                left.append(level_chart)
+            if tempo_chart is not None:
+                right.append(tempo_chart)
+    grid = Table.grid(padding=0, pad_edge=False, expand=False)
+    grid.add_column(width=col_w, no_wrap=True)
+    grid.add_column(width=MIX_GAP, no_wrap=True)
+    grid.add_column(width=col_w, no_wrap=True)
+    grid.add_row(Group(*left[:rows]), Text(""), Group(*right[:rows]))
+    return grid
+
+
+_AUDIO_BODIES = {"eq": eq_body, "db": db_body, "bpm": bpm_body, "mix": mix_body}
 _AUDIO_TITLES = {"eq": ("equalizer", "bands from 40 Hz to 16 kHz"),
                  "db": ("level", "dB, uncalibrated estimate"),
-                 "bpm": ("tempo", "beats per minute")}
+                 "bpm": ("tempo", "beats per minute"),
+                 "mix": ("level & tempo", "dB, uncalibrated estimate, and beats per minute")}
+
+
+def audio_badge(mode):
+    """What the header says for a microphone mode: its name, unless that says too little."""
+    return _AUDIO_BADGES.get(mode, mode.upper())
 
 
 def render_audio(mode, an, now, width=None, height=None):
@@ -2167,7 +2295,7 @@ def render_audio(mode, an, now, width=None, height=None):
     view = _audio_view(an, now)                    # ONE motion step per frame, shared by hud and body
     body = _AUDIO_BODIES[mode](an, now, max(10, tw - cw), max(1, body_h - ch), view)
     root = Layout()
-    root.split_column(Layout(header_line(tw, badge=mode.upper()), name="head", size=1),
+    root.split_column(Layout(header_line(tw, badge=audio_badge(mode)), name="head", size=1),
                       Layout(_panel(body, title, subtitle), name="main"),
                       Layout(footer_line(tw), name="foot", size=1))
     return root
@@ -2270,6 +2398,7 @@ _DEMO_FLAGS = ("--demo", "-demo")
 _EQ_FLAGS = ("-eq", "--eq", "--equalizer", "-equalizer")
 _BPM_FLAGS = ("-bpm", "--bpm")
 _DB_FLAGS = ("-db", "--db")
+_MIX_FLAGS = ("-x", "--x", "--mix", "-mix")
 _DEVICE_FLAGS = ("-d", "--device", "-device")
 _LIST_DEVICES_FLAGS = ("--list-devices", "-list-devices")
 
@@ -2295,6 +2424,7 @@ def print_help():
     print("  -eq, --equalizer    Live microphone spectrum: 28 bands, peak hold, BPM + dB")
     print("  -bpm, --bpm         Tempo detector: BPM, confidence, beat indicator")
     print("  -db, --db           Level meter: dB with peak, session min/max, history")
+    print("  -x, --x, --mix      Level and tempo together: dB and BPM side by side")
     print("  -d, --device NAME   Microphone to use (part of its name; see --list-devices)")
     print("      --list-devices  List the input devices and exit")
     print("  -V, --version       Show version")
@@ -2303,7 +2433,7 @@ def print_help():
     print("Long options also work with a single dash: -live, -once, -interval, -theme, -help")
     print()
     print(f"The microphone modes need the audio extra:  {AUDIO_HINT}")
-    print("Live keys: s statistics dashboard, b BPM, d dB; Esc or q exits")
+    print("Live keys: s statistics dashboard, b BPM, d dB, x both; Esc or q exits")
     print()
     print("Environment:")
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
@@ -2414,7 +2544,7 @@ def main():
 
     def pick_audio(chosen):
         if audio_mode is not None and audio_mode != chosen:
-            _fail(f"only one audio mode at a time: -eq, -bpm or -db (got -{audio_mode} and -{chosen})")
+            _fail(f"only one audio mode at a time: -eq, -bpm, -db or -x (got -{audio_mode} and -{chosen})")
         return chosen
 
     i = 0
@@ -2444,6 +2574,8 @@ def main():
             audio_mode = pick_audio("bpm")
         elif arg in _DB_FLAGS:
             audio_mode = pick_audio("db")
+        elif arg in _MIX_FLAGS:
+            audio_mode = pick_audio("mix")
         elif arg in _DEVICE_FLAGS:
             if i + 1 >= len(args):
                 _fail(f"option '{arg}' needs a device name (see --list-devices)")
@@ -2491,7 +2623,7 @@ def main():
         sys.exit(0)
 
     if device is not None and audio_mode is None:
-        _fail("'--device' only makes sense with -eq, -bpm or -db")
+        _fail("'--device' only makes sense with -eq, -bpm, -db or -x")
 
     if mode is None:
         mode = "live" if _stdout_is_interactive() else "once"
@@ -2521,7 +2653,7 @@ def main():
         return
 
     # A live session can move between the performance dashboard and the microphone
-    # screens. The audio source is deliberately opened only after b or d is pressed:
+    # screens. The audio source is deliberately opened only after b, d or x is pressed:
     # the ordinary dashboard should not claim the microphone just because switching is
     # available.
     active_view = audio_mode or "performance"

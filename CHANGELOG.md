@@ -11,6 +11,28 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-15
+
+### Added
+
+- **`-x` / `--x` / `--mix`, and the `x` key in a live session: the level and the tempo on one
+  screen.** Wide enough for two columns of forty cells, the level takes the left and the
+  tempo the right under their own headings, and every element has its counterpart on the
+  same row — the five-row digits, the line under them, the meters (level beside
+  confidence, extremes beside kick band) and the two history charts, which start on the
+  same row. The HUD line is not drawn there (everything it carried is on screen at full
+  size; the beat dot moves into the tempo heading). Narrower, the blocks stack under the
+  shared HUD — both numbers big or both on one line, never mixed — with the level history
+  first and the tempo history when two charts fit; the tightest terminals drop the
+  breathing lines before the kick-band meter. The header badge reads `DB+BPM`, the help
+  and the README list the flag and the key, and the screenshot tool renders the screen.
+
+### Changed
+
+- The level and tempo screens are composed from the same blocks the combined screen
+  uses (`_level_block` / `_tempo_block`, `_level_chart` / `_tempo_chart`); what they draw is
+  unchanged.
+
 ## [0.6.0] - 2026-09-06
 
 ### Added

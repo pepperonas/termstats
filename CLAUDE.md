@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.6.0**, 1248 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.7.0**, 1301 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -51,7 +51,7 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1248 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1301 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -357,6 +357,30 @@ renders every frame in between. The screenshot tool renders the audio views as L
 (`SMOOTHING = LIVE = True`, 12 frames of music first), so the pictures show trail, metronome
 and the live footer; a pin requires both glyphs in the SVGs.
 
+## Level and tempo together (0.7.0)
+
+`-x` / `--x` / `--mix` and the `x` key: mode `"mix"`, badge `DB+BPM` (`audio_badge()` - the
+one badge that is not the mode's name upper-cased), panel `level & tempo`. `db_body` and
+`bpm_body` were split into `_level_block` / `_tempo_block` (the rows under the HUD: number,
+meters) and `_level_chart` / `_tempo_chart`, and are composed from them unchanged; `mix_body`
+composes the same blocks twice over. Wide (`mix_columns(width)` - two columns of
+`MIX_MIN_COLUMN_W` = 40 plus `MIX_GAP` = 4, i.e. from 84 inner cells / about 90 columns): a
+`Table.grid` with two fixed-width columns, each block under `_column_heading` (the tempo's
+carries the beat dot), NO hud. **The heads are padded to equal height BEFORE the two meter
+rows** - live, the metronome makes the tempo head one row taller, and padding at the end
+would have put the level meter beside a blank and the extremes beside the confidence. Charts
+are asked for with the same height and start on the same row. Narrow: `_mix_stacked` - hud,
+level block, tempo block, both big only from `MIX_STACK_BIG_ROWS` = 23 body rows (never one
+big and one small), level chart with what is left, tempo chart too when two fit
+(`2 * AUDIO_CHART_MIN_H + 2`), and below `MIX_STACK_GAP_ROWS` = 9 the breathing lines go
+before the kick band does (80×11 still shows every number). Chart cache keys carry the
+width, so the column charts never collide with the single screens' cache entries.
+⚠️ `-x` used to be the canonical *unknown* option in `test_args.py`; it is `-z` now. A test that
+runs `main()` with `-x` and no `run_audio` patch opens the microphone and hangs the suite -
+that is how it was found (the full run stalled with no output, because pytest's dots were
+block-buffered into the pipe; running file by file under a timeout located it in seconds).
+Pins: `tests/test_mix.py` (41).
+
 ## Leaving a session (0.5.0)
 
 `Esc` and `q` end a live session; `Ctrl+C` still does. `KeyWatcher` puts the terminal into
@@ -459,7 +483,7 @@ seconds of `DemoAudio` so a tempo is locked), and the four 0.5.1 additions: `db-
 `devices`. ⚠️ **`devices` feeds `cli.print_devices` an INVENTED sound card** (`DEMO_DEVICES`):
 rendering the real one would publish whatever audio software this machine has and change with
 every install; a test asserts the private names are absent. `write_index` lays them out under
-`#hero #grid #compact #no-border #narrow #snapshot #list-themes #glyphs #colours #eq #bpm #db
+`#hero #grid #compact #no-border #narrow #snapshot #list-themes #glyphs #colours #eq #bpm #db #mix
 #db-small #eq-ascii #bpm-quiet #devices #help`.
 
 Rasterise that page in a real browser: `python3 -m http.server 8901` in OUT_DIR, then Playwright

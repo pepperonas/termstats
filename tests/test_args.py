@@ -143,7 +143,7 @@ def _expect_exit_2(run, *args):
     return excinfo
 
 
-@pytest.mark.parametrize("bad", ["--lvie", "-x", "--", "foo", "-L", "--LIVE"])
+@pytest.mark.parametrize("bad", ["--lvie", "-z", "--", "foo", "-L", "--LIVE"])
 def test_unknown_options_are_an_error_not_a_shrug(run, capsys, bad):
     _expect_exit_2(run, bad)
     err = capsys.readouterr().err
@@ -189,7 +189,7 @@ def test_non_finite_interval_is_rejected(run, capsys, bad):
 
 
 def test_errors_go_to_stderr_and_leave_stdout_clean(run, capsys):
-    _expect_exit_2(run, "-x")
+    _expect_exit_2(run, "-z")
     out = capsys.readouterr()
     assert out.out == ""
     assert "Try 'termstats --help'" in out.err

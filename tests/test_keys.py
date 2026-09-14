@@ -36,7 +36,9 @@ def test_a_quit_key_anywhere_in_a_burst_counts():
     (b"d", "db"),
     (b"\x1b", None),
     (b"\x1b[A", None),
-    (b"x", None),
+    (b"x", "mix"),
+    (b"X", "mix"),
+    (b"z", None),
 ])
 def test_view_key_selects_a_live_view(data, expected):
     assert cli.view_key(data) == expected

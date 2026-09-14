@@ -53,7 +53,7 @@ def test_every_view_has_a_renderer(tool):
 EXPECTED_VIEWS = {"hero", "compact", "help", "no-border", "narrow", "snapshot", "list-themes",
                   "glyph-braille", "glyph-block", "glyph-ascii",
                   "color-truecolor", "color-256", "color-16", "color-mono",
-                  "eq", "bpm", "db", "devices", "db-small", "eq-ascii", "bpm-quiet"}
+                  "eq", "bpm", "db", "mix", "devices", "db-small", "eq-ascii", "bpm-quiet"}
 
 
 def test_the_view_set_covers_the_readme(tool):
@@ -181,7 +181,7 @@ def test_index_page_has_a_section_per_readme_figure(tool, tmp_path):
     tool.write_index(tmp_path)
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     for sid in ("hero", "grid", "compact", "help", "no-border", "narrow", "snapshot",
-                "list-themes", "glyphs", "colours", "eq", "bpm", "db",
+                "list-themes", "glyphs", "colours", "eq", "bpm", "db", "mix",
                 "devices", "db-small", "eq-ascii", "bpm-quiet"):
         assert f'id="{sid}"' in html, sid
     assert __version__ in html
