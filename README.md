@@ -1,3 +1,7 @@
+<div align="center">
+<img src="https://raw.githubusercontent.com/pepperonas/termstats/main/docs/banner.png" alt="termstats banner: your terminal, real insights" width="100%"/>
+</div>
+
 # termstats
 
 <div align="center">
@@ -94,7 +98,7 @@
 <br/>
 <sub><code>termstats -db</code> and <code>termstats -bpm</code> — the level and the tempo, drawn five rows tall, eased between samples, flaring on the beat; under the tempo the metronome head (<code>◆</code>) sweeps from beat to beat</sub>
 <br/><br/>
-<sub>Every picture comes from <code>tools/screenshots.py</code>, which renders them from <code>--demo</code>.</sub>
+<sub>Every terminal picture comes from <code>tools/screenshots.py</code>, which renders them from <code>--demo</code>; only the banner at the top is artwork.</sub>
 </div>
 
 ---

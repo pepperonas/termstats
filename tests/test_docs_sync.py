@@ -158,6 +158,7 @@ def test_every_readme_image_exists_on_disk():
 
 def test_every_screenshot_on_disk_is_shown_in_the_readme():
     on_disk = {p.relative_to(ROOT).as_posix() for p in (ROOT / "docs" / "screenshots").glob("*.png")}
+    on_disk |= {p.relative_to(ROOT).as_posix() for p in (ROOT / "docs").glob("*.png")}
     on_disk |= {p.name for p in ROOT.glob("*.png")}
     orphans = on_disk - set(readme_images())
     assert not orphans, f"screenshots nobody links: {sorted(orphans)}"

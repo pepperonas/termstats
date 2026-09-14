@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.6.0**, 1241 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.6.0**, 1248 tests.
 
 ## The rename (2026-08-30) — read this first
 
@@ -51,7 +51,7 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1241 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1248 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -441,7 +441,9 @@ Pins: `tests/test_windows.py` (7 mutations caught on the first run).
 
 ## Screenshots
 
-Every README picture is rendered from `--demo`, never captured. **`tools/screenshots.py OUT_DIR
+Every README picture is rendered from `--demo`, never captured — with ONE exception:
+`docs/banner.png`, the artwork at the very top of the README (added 2026-09-15 at the user's
+request, not produced by the tool; it depicts an imagined product, not a real frame). **`tools/screenshots.py OUT_DIR
 [--only view,view]`** (run with the pipx venv python) is importable — `render(out_dir, names)`,
 `write_index(out_dir)`, `main(argv)` — and `tests/test_screenshots_tool.py` drives it. Views:
 `hero` (140×42), `theme-<name>` (100×16 tiles — 16 rows fill the tile without empty panels
