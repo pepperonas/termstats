@@ -119,7 +119,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 ## Contents
 
 - [Features](#features)
-- [Installation](#installation) — pipx, pip, from source, Windows, the `ts` alias
+- [Installation](#installation) — release downloads, the install script, pipx, pip, from source, Windows, the `ts` alias
 - [Usage](#usage) — options, themes, environment, choosing the mode, fallbacks, exit
 - [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
 - [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
@@ -161,11 +161,57 @@ snapshot instead, so `termstats > report.txt` still terminates.
 
 ## Installation
 
-The command installed by every method below is **`termstats`**.
+termstats is two programs that work together. Install either, or both:
 
-> **Note:** termstats is not on PyPI (yet) — install it from this repository.
+| | What it is | Platforms | Needs |
+|---|---|---|---|
+| **`termstats-native`** | the system dashboard as one native binary — about 0.3 % of a CPU core | macOS, Linux | nothing |
+| **`termstats`** | the Python program: the same dashboard plus the microphone modes, `--demo`, snapshots and every fallback | macOS, Linux, Windows | Python 3.9+ |
 
-### pipx (recommended — isolated, no venv juggling)
+With both installed, `termstats` hands the live dashboard to the native binary by itself
+(see [The native core](#the-native-core)). Every release carries both as downloads:
+**[github.com/pepperonas/termstats/releases/latest](https://github.com/pepperonas/termstats/releases/latest)**.
+
+> **Note:** termstats is not on PyPI — install it from the releases or from this repository.
+
+### The native dashboard (macOS, Linux)
+
+```bash
+curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh
+termstats-native
+```
+
+The script downloads the binary for your machine from the latest release, checks it against
+the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.9.1` a
+particular release.
+
+Or by hand — pick your machine:
+
+| Machine | Download |
+|---|---|
+| macOS, Apple silicon | [`termstats-native-aarch64-apple-darwin.tar.gz`](https://github.com/pepperonas/termstats/releases/latest/download/termstats-native-aarch64-apple-darwin.tar.gz) |
+| macOS, Intel | [`termstats-native-x86_64-apple-darwin.tar.gz`](https://github.com/pepperonas/termstats/releases/latest/download/termstats-native-x86_64-apple-darwin.tar.gz) |
+| Linux, x86_64 | [`termstats-native-x86_64-unknown-linux-musl.tar.gz`](https://github.com/pepperonas/termstats/releases/latest/download/termstats-native-x86_64-unknown-linux-musl.tar.gz) |
+| Linux, ARM64 (Raspberry Pi 4/5, ARM servers) | [`termstats-native-aarch64-unknown-linux-musl.tar.gz`](https://github.com/pepperonas/termstats/releases/latest/download/termstats-native-aarch64-unknown-linux-musl.tar.gz) |
+
+```bash
+curl -fsSLO https://github.com/pepperonas/termstats/releases/latest/download/termstats-native-aarch64-apple-darwin.tar.gz
+tar -xzf termstats-native-aarch64-apple-darwin.tar.gz
+mv termstats-native ~/.local/bin/        # any directory on your PATH
+```
+
+The Linux binaries are static and run on any distribution. A file downloaded with a
+**browser** on macOS is quarantined and the binary is not notarised — remove the mark once
+with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries none).
+
+### The Python program — pipx (recommended)
+
+```bash
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.9.1/termstats-0.9.1-py3-none-any.whl
+```
+
+That is the released version. The current state of the repository instead:
 
 ```bash
 pipx install git+https://github.com/pepperonas/termstats.git
@@ -174,7 +220,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user git+https://github.com/pepperonas/termstats.git
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.9.1/termstats-0.9.1-py3-none-any.whl
 ```
 
 ### From source
@@ -183,6 +229,7 @@ pip install --user git+https://github.com/pepperonas/termstats.git
 git clone https://github.com/pepperonas/termstats.git
 cd termstats
 pipx install --editable .    # or: pip install -e .
+(cd native && cargo install --path .)   # the native dashboard, needs a Rust toolchain
 ```
 
 An editable install points at the checkout, so `git pull` (or your own edits)
@@ -214,7 +261,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.9.0
+termstats --version          # -> termstats 0.9.1
+termstats-native --version   # -> termstats-native 0.9.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -692,10 +740,14 @@ generated from `theme.py`, and a test compares the layout constants of the two p
 about a fifteenth of the CPU and a fifth of the memory of the Python program.
 
 ```bash
-cargo install --git https://github.com/pepperonas/termstats termstats-native   # needs Rust
+curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh
 termstats                # hands the live dashboard to the native core from now on
 termstats-native         # or run it directly
 ```
+
+The script and the four downloads are described under [Installation](#installation). With a
+Rust toolchain it also builds from source:
+`cargo install --git https://github.com/pepperonas/termstats termstats-native`.
 
 **You do not have to change what you type.** When `termstats-native` is on the `PATH`,
 `termstats` starts it for the live dashboard and steps aside (`exec`, no second process).
@@ -733,8 +785,8 @@ web view); `--samples 30 -i 1` takes thirty samples before it prints, so the cha
 filled. `termstats-native --bench` prints what each part of a frame costs on the machine it
 runs on.
 
-**Linux** is served by the same source (`/proc`, `statvfs`); static binaries need no
-toolchain on the target:
+**Linux** is served by the same source (`/proc`, `statvfs`). The releases carry static
+binaries for x86_64 and ARM64; to build one yourself, without a cross compiler:
 
 ```bash
 rustup target add aarch64-unknown-linux-musl          # or x86_64-unknown-linux-musl
@@ -777,8 +829,8 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - [rich](https://github.com/Textualize/rich) — terminal formatting
 - optional, for the microphone modes only: [numpy](https://numpy.org) and
   [sounddevice](https://python-sounddevice.readthedocs.io) — the `termstats[audio]` extra
-- optional, for [the native core](#the-native-core): a Rust toolchain to build it once; the
-  binary itself needs nothing
+- [the native core](#the-native-core) needs nothing at all: the release binaries are
+  self-contained (a Rust toolchain only to build it yourself)
 
 The charts are drawn in **Unicode braille** (U+2800–U+28FF), which packs 2×4 dots into one
 character cell. Font coverage for that block is near-universal; if yours lacks it the charts
@@ -864,6 +916,8 @@ termstats/
 ├── tests/               # pytest suite (pure unit tests, psutil stubbed)
 ├── tools/badges.py      # generates .github/badges/*.json for the headline badges
 ├── tools/gen_native_themes.py  # writes native/src/themes.rs from theme.py (a test checks it is current)
+├── tools/release_notes.py  # the CHANGELOG section of a version: the text of its GitHub release
+├── install.sh           # installs termstats-native from the latest release (checksum-verified)
 ├── tools/demo.tape      # VHS recording script for the --demo GIF
 ├── tools/screenshots.py # renders every README picture from --demo (SVG + index.html for the browser)
 ├── docs/screenshots/    # the rendered PNGs the README embeds
@@ -996,15 +1050,25 @@ termstats follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Be
 **minor** bump may break the command line and a **patch** bump may not; 1.0.0 will be the
 first release that promises a stable interface.
 
-1. Bump the version in **both** `pyproject.toml` and `termstats/__init__.py` — packaging
-   reads the first, the header and `--version` read the second.
-2. Add the entry to [CHANGELOG.md](CHANGELOG.md).
-3. Run `python tools/badges.py` to refresh `.github/badges/*.json`.
-4. `pytest`, then tag `vX.Y.Z`.
+1. Bump the version in **three** places: `pyproject.toml` (packaging reads it),
+   `termstats/__init__.py` (the header and `--version`) and `native/Cargo.toml` (the native
+   core) — then `cargo build` in `native/` so `Cargo.lock` follows.
+2. Add the entry to [CHANGELOG.md](CHANGELOG.md) — it becomes the text of the release.
+3. Update the two versioned wheel URLs under [Installation](#installation).
+4. Run `python tools/badges.py` to refresh `.github/badges/*.json`.
+5. `pytest` and `cargo test --release`, commit, then tag `vX.Y.Z` and push the tag.
 
-The suite checks steps 1–3 for you: the two version strings must agree, the changelog's top
-entry must name the current version, and the committed version badge must match the package.
-A forgotten bump shows up as a red test rather than as a stale badge.
+The pushed tag does the rest: `.github/workflows/release.yml` builds the native binary for
+four targets (macOS Apple silicon and Intel, Linux x86_64 and ARM64 as static musl
+binaries), the wheel and the sdist, starts what it can start on the runner, and publishes
+them as a GitHub release with `install.sh` and `SHA256SUMS`. A release that already exists
+is updated in place (`workflow_dispatch` with the tag re-runs it).
+
+The suite checks steps 1–4 for you: the three version strings must agree, the changelog's
+top entry must name the current version, the wheel URLs in this file must carry it, the
+committed version badge must match the package, and the asset names in the workflow, in
+`install.sh` and in this file must be the same four. A forgotten bump shows up as a red
+test rather than as a dead download link.
 
 ### Badges
 
@@ -1040,7 +1104,7 @@ That choice is what the rest follows from.
 | History charts | braille area charts, CPU + network | meters only | braille graphs, several | sparklines + history mode |
 | Themes | 6, OKLab ramps checked on 256/16 | colour schemes | many | few |
 | Acting on processes (kill, renice, tree) | no | yes | yes | limited |
-| Install | `pipx install` from git | distro package | distro package / binary | `pip install glances` |
+| Install | release binary (one `curl`), or `pipx install` | distro package | distro package / binary | `pip install glances` |
 
 If you want to kill a process from the screen you are looking at, use htop or btop. If you
 want the state of a machine in one glance, in a file, or on a terminal that only speaks

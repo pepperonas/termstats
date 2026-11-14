@@ -11,6 +11,29 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-14
+
+### Added
+
+- **Every release can be downloaded.** A pushed tag now builds and publishes, as a GitHub
+  release: `termstats-native` for macOS (Apple silicon, Intel) and Linux (x86_64, ARM64 —
+  static musl binaries that run on any distribution), the Python wheel and source
+  distribution, and `SHA256SUMS` over all of them (`.github/workflows/release.yml`). The
+  native assets carry no version in their names, so `releases/latest/download/<name>` always
+  points at the newest one.
+- **`install.sh`**: `curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh`
+  picks the binary for the machine, verifies it against `SHA256SUMS` and installs it into
+  `~/.local/bin` (`TERMSTATS_BIN_DIR`, `TERMSTATS_VERSION` to choose otherwise). A checksum
+  that does not match installs nothing.
+- `tools/release_notes.py` cuts a version's section out of this file; it is the text of the
+  release.
+
+### Changed
+
+- The installation instructions lead with the release downloads: the native binary by
+  script or by hand, the Python program from the release's wheel. Building from source
+  (`cargo install`, `pipx install git+…`) stays documented as the alternative.
+
 ## [0.9.0] - 2026-11-14
 
 The question after 0.8.0 was whether another technology could go further than Python can.

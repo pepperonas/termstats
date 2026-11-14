@@ -1,0 +1,156 @@
+name: release
+
+# A pushed tag vX.Y.Z becomes a GitHub release with everything a user can download:
+#
+#   termstats-native-<target>.tar.gz   the native dashboard, four targets, no toolchain needed
+#   termstats-X.Y.Z-py3-none-any.whl   the Python program (pipx install <url>)
+#   termstats-X.Y.Z.tar.gz             its source distribution
+#   install.sh                         picks the right binary, verifies it, installs it
+#   SHA256SUMS                         of all of the above
+#
+# The asset names of the native builds carry NO version, so
+# .../releases/latest/download/<name> always points at the newest one - that is what the
+# README and install.sh link to. tests/test_release.py pins the names in all three places.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)publish, e.g. v0.9.1"
+        required: true
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  native:
+    name: native / ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux: static musl binaries, linked with the toolchain's own rust-lld - no cross
+          # compiler, and the result runs on any distribution.
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl, run: true, lld: true }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl, run: false, lld: true }
+          - { os: macos-latest, target: aarch64-apple-darwin, run: true, lld: false }
+          - { os: macos-latest, target: x86_64-apple-darwin, run: false, lld: false }
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: The tag is the version the sources carry
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' native/Cargo.toml | head -1)
+          test "v$version" = "$TAG" || { echo "tag $TAG, but native/Cargo.toml says $version"; exit 1; }
+
+      - name: Build
+        working-directory: native
+        run: |
+          rustup target add ${{ matrix.target }}
+          if [ "${{ matrix.lld }}" = "true" ]; then
+            export RUSTFLAGS="-C linker=rust-lld -C link-self-contained=yes"
+          fi
+          cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: It starts and draws a frame
+        if: matrix.run
+        working-directory: native
+        run: |
+          bin=target/${{ matrix.target }}/release/termstats-native
+          test "$($bin --version)" = "termstats-native ${TAG#v}"
+          $bin --size 140x42 > frame.txt
+          grep -q TERMSTATS frame.txt && grep -q TOTAL frame.txt
+
+      - name: Package
+        run: |
+          mkdir -p package dist
+          cp native/target/${{ matrix.target }}/release/termstats-native LICENSE package/
+          tar -czf dist/termstats-native-${{ matrix.target }}.tar.gz -C package termstats-native LICENSE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  python:
+    name: python package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+          ls -l dist
+          test -f "dist/termstats-${TAG#v}-py3-none-any.whl"
+      - name: The wheel installs and runs
+        run: |
+          python -m venv /tmp/wheel-check
+          /tmp/wheel-check/bin/pip install dist/*.whl
+          test "$(/tmp/wheel-check/bin/termstats --version)" = "termstats ${TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: [native, python]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums and notes
+        run: |
+          cp install.sh assets/
+          cd assets
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          cd ..
+          python3 tools/release_notes.py "$TAG" > notes.md
+          {
+            echo
+            echo "## Install"
+            echo
+            echo '```bash'
+            echo "# the native dashboard (macOS, Linux) - no toolchain needed"
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/install.sh | TERMSTATS_VERSION=${TAG} sh"
+            echo
+            echo "# the Python program (all platforms; microphone modes, --demo)"
+            echo "pipx install https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/termstats-${TAG#v}-py3-none-any.whl"
+            echo '```'
+          } >> notes.md
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber
+            gh release edit "$TAG" --notes-file notes.md --latest
+          else
+            gh release create "$TAG" assets/* --title "termstats ${TAG#v}" --notes-file notes.md --latest
+          fi

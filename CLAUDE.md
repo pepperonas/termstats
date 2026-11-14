@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.0**, 1353 pytest tests + 43 `cargo test` in `native/`.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.1**, 1375 pytest tests + 43 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -52,7 +52,7 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1353 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1375 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── native/           # termstats-native: the dashboard in Rust (Cargo.toml, src/{main,ui,screen,color,themes}.rs, src/sys/{macos,linux}.rs)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/gen_native_themes.py  # theme.py -> native/src/themes.rs (GENERATED, a test checks it is current)
@@ -79,7 +79,7 @@ The version lives in **three** places and all must move together:
 - `native/Cargo.toml` → `version = "X.Y.Z"` (`test_native` is red otherwise; then `cargo build` so `Cargo.lock` follows)
 
 Then: CHANGELOG entry (top released heading must equal the version), README `# -> termstats X.Y.Z`
-line, `python tools/badges.py` (the committed `version.json` must match — `test_badges` is red
+line, the two versioned wheel URLs + `TERMSTATS_VERSION=vX.Y.Z` in the README's Installation section, `python tools/badges.py` (the committed `version.json` must match — `test_badges` is red
 otherwise), `git tag vX.Y.Z`. The three headline README badges are **generated JSON**, never
 typed; the test count on the badge comes from `pytest --collect-only`.
 
@@ -480,6 +480,34 @@ and 7 MB at 140×42 against 5.4 % / 36 MB; ~0.7 ms CPU per frame; ~9 KB/s to the
   ⚠️ `mac-screen-agent`'s "Last" view calls the PYTHON `render_dashboard` (another session
   maintains that) - `--size`/`--samples` exist so a service can ask the native core for a
   frame instead.
+
+## Releases (0.9.1)
+
+User 2026-11-14: "the newest release should be downloadable on GitHub; adjust the install
+commands". Before that, releases were made by hand (`gh release create`, last one 0.7.0) and
+carried no files; 0.8.0 and 0.9.0 were tags only.
+
+- **`.github/workflows/release.yml`**: a pushed `v*` tag (or `workflow_dispatch` with a tag)
+  builds `termstats-native` for `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+  `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` (the Linux ones static, linked
+  with rust-lld - no cross gcc), the wheel + sdist (`python -m build`), runs what the runner
+  can run, and publishes all of it with `install.sh` and `SHA256SUMS` (`gh release create`,
+  or `upload --clobber` when the release exists). It refuses a tag that is not the version in
+  `native/Cargo.toml` and builds `--locked` (so `Cargo.lock` must follow a bump: `cargo build`).
+- **Asset names carry no version** (`termstats-native-<target>.tar.gz`) so
+  `releases/latest/download/<name>` stays valid; the wheel cannot (pip needs the version in
+  the file name), hence the two versioned wheel URLs in the README that a test pins.
+- **`install.sh`** (POSIX sh, also a release asset): `target_for` maps `uname`, download +
+  `SHA256SUMS` check, write-beside-and-rename into `~/.local/bin`. `TERMSTATS_RELEASE_URL`
+  points it at a mirror - the tests use a `file://` directory with a fake binary.
+  `TERMSTATS_INSTALL_LIB=1` lets a test source it without running `main`.
+- `tools/release_notes.py X.Y.Z` = that version's CHANGELOG section = the release text.
+- Pins: `tests/test_release.py` (the four targets agree in workflow, script and README; the
+  script end to end incl. tampered archive / unlisted archive / missing release; wheel URLs
+  carry the version; lockfile follows). 8 mutations, all caught.
+- ⚠️ A browser download on macOS is quarantined and the binary is not notarised
+  (`xattr -d com.apple.quarantine`); `curl` downloads are not affected. No Apple signing
+  identity is used.
 
 ## Leaving a session (0.5.0)
 
