@@ -20,6 +20,17 @@ def music(seconds=8.0, bpm=126.0):
     return an, d.now()
 
 
+@pytest.fixture(autouse=True)
+def a_fixed_hostname(monkeypatch):
+    """The header carries the machine's name, and these tests read the whole screen.
+
+    A CI runner called `ip-10-0-140-12` put three "negative numbers" into every audio screen
+    (2026-11-14: red on Linux only, green on macOS and Windows, nothing wrong with the
+    code). A test that depends on what the machine is called is not a test of the screen.
+    """
+    monkeypatch.setattr(cli.platform, "node", lambda: "testhost")
+
+
 def render(mode, an, now, w, h):
     return plain(cli.render_audio(mode, an, now, w, h), width=w, height=h)
 
