@@ -186,7 +186,7 @@ def played_analyzer(seconds=6.0):
 
 
 def test_the_live_chart_is_built_off_the_render_path(live, monkeypatch):
-    """plotext needs ~37 ms for one chart - more than a whole 33 ms frame. Live, the chart
+    """A history chart is rebuilt twice a second, not thirty times. Live, the chart
     is built in a worker; the frame draws the last finished one and never waits."""
     import time
     real = cli._audio_chart
@@ -226,7 +226,7 @@ def test_a_failing_chart_build_keeps_the_last_chart(live, monkeypatch):
     cli.wait_for_chart_workers()
     assert "last " in before
     def boom(*a, **k):
-        raise RuntimeError("plotext had a bad day")
+        raise RuntimeError("the chart had a bad day")
     monkeypatch.setattr(cli, "_audio_chart", boom)
     after = plain(cli.render_audio("db", an, t0 + cli.CHART_REFRESH_S + 0.05, W, H), width=W, height=H)
     cli.wait_for_chart_workers()

@@ -6,7 +6,8 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.7.0**, 1301 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.8.0**, 1322 tests.
+Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
 
@@ -51,7 +52,7 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1301 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1322 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
@@ -169,7 +170,7 @@ on Windows, where rich renders a pipe in legacy mode through the win32 API and n
 reaches the parent).
 
 CI (`.github/workflows/tests.yml`) runs Linux/macOS/Windows plus Python 3.9 and prints the
-resolved psutil/plotext/rich versions — a fresh resolve is how the plotext 6.0.0 break arrived.
+resolved psutil/rich versions — a fresh resolve is how the plotext 6.0.0 break arrived in 1.1.x.
 
 Manual checks the suite deliberately leaves out:
 
@@ -241,14 +242,12 @@ non-interactively — drive multi-step process tests from Python.
   (`GLYPHS.peak`) at `PeakTracker`'s 30-sample high-water mark, drawn only if `peak_cell >
   filled`. Live mode eases the *fill* (`Smoother`, EMA, `SMOOTHING` True only in `run_live`);
   numbers and the hairline are always raw. Snapshot mode never smooths.
-- Charts: plotext 5.x braille/hd marker, `theme("clear")` then `ticks_color()` (order matters),
-  `frame(False)`, fixed-width `fmt_axis` ticks, `axis_w` passed per chart (`AXIS_W_PCT` /
-  `AXIS_W_RATE` — deriving it from the value range made the rate chart jump), vertical
-  gradient via `Style(color=…)` spans, `_collecting()` skeleton (`⠒⠒⠒…` + `collecting · 2
-  samples needed`, height-aware). The ASCII chart fades by row too.
-- **plotext is pinned `<6` — do not relax it.** 6.0.0 (2026-08-23, beta upstream) removed the
-  5.x API (`clear_figure`, `plot`, `ylim`, `plotsize`, `build`); `_render_chart()` guards on
-  `_PLOTEXT_5` and fails soft (a library break costs a chart, not the dashboard).
+- Charts: `_render_chart` → `_dot_chart` (0.8.0, own rasteriser - see "Resource use"), fixed-width
+  `fmt_axis` ticks, `axis_w` passed per chart (`AXIS_W_PCT` / `AXIS_W_RATE` — deriving it from
+  the value range made the rate chart jump), vertical gradient via `_vertical_gradient`
+  (matches spans by the fill's hex, so chart cells must carry `Style(color=hex)` objects, not
+  style strings), `_collecting()` skeleton (`⠒⠒⠒…` + `collecting · 2 samples needed`,
+  height-aware). The ASCII chart fades by row too.
 
 ## Lifecycle (S8)
 
@@ -340,8 +339,10 @@ layer's eased quantities when `SMOOTHING` is on and the analyzer's raw numbers o
 `auto_refresh=False` - with rich's refresh thread on as well, a pty counted ~50 paints/s at 30
 planned: every frame painted about twice.
 
-⚠️ **plotext costs ~37 ms per chart** (measured; bucketing is 0.4 ms) - more than a whole
+⚠️ **plotext cost ~37 ms per chart** (measured; bucketing is 0.4 ms) - more than a whole
 33 ms frame. The level screen ran at ~10 fps because it paid that every frame (87 ms median).
+(Since 0.8.0 a chart costs ~1 ms; the worker machinery below stayed - it is correct and
+rebuilding thirty times a second would show nothing two rebuilds do not.)
 Live, `_cached_chart` builds the first chart synchronously and every later one on a worker
 thread every `CHART_REFRESH_S` = 0.5 s (`_build_chart_later`); the frame draws the last
 finished one. ⚠️ The worker must never touch the analyzer: the audio thread appends to
@@ -380,6 +381,48 @@ runs `main()` with `-x` and no `run_audio` patch opens the microphone and hangs 
 that is how it was found (the full run stalled with no output, because pytest's dots were
 block-buffered into the pipe; running file by file under a timeout located it in seconds).
 Pins: `tests/test_mix.py` (41).
+
+## Resource use (0.8.0)
+
+User report 2026-11-14: a bare `termstats` in iTerm2 took ~11 % of a core. Measured first
+(cProfile + `time.process_time()` per part + a 20 s pty run with `RUSAGE_CHILDREN`), then
+fixed in cost order. 140×42, ~700 processes, 0.5 s: **14.7 % → 5.4 % of a core, 73 → 21 ms
+per frame, 145 → 74 KB/s to the terminal, 45 → 36 MB RSS**. The README section "Resource
+use" carries the table; keep it honest if any of this changes.
+
+- **Charts: plotext is gone.** It needed 20-50 ms per chart (line interpolation into ~11 000
+  points + dot-by-dot fill) - more than the rest of the frame. `_dot_chart` rasterises one
+  pass over the dot columns: `_dot_heights` (linear interpolation, clamp), fill = floor..y,
+  line = y joined vertically to the previous column, `masks`/`owner` per cell (a LINE's
+  colour wins over the fill's), glyphs from **`theme.CHART_CELLS`** (`braille` 2x4,
+  `hd` 2x2 quadrants - cli.py still names no glyph; the quadrants are in `GLYPH_PROBE`).
+  An empty cell is a space, never U+2800. `_time_axis` puts `now` at the right edge, the
+  window start at the left, and DROPS a label that would touch its neighbour.
+  ⚠️ `_CHART_STYLES` caches one `Style` per colour and **`set_theme` clears it** - rich caches
+  the rendered escape on the Style instance, so without the clear a 256-colour render after a
+  truecolor one emitted `38;2;` (test_dod caught it; one process never switches, the suite does).
+- **Process table: two phases.** `_scan_processes` asks `process_iter(['pid','cpu_percent'])`
+  only; `_proc_details` reads name/memory for the rows drawn (`as_dict`), skipping a process
+  that vanished since the scan. ⚠️ Test fakes whose `.info` already carries `name` never have
+  `as_dict` called - that is how the old `FakeProc` stubs keep working; `RealisticProc` in
+  `tests/test_resources.py` is the fake that behaves like psutil.
+- **`_live_cached(key, ttl, read)`**: process table 1 s (`PROC_SCAN_S`, with 50 ms slack so
+  `-i 1` still scans every frame), partitions 5 s, connection count 2 s. **Only when `LIVE`
+  and not `DEMO`** - snapshots, the demo, the screenshot tool and nearly every test always
+  read. `conftest` clears `_live_cache`.
+- **`Live(auto_refresh=False)` for the dashboard too** - the 0.6.0 audio lesson had never been
+  applied here: 3.9 paints/s at 2 planned.
+
+What is left: rich layout + styling ~11 ms/frame (1300+ `Text.render` calls; fewer, bigger
+Texts would be the next lever, at the price of the layout code), one syscall per process per
+second (~9 ms), full repaint every frame (rich has no diffing). ⚠️ Measuring traps: profile
+with `process_time`, not wall time (this Mac often runs at load 80+); cProfile inflates psutil
+loops ~8x, so rank with it and measure with plain timers; the pty harness must count
+start-up in (0.35 s of the 20 s run).
+
+⚠️ The README pictures were NOT re-rendered for 0.8.0: they still show the plotext charts and
+`v0.7.0` in the header. The geometry is the same; re-run `tools/screenshots.py` + the browser
+rasterisation when the pictures are next touched.
 
 ## Leaving a session (0.5.0)
 

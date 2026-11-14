@@ -109,7 +109,9 @@ class FakeLive:
 
     last = None
 
-    def __init__(self, renderable, console=None, refresh_per_second=None, screen=None):
+    def __init__(self, renderable, console=None, refresh_per_second=None, screen=None,
+                 auto_refresh=None):
+        self.auto_refresh = auto_refresh
         FakeLive.last = self
         self.refresh_per_second = refresh_per_second
         self.screen = screen
@@ -290,3 +292,10 @@ def test_a_resize_is_drawn_at_once_and_the_cadence_restarts_from_it(live_harness
     assert after[0] - fired["at"] <= cli.RESIZE_SLICE_S + 1e-9, "the resize waited for the tick"
     assert len(after) >= 2
     assert after[1] - after[0] == pytest.approx(0.5), "the cadence must restart from the resize frame"
+
+
+def test_the_dashboard_paints_each_frame_exactly_once(live_harness):
+    """With rich's refresh thread on as well, the unchanged picture was rendered and written
+    a second time between two frames: 3.9 full-screen paints a second at 2 planned."""
+    cli.run_live(0.5)
+    assert FakeLive.last.auto_refresh is False

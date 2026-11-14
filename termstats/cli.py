@@ -16,7 +16,6 @@ from typing import NamedTuple
 import time
 import shutil
 import psutil
-import plotext as plt
 from collections import deque
 from rich import box
 from rich.console import Console, Group
@@ -58,11 +57,6 @@ net_recv_history = deque(maxlen=HISTORY_LEN)
 _steal_last_total = None
 _steal_last_steal = None
 
-# plotext 6.0.0 (released 2026-08-23, still labelled beta upstream) replaced the whole 5.x
-# top-level function API - no clear_figure/plot/ylim/plotsize/build. pyproject pins <6; this
-# guard means a stray 6.x in the environment costs the charts, not the whole dashboard.
-_PLOTEXT_5 = all(hasattr(plt, name) for name in ("clear_figure", "plot", "ylim", "plotsize", "build"))
-_CHART_NEEDS_PLOTEXT_5 = "  Charts need plotext 5.x  (pip install 'plotext<6')"
 
 
 # ---------------------------------------------------------------------------------
@@ -129,6 +123,9 @@ NET_RX_RGB = NET_TX_RGB = (0, 0, 0)
 BANDED = None      # BandedRamp on 256-/16-colour terminals, None on truecolor and mono
 
 
+_CHART_STYLES = {}     # colour -> rich Style for chart cells; emptied with every theme change
+
+
 def set_theme(name, color=None):
     """Activate a theme: the ramp, every text tone, and the two network series colours.
 
@@ -137,6 +134,7 @@ def set_theme(name, color=None):
     theme.BandedRamp for why nearest-colour quantisation is not enough.
     """
     global THEME, RAMP_OBJ, RAMP, BANDED, MUTED, DIM, FAINT, SOFT, TEXT, TRACK
+    _CHART_STYLES.clear()
     global NET_RX_RGB, NET_TX_RGB
     THEME = T.resolve_theme(name)
     RAMP_OBJ = T.Ramp(THEME.stops)
@@ -528,8 +526,35 @@ HIDDEN_MOUNT_OPTS = ("dontbrowse", "nobrowse")
 MACOS_DATA_VOLUME = "/System/Volumes/Data"
 
 
+DISK_SCAN_S = 5.0           # live: partitions and their usage are re-read at most this often
+CONN_SCAN_S = 2.0           # live: the connection count likewise
+_live_cache = {}            # key -> (monotonic time of the read, value), live sessions only
+
+
+def _live_cached(key, ttl, read):
+    """`read()`, re-used between the frames of a live session for `ttl` seconds.
+
+    A frame every half second does not need every number re-read every half second: a
+    partition's usage, the connection count and the process table are system calls whose
+    cost is paid whether or not anything changed. Snapshots and --demo always read - a
+    report carries what was measured for it, and the demo advances by frames, not by the
+    wall clock - so nothing a test or a screenshot sees is ever a remembered value.
+    """
+    if not LIVE or DEMO is not None:
+        return read()
+    now = time.monotonic()
+    hit = _live_cache.get(key)
+    if hit is None or not 0 <= now - hit[0] < ttl:
+        hit = _live_cache[key] = (now, read())
+    return hit[1]
+
+
 def disk_entries():
     """The partitions worth showing, as (label, usage) pairs."""
+    return _live_cached("disk", DISK_SCAN_S, _read_disk_entries)
+
+
+def _read_disk_entries():
     entries, seen = [], set()
     for part in psutil.disk_partitions(all=False):
         if part.fstype in SKIP_FS or part.mountpoint in seen:
@@ -647,10 +672,7 @@ def get_network_section(width):
     get_network_section._last = net
     get_network_section._last_time = _now()
 
-    try:
-        conns = len(psutil.net_connections())
-    except psutil.AccessDenied:
-        conns = -1
+    conns = _connection_count()
 
     peak = max(list(net_sent_history) + list(net_recv_history) + [sent_s, recv_s, 1.0])
     tx_pct, rx_pct = 100 * sent_s / peak, 100 * recv_s / peak
@@ -670,30 +692,80 @@ def get_network_section(width):
     return Group(*rows), sent_s, recv_s
 
 
-def network_section_rows():
+def _read_connection_count():
     try:
-        psutil.net_connections()
-        return 3
+        return len(psutil.net_connections())
     except psutil.AccessDenied:
-        return 2
+        return -1
+
+
+def _connection_count():
+    """Open connections, or -1 where the system will not say (macOS without root)."""
+    return _live_cached("conns", CONN_SCAN_S, _read_connection_count)
+
+
+def network_section_rows():
+    return 3 if _connection_count() >= 0 else 2
 
 
 _fmt_mem = T.fmt_mem
 
 
-def get_top_processes(width, n=8):
+PROC_SCAN_S = 1.0           # live: the process table is re-read at most this often
+_PROC_DETAIL = ("name", "memory_percent", "memory_info")
+
+
+def _scan_processes():
+    """Every process that reports a CPU share, busiest first.
+
+    Asks for the CPU share ONLY. The name, the memory share and the RSS are read later, for
+    the handful of rows that are drawn (`_proc_details`): on macOS a process name longer
+    than 15 characters costs a second system call for its command line, and asking for all
+    of it for all ~650 processes was half of a frame's CPU - for eight visible rows.
+    """
     procs = []
-    for p in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'memory_info']):
+    for p in psutil.process_iter(['pid', 'cpu_percent']):
         try:
-            info = p.info
-            if info['cpu_percent'] is not None:
-                procs.append(info)
+            if p.info['cpu_percent'] is not None:
+                procs.append(p)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-
     # Descending CPU with the PID as tiebreaker: without it, processes at equal CPU swap
     # rows from frame to frame and the list dances.
-    procs.sort(key=lambda x: (-(x['cpu_percent'] or 0), x['pid']))
+    procs.sort(key=lambda p: (-(p.info['cpu_percent'] or 0), p.info['pid']))
+    return procs
+
+
+def _ranked_processes():
+    """The scan, re-used between frames of a live session for PROC_SCAN_S.
+
+    It is the one collector whose cost grows with the machine (one system call per
+    process), and a CPU share measured over a full second is the steadier number as well.
+    The 50 ms of slack keeps a 1 s interval scanning on every frame despite timer jitter.
+    """
+    return _live_cached("procs", PROC_SCAN_S - 0.05, _scan_processes)
+
+
+def _proc_details(p):
+    """pid, name, cpu, memory share and rss of one process, or None if it has gone."""
+    info = p.info
+    if "name" not in info:
+        try:
+            info.update(p.as_dict(attrs=_PROC_DETAIL))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+    return info
+
+
+def get_top_processes(width, n=8):
+    ranked = _ranked_processes()
+    procs = []
+    for p in ranked:
+        if len(procs) >= n:
+            break
+        info = _proc_details(p)
+        if info is not None:
+            procs.append(info)
 
     # The inline bar earns the empty space the name column used to leave behind, and puts
     # the shape of the load next to the number - btop's trick.
@@ -708,7 +780,7 @@ def get_top_processes(width, n=8):
     table.add_column("mem%", justify="right", width=6)
     table.add_column("rss", justify="right", width=7)
 
-    for proc in procs[:n]:
+    for proc in procs:
         cpu_pct = proc['cpu_percent'] or 0
         mem_pct = proc['memory_percent'] or 0
         rss = proc['memory_info'].rss if proc['memory_info'] else 0
@@ -746,8 +818,8 @@ def _window_label(interval=None):
 def _time_ticks(n, span_s=None):
     """x-axis labels in seconds-ago, which is what the axis actually measures.
 
-    plotext labels the x axis with sample indices by default (1.0, 15.8, 30.5, ...) - a
-    number nobody reading a live dashboard has any use for. The dashboard's charts span
+    Sample indices (1.0, 15.8, 30.5, ...) are a number nobody reading a live dashboard has
+    any use for. The dashboard's charts span
     HISTORY_LEN samples; a caller with its own window (the audio histories) passes span_s.
     """
     span = HISTORY_LEN * sample_interval if span_s is None else span_s
@@ -757,12 +829,11 @@ def _time_ticks(n, span_s=None):
 
 
 def _ascii_chart(values, ylim, width, height, span_s=None):
-    """Chart fallback for terminals that cannot draw plotext's box characters.
+    """Chart fallback for terminals that can draw neither braille nor block glyphs.
 
-    plotext frames every plot in box-drawing glyphs, so no marker choice yields pure
-    ASCII - the chart has to be drawn by hand or dropped, and dropping it would remove
-    the feature the tool is named for. This draws real columns, so it fills the panel
-    the braille version would have filled.
+    Dropping the chart there would remove the feature the tool is named for. This draws
+    real columns in plain ASCII, so it fills the panel the braille version would have
+    filled.
     """
     if not values or width <= 0 or height <= 0:
         return Text("")
@@ -803,7 +874,7 @@ def _ascii_chart(values, ylim, width, height, span_s=None):
 def nice_ceiling(x):
     """The smallest "round" number >= x, for an axis top that does not read as noise.
 
-    plotext's own auto-ticks land on values like 466.6 and 373.3; an axis that says
+    An axis scaled to the data's own maximum lands on ticks like 466.6 and 373.3; one that says
     0 / 300 / 600 costs nothing to read.
     """
     if x <= 0:
@@ -815,57 +886,139 @@ def nice_ceiling(x):
     return 10 * base
 
 
+def _chart_style(color):
+    """One Style per chart colour, kept: a chart has two or three colours and thousands of cells."""
+    style = _CHART_STYLES.get(color)
+    if style is None:
+        if len(_CHART_STYLES) > 512:
+            _CHART_STYLES.clear()
+        style = _CHART_STYLES[color] = Style(color=T.hex_of(color) if isinstance(color, tuple) else color)
+    return style
+
+
+def _dot_heights(values, lo, span, dot_w, dot_h):
+    """The dot row (0 = bottom) of the curve at every dot column, linearly interpolated."""
+    n = len(values)
+    top = dot_h - 1
+    step = (n - 1) / (dot_w - 1) if n > 1 and dot_w > 1 else 0.0
+    heights = []
+    for x in range(dot_w):
+        pos = x * step
+        i = int(pos)
+        v = values[i] if i + 1 >= n else values[i] + (values[i + 1] - values[i]) * (pos - i)
+        t = (v - lo) / span
+        heights.append(int(round((0.0 if t < 0.0 else 1.0 if t > 1.0 else t) * top)))
+    return heights
+
+
+def _time_axis(labels, axis_w, plot_w, width):
+    """The row under the plot: the window's start, its middle, and "now" at the right edge.
+
+    A label that would run into its neighbour is dropped - the middle one first, then the
+    start; "now" stays, because the right edge is the one position every reader needs.
+    """
+    row = [" "] * width
+
+    def place(label, start):
+        if len(label) > width:
+            return
+        start = max(0, min(start, width - len(label)))
+        if any(c != " " for c in row[max(start - 1, 0):start + len(label) + 1]):
+            return
+        row[start:start + len(label)] = label
+
+    left, middle, right = labels
+    place(right, width - 1 - len(right))
+    place(left, axis_w - len(left) // 2)
+    place(middle, axis_w + (plot_w - len(middle)) // 2)
+    return "".join(row)
+
+
+def _dot_chart(series, ylim, width, height, axis_w, span_s):
+    """Rasterise the series into chart dots (2x4 braille or 2x2 quadrants per cell).
+
+    Drawn here rather than by a plotting library: the library needed 20-50 ms for one chart -
+    most of a frame's CPU - where this needs about one. The geometry is the one the dashboard
+    always had: a fixed-width y axis (top, middle, floor), the plot, one row of time labels.
+    A filled series is an area from the floor up; any other series is a line, joined
+    vertically between neighbouring columns so a steep edge does not break into dots. A cell
+    takes the colour of a LINE that crosses it, else of the fill - the line stays visible.
+    """
+    cells = T.CHART_CELLS[GLYPHS.chart_marker]
+    if ylim is None:
+        ylim = (0, nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0)))
+    lo, hi = ylim
+    span = (hi - lo) or 1.0
+    if axis_w is None:
+        axis_w = T.AXIS_W_PCT if hi <= 100 and lo >= 0 and hi - lo <= 100 else T.AXIS_W_RATE
+    plot_w, plot_h = max(width - axis_w, 1), max(height - 1, 1)
+    dot_w, dot_h = plot_w * cells.cols, plot_h * cells.rows
+    ncols, nrows, bits = cells.cols, cells.rows, cells.bits
+    masks = [0] * (plot_w * plot_h)
+    owner = [None] * (plot_w * plot_h)
+
+    for entry in series:
+        values, _label, color = entry[:3]
+        fill = bool(entry[3]) if len(entry) > 3 else False
+        if not values:
+            continue
+        style = _chart_style(color)
+        heights = _dot_heights(values, lo, span, dot_w, dot_h)
+        previous = heights[0]
+        for x, y in enumerate(heights):
+            if fill:
+                first, last = 0, y
+            else:
+                first = min(y, previous + 1) if previous < y else y
+                last = max(y, previous - 1) if previous > y else y
+                previous = y
+            cx, column_bits = x // ncols, x % ncols
+            for dot in range(first, last + 1):
+                i = (plot_h - 1 - dot // nrows) * plot_w + cx
+                masks[i] |= bits[nrows - 1 - dot % nrows][column_bits]
+                if not fill or owner[i] is None:
+                    owner[i] = style
+
+    muted = _chart_style(MUTED)
+    labels = {(plot_h - 1) // 2: (lo + hi) / 2, plot_h - 1: lo, 0: hi}
+    glyphs = cells.glyphs
+    lines = []
+    for r in range(plot_h):
+        line = Text(no_wrap=True, overflow="crop")
+        line.append(T.fmt_axis(labels[r], axis_w, top=hi) if r in labels else " " * axis_w, style=muted)
+        base = r * plot_w
+        run, run_style = [], None
+        for i in range(base, base + plot_w):
+            if owner[i] is not run_style and run:
+                line.append("".join(run), style=run_style)
+                run = []
+            run_style = owner[i]
+            run.append(glyphs[masks[i]])
+        if run:
+            line.append("".join(run), style=run_style)
+        lines.append(line)
+    _positions, tick_labels = _time_ticks(len(series[0][0]), span_s)
+    lines.append(Text(_time_axis(tick_labels, axis_w, plot_w, width), style=muted,
+                      no_wrap=True, overflow="crop"))
+    text = Text("\n", no_wrap=True, overflow="crop").join(lines)
+    text.no_wrap, text.overflow = True, "crop"
+    return text
+
+
 def _render_chart(series, ylim, width, height, axis_w=None, span_s=None):
-    """Build one plotext chart. Never raises - a broken chart is a note, not a crash.
+    """Build one history chart. Never raises - a broken chart is a note, not a crash.
 
     axis_w fixes the y-label field per CHART, not per value: a rate chart whose top
     happens to be 100 must not narrow its axis and shift the plot two columns left.
     series: list of (values, label, color[, fill]); color may be a name or an RGB tuple.
     A filled series is drawn as an area under the line - the mass reads far better than a
-    thin braille trace, but two overlapping fills turn to mud where they cross, so callers
-    fill at most one series and draw the others as lines over it.
+    thin trace, but two overlapping fills turn to mud where they cross, so callers fill at
+    most one series and draw the others as lines over it.
     """
     if GLYPHS.chart_marker is None:
         return _ascii_chart(series[0][0], ylim, width, height, span_s)
-    if not _PLOTEXT_5:
-        return Text(_CHART_NEEDS_PLOTEXT_5, style=MUTED)
     try:
-        plt.clear_figure()
-        if ylim is None:
-            top = nice_ceiling(max((max(e[0]) for e in series if e[0]), default=1.0))
-            ylim = (0, top)
-        lo, hi = ylim
-        for entry in series:
-            values, _label, color = entry[:3]
-            fill = bool(entry[3]) if len(entry) > 3 else False
-            # braille packs 2x4 dots into one cell - four times the vertical resolution of
-            # the block markers, and the same trick btop uses. "clear" keeps plotext from
-            # painting its own black background over the terminal's.
-            # Values are plotted RELATIVE TO THE FLOOR: plotext's fillx fills towards y = 0,
-            # so a dBFS chart with ylim (-80, 0) filled downward from silence at the top.
-            # Shifting puts the baseline at the bottom of every chart; the labels below stay
-            # in the caller's units, and for a 0-based chart nothing changes.
-            plt.plot([v - lo for v in values], marker=GLYPHS.chart_marker, color=color, fillx=fill)
-        plt.ylim(0, hi - lo)
-        # Labels in a fixed field: plotext sizes the axis column to the widest label, so a
-        # "600" that becomes "1000" would shift the whole plot one column to the right.
-        if axis_w is None:
-            axis_w = T.AXIS_W_PCT if hi <= 100 and lo >= 0 and hi - lo <= 100 else T.AXIS_W_RATE
-        plt.yticks([0, (hi - lo) / 2, hi - lo],
-                   [T.fmt_axis(v, axis_w, top=hi) for v in (lo, (lo + hi) / 2, hi)])
-        plt.theme("clear")
-        # ticks_color must come AFTER theme(): the theme resets it. Labels sit in the
-        # muted tone so the data, not the scaffolding, is what the eye lands on.
-        plt.ticks_color(T.rgb_of(MUTED))
-        plt.frame(T.CHART_FRAME)
-        # plotext caps a plot at the terminal size IT detects - 80 columns in a pipe, a test or
-        # a screenshot render - and a 116-column chart came back 80 wide. The caller has
-        # already measured the slot; the cap only ever shrinks a chart that fits.
-        plt.limit_size(False, False)
-        plt.plotsize(width, height)
-        positions, labels = _time_ticks(len(series[0][0]), span_s)
-        plt.xticks(positions, labels)
-        text = Text.from_ansi(plt.build(), no_wrap=True, overflow="crop")
+        text = _dot_chart(series, ylim, width, height, axis_w, span_s)
         for entry in series:
             if len(entry) > 3 and entry[3] and isinstance(entry[2], tuple):
                 text = _vertical_gradient(text, entry[2])
@@ -894,7 +1047,7 @@ def _collecting(width=40, height=6):
 def _vertical_gradient(text, fill_rgb):
     """Fade a filled area toward the background from the bottom up.
 
-    plotext paints a series in one colour. Re-tinting each row of the fill by its height
+    The rasteriser paints a series in one colour. Re-tinting each row of the fill by its height
     - solid at the base, CHART_FADE_TOP of the way to the background at the top - gives
     the area weight where the data is and lets the line read on top of it. Only spans in
     the fill colour are touched; lines and axes keep theirs.
@@ -1628,7 +1781,11 @@ def run_live(interval=DEFAULT_INTERVAL):
             _prefill_history()
         else:
             time.sleep(min(interval, 0.5))
-        with Live(render_dashboard(), console=console, refresh_per_second=refresh, screen=True) as live:
+        # auto_refresh off: the loop paints every frame itself with update(refresh=True). With
+        # rich's refresh thread on as well, the same picture was rendered and written a second
+        # time between two frames - the whole layout, for no change on screen.
+        with Live(render_dashboard(), console=console, refresh_per_second=refresh, screen=True,
+                  auto_refresh=False) as live:
             next_tick = time.monotonic()
             while True:
                 next_tick, _ = _schedule_tick(next_tick, time.monotonic(), interval)
@@ -2047,9 +2204,10 @@ def wait_for_chart_workers(timeout=2.0):
 
 def _cached_chart(key, now, build):
     """Live, a history chart is the last one a worker finished; a rebuild is started at most
-    every CHART_REFRESH_S seconds and never on the render path - plotext needs ~37 ms for
-    one chart, more than a whole 33 ms frame, and paying that on the frame made the level
-    screen stutter four times a second. The very first chart is built synchronously (there
+    every CHART_REFRESH_S seconds and never on the render path. That was a necessity while a
+    plotting library drew the charts (~37 ms each, more than a whole 33 ms frame); with the
+    rasteriser at about 1 ms it is only thrift - thirty rebuilds a second would still show
+    nothing two do not. The very first chart is built synchronously (there
     is nothing older to show). A snapshot builds its chart exactly once, right here.
 
     `build` must not touch the analyzer: it runs on another thread while the audio thread

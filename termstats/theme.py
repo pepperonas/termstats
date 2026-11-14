@@ -33,7 +33,7 @@ GLYPH_LEVELS = ("braille", "block", "ascii")
 
 # Every non-ASCII character the dashboard can draw with. The stream must encode all of it,
 # or the glyph level drops to ASCII. Add to this when you add a glyph.
-GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©▔●○◆"
+GLYPH_PROBE = "█░▒╭╰│─▏▎▍▌▋▊▉╌╵⠀⠒⣿▁▂▃▄▅▆▇━·…Σ©▔●○◆▘▝▀▖▞▛▗▚▐▜▙▟"
 
 
 class Capabilities(NamedTuple):
@@ -130,7 +130,7 @@ class GlyphSet(NamedTuple):
     ellipsis: str
     sigma: str             # "total transferred" prefix
     collecting: str        # empty-state baseline character
-    chart_marker: Optional[str]   # plotext marker, None = hand-drawn ASCII chart
+    chart_marker: Optional[str]   # a key of CHART_CELLS, None = hand-drawn ASCII chart
     chart_full: str        # hand-drawn chart: a full cell
     chart_half: str        # hand-drawn chart: a partially covered cell
     box: str               # rich box style name
@@ -164,6 +164,26 @@ GLYPH_SETS = {
         box="ASCII", rule="-", copyright="(c)",
         vpeak="-", beat_on="*", beat_off="o", metro_head=">",
     ),
+}
+
+class ChartCells(NamedTuple):
+    """How one terminal cell is divided into chart dots, and the glyph for each pattern.
+
+    `bits[row][col]` is the bit a dot contributes (row 0 is the TOP of the cell);
+    `glyphs[mask]` is the character for a combination. An empty cell is a space, never
+    U+2800: a blank braille cell is a glyph some fonts draw as a faint grid.
+    """
+    cols: int
+    rows: int
+    bits: tuple
+    glyphs: str
+
+
+# braille: 2x4 dots per cell (U+2800 + mask). block ("hd"): 2x2 quadrants per cell.
+CHART_CELLS = {
+    "braille": ChartCells(2, 4, ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80)),
+                          " " + "".join(chr(0x2800 + m) for m in range(1, 256))),
+    "hd": ChartCells(2, 2, ((0x1, 0x2), (0x4, 0x8)), " ▘▝▀▖▌▞▛▗▚▐▜▄▙▟█"),
 }
 
 # Nerd-font icons for panel titles, opt-in only (TERMSTATS_NERD_FONT=1). Private-use

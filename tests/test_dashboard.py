@@ -201,16 +201,16 @@ def test_charts_appear_once_there_is_history(primed_history):
 
 
 def test_dashboard_survives_a_dead_chart_backend(monkeypatch, primed_history):
-    monkeypatch.setattr(cli, "_PLOTEXT_5", False)
+    monkeypatch.setattr(cli, "_dot_chart", lambda *a, **k: 1 / 0)
     assert "cpu" in dash(140, 50)
 
 
 # --- chart layout -------------------------------------------------------------------------
 #
-# plotext emits ANSI escapes inside the string it returns - roughly 190 bytes per line.
-# Handed to rich as a plain str they are counted as printable cells, so a 70-column chart
-# measured 259 wide, rich re-wrapped it, the axis broke into fragments and the title was cut
-# mid-word ("CPU Usage (last"). from_ansi turns them into real styles.
+# A chart is a rich Text, never a str: a string with ANSI escapes in it (what the plotting
+# library used until 0.7 returned, ~190 bytes per line) has them counted as printable
+# cells, so a 70-column chart measured 259 wide, rich re-wrapped it, the axis broke into fragments and the title was cut
+# mid-word ("CPU Usage (last").
 
 def test_charts_reach_rich_as_parsed_ansi_not_as_a_string(primed_history):
     from rich.text import Text

@@ -47,8 +47,7 @@
 <!-- dependencies -->
 [![psutil](https://img.shields.io/badge/psutil-%E2%89%A55.9-orange?logo=python&logoColor=white)](https://github.com/giampaolo/psutil)
 [![rich](https://img.shields.io/badge/rich-%E2%89%A513.0-purple?logo=python&logoColor=white)](https://github.com/Textualize/rich)
-[![plotext](https://img.shields.io/badge/plotext-5.x-blue?logo=python&logoColor=white)](https://github.com/piccolomo/plotext)
-[![Dependencies](https://img.shields.io/badge/runtime%20deps-3-informational)](#requirements)
+[![Dependencies](https://img.shields.io/badge/runtime%20deps-2-informational)](#requirements)
 [![Install](https://img.shields.io/badge/install-pipx%20%2B%20git-2088FF?logo=git&logoColor=white)](#installation)
 
 <!-- repository -->
@@ -124,6 +123,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [Usage](#usage) — options, themes, environment, choosing the mode, fallbacks, exit
 - [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
 - [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
+- [Resource use](#resource-use) — what a frame costs, measured, and the levers that are yours
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
 - [Health Report (optional)](#health-report-optional)
@@ -155,6 +155,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
 - **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter, `-x` level and tempo side by side; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
 - **They Move** — 30 frames a second; bars ease in seconds not frames, leave an afterglow that falls under gravity, peak markers hold then drop, every beat is an envelope that nudges the bars, lights the dot and flares the tempo, and a metronome sweeps between beats
+- **Light on the Machine** — a frame costs about 20 ms of CPU: the charts are rasterised in-process, the process table is read once a second, and nothing is drawn twice ([Resource use](#resource-use))
 - **Zero Config** — flags and environment variables only; no config file, no state on disk
 
 ## Installation
@@ -212,7 +213,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.7.0
+termstats --version   # -> termstats 0.8.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -601,9 +602,9 @@ and a suspended laptop does not produce a jump on wake:
 | **Metronome** | on the tempo screen a head (`◆`) sweeps from left to right between two beats, at the tempo the detector found — the beat grid made visible |
 | **Level meter** | VU-like ballistics: 30 ms up, 350 ms down |
 
-The history charts are the one expensive thing in a frame (plotext needs about 37 ms for one,
-more than a whole 33 ms frame), so live they are built on a worker thread twice a second and
-each frame draws the last finished one; the render thread never waits. In a snapshot none of
+The history charts change twice a second, not thirty times, so live they are rebuilt on a
+worker thread twice a second and each frame draws the last finished one; the render thread
+never waits. In a snapshot none of
 this runs — the analyzer's numbers are drawn as they are, the chart is built once, and two
 renders of the same state are identical.
 
@@ -623,6 +624,49 @@ runs at the device's own sample rate. The screens refresh 30 times a second (`-i
 that); `--once`, or a pipe, listens for 1.5 s and prints one frame — enough for a level, not
 for a tempo, which the HUD shows as `---`. `--demo -eq` plays eight seconds of scripted
 music before the first frame, so a tempo is already on screen.
+
+## Resource use
+
+A dashboard that is left running all day should not show up in its own process list. Measured
+on an Apple-silicon MacBook with ~700 processes, a 140×42 terminal and the default 0.5 s
+interval, over 20 seconds in a real pseudo-terminal (start-up included):
+
+| | 0.7.0 | 0.8.0 |
+|---|---|---|
+| CPU, default interval (0.5 s) | 14.7 % of one core | **5.4 %** |
+| CPU, same at 200×60 | 19.3 % | **7.3 %** |
+| CPU at `-i 1` | — | **3.6 %** |
+| CPU per frame (render + print) | ~73 ms | **~21 ms** |
+| Bytes written to the terminal | 145 KB/s | **74 KB/s** |
+| Full-screen paints per second | 3.9 | **2.0** (one per frame) |
+| Resident memory | 45 MB | **36 MB** |
+
+Where the time went, and what 0.8.0 did about each:
+
+- **The two history charts cost 20–50 ms each** — more than everything else in the frame
+  together. They were drawn by a general plotting library that interpolates every line into
+  thousands of points and fills the area dot by dot. termstats now rasterises its own charts
+  (one pass over the dot columns, about **1 ms** each) and the dependency is gone, which also
+  removes its import from every start.
+- **The process table asked every process for everything.** Name, memory share and RSS were
+  read for all ~700 processes to draw eight rows — and on macOS a name longer than fifteen
+  characters costs a second system call for the command line. The scan now reads the CPU
+  share only and fetches the rest for the rows that are drawn (35 ms → 9 ms), and a live
+  session re-reads the table at most once a second.
+- **Every frame was painted twice.** rich's own refresh thread re-rendered and re-sent the
+  unchanged picture between two frames. The loop paints each frame itself; the thread is off.
+  This halves what your terminal emulator has to parse and draw as well, which never shows up
+  in termstats' own numbers.
+- **Slow facts were read at frame rate.** Partition usage is re-read every 5 s and the
+  connection count every 2 s in a live session, instead of twice per frame.
+
+None of this applies to a snapshot or to `--demo`: `--once` measures everything for the one
+frame it prints, and the demo advances by frames, not by the wall clock.
+
+What is left is mostly rich laying out and styling the screen (~11 ms a frame) and one system
+call per process once a second. The remaining levers are yours: **the cost is per frame**, so
+`termstats -i 1` halves it and `-i 2` halves it again, and a smaller window is cheaper than a
+large one.
 
 ## Platform Support
 
@@ -652,7 +696,6 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - Python 3.9+
 - [psutil](https://github.com/giampaolo/psutil) — cross-platform system metrics
 - [rich](https://github.com/Textualize/rich) — terminal formatting
-- [plotext](https://github.com/piccolomo/plotext) — terminal plots (**5.x only**, see below)
 - optional, for the microphone modes only: [numpy](https://numpy.org) and
   [sounddevice](https://python-sounddevice.readthedocs.io) — the `termstats[audio]` extra
 
@@ -660,10 +703,9 @@ The charts are drawn in **Unicode braille** (U+2800–U+28FF), which packs 2×4 
 character cell. Font coverage for that block is near-universal; if yours lacks it the charts
 show replacement boxes while everything else stays readable.
 
-plotext is pinned to `>=5.2,<6`. plotext **6.0.0** (released 2026-08-23, labelled beta
-upstream) is a full rewrite that removed the 5.x top-level API — `clear_figure`, `plot`,
-`ylim`, `plotsize`, `build` — which the charts are written against. An unpinned install picks
-up 6.0.0 and the charts cannot be drawn.
+The charts are rasterised by termstats itself. Until 0.7 they were drawn by
+[plotext](https://github.com/piccolomo/plotext); 0.8.0 dropped the dependency — see
+[Resource use](#resource-use) for why.
 
 A terminal of roughly 120×40 or larger gives the intended two-column layout; the panels
 reflow on narrower terminals, and the charts scale with the window.
@@ -705,8 +747,8 @@ for a template. Pair it with a systemd timer or cron job for automated schedulin
 
 termstats uses [psutil](https://github.com/giampaolo/psutil) to collect system metrics,
 [rich](https://github.com/Textualize/rich) for terminal rendering with colored panels and
-tables, and [plotext](https://github.com/piccolomo/plotext) for live line charts. On Linux,
-CPU steal time is read directly from `/proc/stat`.
+tables, and its own rasteriser for the history charts (2×4 braille dots or 2×2 quadrants per
+cell). On Linux, CPU steal time is read directly from `/proc/stat`.
 
 Rates (CPU, disk I/O, network) are deltas between consecutive samples, kept in module-level
 `deque`s capped at 60 entries. That cap is a *sample* count; multiply it by the refresh
@@ -722,7 +764,7 @@ the cadence restarts from that frame.
 Colour lives in one place, `termstats/theme.py`: the glyph sets, the spacing and format
 tokens, the OKLab conversions and the six themes. `cli.py` names tokens and never a colour
 or a drawing character — a test reads its source and refuses any hex value or glyph literal.
-Ramp lookups are cached; the whole dashboard renders and prints in about 40 ms at 140×50.
+Ramp lookups are cached; the whole dashboard renders and prints in about 20 ms at 140×42.
 
 ### Project layout
 
@@ -777,8 +819,8 @@ The suite is unit tests — no sleeping, no live terminal, no network — plus t
 terminal actually receive (skipped on Windows, where rich renders a pipe through the win32
 API and there is no ANSI to inspect). psutil is stubbed with fakes so the collectors can be
 driven through their failure paths (an unreadable mountpoint, `AccessDenied` on connection
-counts, a process that vanishes mid-iteration), and the chart layer is tested both against
-real plotext and against a simulated plotext 6.x.
+counts, a process that vanishes mid-iteration), and the chart rasteriser is pinned on the
+picture it draws: the area, the line over it, the fixed axis, the exact size.
 
 The suite **pins its own terminal capabilities** (truecolor, braille) instead of detecting
 them, so it means the same thing on every machine: green under `TERM=dumb`, `NO_COLOR=1`,
@@ -799,10 +841,10 @@ What it covers:
 | Header | the sparkline shows peaks not means, appears only with history, never in ASCII mode; the line never collides with itself at any width |
 | Disk | `nobrowse` filtering, the macOS Data substitution and its counter-checks, mountpoint shortening |
 | Badge tooling | the LOC counting rules, the three `pytest --collect-only` output shapes, and the refusal to publish a zero |
-| Charts | the plotext 5.x guard, graceful degradation, byte→KB conversion, the 0–100 CPU axis, Linux-only steal series |
+| Charts | no plotting library, a failing rasteriser costs a chart and not the dashboard, byte→KB conversion, the 0–100 CPU axis, Linux-only steal series |
 | Formatting | bar fill and colour thresholds, rate scaling across the B/KB/MB boundaries |
 | Collectors | pseudo-filesystem filtering, mountpoint truncation, rate baselines, process sorting and limits, `/proc/stat` steal parsing |
-| Packaging | the two version strings agree, `plotext<6` stays pinned, no `stats` alias, no PyPI claim, README badges match the package |
+| Packaging | the two version strings agree, plotext stays out of the dependencies, no `stats` alias, no PyPI claim, README badges match the package |
 | Dashboard | one full render against the real machine, one history sample per render, brand line intact |
 | Output encoding | a cp1252 stdout is widened to UTF-8; unreconfigurable streams degrade quietly |
 | Themes | OKLab round-trips, gamut mapping, monotone lightness of every theme, 256/16-colour band checks, `--theme`/`TERMSTATS_THEME`/`--list-themes`, capability detection |
@@ -984,16 +1026,14 @@ parser matched only `-l`/`--live` and silently ignored everything else, so `-liv
 through to snapshot mode, where both history panels read `Collecting data...`. Fixed in
 1.1.2: `-live` works, and unknown options now exit 2 with a message.
 
-**`AttributeError: module 'plotext' has no attribute 'clear_figure'`** — plotext 6.x is in
-your environment. It removed the 5.x API the charts use. Fixed in 1.1.1, which pins
-`plotext<6`; upgrade termstats, or downgrade the library in place:
+**`AttributeError: module 'plotext' has no attribute 'clear_figure'`**, or charts that read
+**`Charts need plotext 5.x`** — an installation older than 0.8.0 with plotext 6.x in its
+environment. termstats 0.8.0 no longer uses plotext at all; upgrade, and the library can be
+removed (`pipx runpip termstats uninstall plotext`).
 
-```bash
-pipx runpip termstats install 'plotext<6'    # or: pip install 'plotext<6'
-```
-
-**Charts read `Charts need plotext 5.x`** — same cause, but termstats 1.1.1+ now degrades to
-this note instead of crashing. Same fix as above.
+**termstats uses more CPU than expected** — see [Resource use](#resource-use): the cost is
+per frame, so `-i 1` halves it and `-i 2` halves it again, and a smaller window costs less
+than a large one.
 
 **Connection count missing** — `psutil.net_connections()` needs root on macOS, and any
 platform may answer `AccessDenied` under a restricted account. The row is omitted rather

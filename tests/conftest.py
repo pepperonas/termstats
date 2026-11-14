@@ -43,6 +43,7 @@ def clean_module_state():
     cli._smoother.reset()
     cli._peaks.reset()
     cli._net_unit = "KB/s"
+    cli._live_cache.clear()
     for fn, attrs in (
         (cli.get_disk_section, ("_last_io", "_last_time")),
         (cli.get_network_section, ("_last", "_last_time")),

@@ -1,8 +1,10 @@
-"""Chart building: the plotext-6 guard, braille rendering, and the ASCII fallback.
+"""Chart building: the dot rasteriser (braille / quadrants) and the ASCII fallback.
 
-Cover for the 1.1.1 defect (plotext 6.0.0 removed the 5.x top-level API, so the first live
-render died with AttributeError) and for the two things the redesign added: braille markers
-and a hand-drawn chart for terminals that cannot draw plotext's box characters at all.
+Until 0.8.0 the charts were drawn by plotext. It needed 20-50 ms for one chart - most of a
+frame's CPU - and its 6.0.0 release removed the API the charts were built on (the 1.1.1
+defect). The charts are rasterised in cli._dot_chart now; these tests pin what the picture
+has to keep: the area, the line over it, the fixed axis, and that a failure costs a chart,
+never the dashboard.
 """
 
 import re
@@ -10,46 +12,56 @@ import re
 import pytest
 
 from termstats import cli
+from termstats import theme as T
 from helpers import plain
 
 ONE = [(list(range(60)), "x", "cyan")]
 
 
+def colours(chart, row=None):
+    """{hex colour: number of non-blank cells drawn in it}, for the whole chart or one row."""
+    lines = chart.split("\n")
+    seen = {}
+    for line in (lines if row is None else [lines[row]]):
+        for sp in line.spans:
+            colour = getattr(sp.style, "color", None)
+            if colour is None or colour.triplet is None:
+                continue
+            cells = sum(1 for ch in line.plain[sp.start:sp.end] if ch != " ")
+            if cells:
+                seen[colour.triplet.hex] = seen.get(colour.triplet.hex, 0) + cells
+    return seen
+
+
 # --- guard --------------------------------------------------------------------------
 
-def test_installed_plotext_has_the_five_api_names():
-    """If this fails, the environment resolved plotext 6.x despite the <6 pin."""
-    assert cli._PLOTEXT_5, "plotext 5.x API missing - check the pin in pyproject.toml"
+def test_the_charts_need_no_plotting_library():
+    """plotext cost half a second of import and most of every frame; it must not come back
+    through a convenience import."""
+    import pathlib
+    source = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
+    assert not re.search(r"^\s*(import|from)\s+plotext", source, re.M)
 
 
-def test_guard_checks_every_name_the_renderer_calls():
-    import plotext as plt
-    for name in ("clear_figure", "plot", "ylim", "plotsize", "build"):
-        assert hasattr(plt, name)
-
-
-def test_missing_api_degrades_to_a_note_instead_of_raising(monkeypatch):
-    monkeypatch.setattr(cli, "_PLOTEXT_5", False)
-    assert "plotext" in plain(cli._render_chart(ONE, None, 40, 8))
-
-
-def test_the_note_tells_the_user_how_to_fix_it():
-    assert "plotext<6" in cli._CHART_NEEDS_PLOTEXT_5
-
-
-def test_a_raising_plotext_costs_a_chart_not_the_dashboard(monkeypatch):
+def test_a_raising_rasteriser_costs_a_chart_not_the_dashboard(monkeypatch):
     """House rule: a collector may return junk, it may not take the process down."""
     def boom(*_a, **_k):
-        raise RuntimeError("plotext exploded")
+        raise RuntimeError("the rasteriser exploded")
 
-    monkeypatch.setattr(cli.plt, "clear_figure", boom)
+    monkeypatch.setattr(cli, "_dot_chart", boom)
     assert "Chart unavailable" in plain(cli._render_chart(ONE, None, 40, 8))
 
 
-def test_a_raising_plotext_does_not_escape_the_public_chart_helpers(monkeypatch, primed_history):
-    monkeypatch.setattr(cli.plt, "plot", lambda *a, **k: (_ for _ in ()).throw(ValueError("nope")))
+def test_a_raising_rasteriser_does_not_escape_the_public_chart_helpers(monkeypatch, primed_history):
+    monkeypatch.setattr(cli, "_dot_chart", lambda *a, **k: (_ for _ in ()).throw(ValueError("nope")))
     assert "Chart unavailable" in plain(cli.get_cpu_chart(40, 8))
     assert "Chart unavailable" in plain(cli.get_net_chart(40, 8))
+
+
+@pytest.mark.parametrize("values", [[float("nan")] * 5, [float("inf"), 1.0], []])
+def test_junk_samples_cost_a_chart_at_most(values):
+    out = plain(cli._render_chart([(values, "x", "cyan", True)], (0, 100), 40, 8))
+    assert out.strip()
 
 
 # --- not enough data -----------------------------------------------------------------
@@ -117,7 +129,7 @@ def test_the_chart_is_drawn_with_braille_dots(primed_history):
 
 
 def test_the_chart_does_not_paint_its_own_background(primed_history):
-    """plotext's "dark" theme fills the plot with black, which sits as a hard rectangle
+    """A plot background fills the plot with black, which sits as a hard rectangle
     inside the panel whatever the terminal's own background is.
 
     Checked on the parsed styles, not on the raw escape text: rich re-encodes the colour
@@ -130,7 +142,7 @@ def test_the_chart_does_not_paint_its_own_background(primed_history):
 
 
 def test_the_x_axis_is_labelled_in_time_not_sample_numbers(primed_history):
-    """plotext defaults to sample indices (1.0, 15.8, 30.5) - a number nobody watching a
+    """Sample indices (1.0, 15.8, 30.5) are a number nobody watching a
     live dashboard has any use for."""
     cli.sample_interval = 0.5
     out = plain(cli.get_cpu_chart(60, 10))
@@ -179,8 +191,8 @@ def test_steal_series_is_drawn_on_linux_when_nonzero(captured_series, monkeypatc
 # --- the ASCII fallback ---------------------------------------------------------------
 
 def test_a_non_unicode_terminal_still_gets_a_chart(ascii_mode, primed_history):
-    """plotext frames every plot in box-drawing glyphs, so there is no marker choice that
-    yields pure ASCII. Dropping the chart would remove the feature the tool is named for."""
+    """Neither braille nor block glyphs can be drawn there. Dropping the chart would remove
+    the feature the tool is named for."""
     out = plain(cli.get_cpu_chart(48, 8))
     assert out.isascii()
     assert "#" in out or "=" in out
@@ -223,29 +235,30 @@ def test_real_chart_renders_more_than_one_line(primed_history):
 
 # --- 0.3.0: area fills, ramp colours, scaled axes, subtitles ---------------------------
 
-@pytest.fixture
-def plotted(monkeypatch, primed_history):
-    """Record every plt.plot call the renderer makes, then let the real build run."""
-    calls = []
-    real_plot = cli.plt.plot
-
-    def spy(values, **kwargs):
-        calls.append(kwargs)
-        return real_plot(values, **kwargs)
-
-    monkeypatch.setattr(cli.plt, "plot", spy)
-    return calls
+def flat(cpu=50.0, steal=0.0, rx=800.0, tx=200.0):
+    """Histories with one constant value each: every row of the picture is predictable."""
+    for dq, v in ((cli.cpu_history, cpu), (cli.steal_history, steal),
+                  (cli.net_recv_history, rx * 1024), (cli.net_sent_history, tx * 1024)):
+        dq.clear(); dq.extend([v] * cli.HISTORY_LEN)
 
 
-def test_the_cpu_chart_is_drawn_as_a_filled_area(plotted):
-    cli.get_cpu_chart(60, 10)
-    assert plotted[0]["fillx"] is True
+def test_the_cpu_chart_is_drawn_as_a_filled_area():
+    """Every cell from the floor up to the curve is drawn - not one dotted line at 50 %."""
+    flat(cpu=50.0)
+    chart = cli.get_cpu_chart(60, 10)
+    rows = chart.plain.split("\n")[:-1]
+    plot_w = 60 - T.AXIS_W_PCT
+    drawn = [sum(1 for ch in row[T.AXIS_W_PCT:] if ch != " ") for row in rows]
+    assert drawn[-1] == plot_w and drawn[-2] == plot_w, drawn
+    assert drawn[0] == 0, "a 50 % curve must leave the top of the plot empty"
 
 
-def test_the_cpu_area_takes_its_colour_from_the_ramp(plotted):
-    cli.get_cpu_chart(60, 10)
-    assert plotted[0]["color"] == cli.cpu_chart_colour()
-    assert isinstance(plotted[0]["color"], tuple)
+def test_the_cpu_area_takes_its_colour_from_the_ramp():
+    flat(cpu=50.0)
+    chart = cli.get_cpu_chart(60, 10)
+    floor_row = len(chart.plain.split("\n")) - 2
+    assert isinstance(cli.cpu_chart_colour(), tuple)
+    assert T.hex_of(cli.cpu_chart_colour()) in colours(chart, floor_row)
 
 
 def test_the_cpu_area_colour_follows_the_mean_load():
@@ -258,24 +271,37 @@ def test_the_cpu_area_colour_follows_the_mean_load():
     assert cool != hot
 
 
-def test_steal_is_a_line_over_the_area_not_a_second_fill(plotted, monkeypatch):
+def test_steal_is_a_line_over_the_area_not_a_second_fill(monkeypatch):
     monkeypatch.setattr(cli, "IS_LINUX", True)
-    cli.steal_history.clear(); cli.steal_history.extend([0.0] * 59 + [7.5])
-    cli.get_cpu_chart(60, 10)
-    assert [c["fillx"] for c in plotted] == [True, False]
+    flat(cpu=20.0, steal=60.0)
+    chart = cli.get_cpu_chart(60, 10)
+    plot_w = 60 - T.AXIS_W_PCT
+    steal = colours(chart).get(T.hex_of(cli.ramp_rgb(1.0)), 0)
+    assert steal == plot_w, f"a flat line is one cell per column, a fill would be several: {steal}"
 
 
-def test_only_one_network_series_is_filled(plotted):
+def test_only_one_network_series_is_filled():
     """Two overlapping fills turn to mud where they cross; rx is the area, tx the line."""
-    cli.get_net_chart(60, 10)
-    fills = {c["color"]: c["fillx"] for c in plotted}
-    assert fills[cli.NET_RX_RGB] is True
-    assert fills[cli.NET_TX_RGB] is False
+    flat(rx=800.0, tx=400.0)
+    chart = cli.get_net_chart(60, 10)
+    plot_w = 60 - T.AXIS_W_RATE
+    tx = colours(chart).get(T.hex_of(cli.NET_TX_RGB), 0)
+    rx = sum(n for hex_, n in colours(chart).items() if hex_ not in (T.hex_of(cli.NET_TX_RGB), cli.MUTED))
+    assert tx == plot_w, f"tx is a line: one cell per column, got {tx}"
+    assert rx > 3 * plot_w, f"rx is an area: several rows of cells, got {rx}"
 
 
-def test_the_filled_series_is_drawn_first_so_the_line_stays_visible(plotted):
-    cli.get_net_chart(60, 10)
-    assert plotted[0]["fillx"] is True and plotted[1]["fillx"] is False
+def test_the_line_stays_visible_inside_the_area():
+    """tx runs BELOW the top of the rx area here: the cells it crosses must carry its colour,
+    or the line vanishes exactly where the two series are compared."""
+    flat(rx=800.0, tx=400.0)
+    chart = cli.get_net_chart(60, 10)
+    lines = chart.plain.split("\n")
+    tx_hex = T.hex_of(cli.NET_TX_RGB)
+    tx_rows = [r for r in range(len(lines) - 1) if tx_hex in colours(chart, r)]
+    assert len(tx_rows) == 1
+    row = lines[tx_rows[0]][T.AXIS_W_RATE:]
+    assert set(row) == {T.CHART_CELLS["braille"].glyphs[255]}, "the area under the line is still drawn"
 
 
 def test_network_series_colours_come_from_the_ramp():
@@ -314,22 +340,56 @@ def test_the_network_chart_uses_the_chosen_unit(captured_series):
     assert by_label["TX"] == [0.0, 4.0]          # megabytes, not 4096 kilobytes
 
 
-def test_an_unbounded_axis_gets_a_round_top(monkeypatch, primed_history):
-    """Ticks like 466.6 / 373.3 are plotext's defaults; 0 / 300 / 600 cost nothing to read."""
-    seen = {}
-    monkeypatch.setattr(cli.plt, "yticks", lambda pos, lab: seen.update(pos=pos, lab=lab))
-    cli._render_chart([([0.0, 560.0], "x", "cyan")], None, 60, 8)
-    assert seen["pos"] == [0, 300, 600]
+def axis_labels(chart, axis_w):
+    return [row[:axis_w] for row in chart.plain.split("\n")[:-1] if row[:axis_w].strip()]
+
+
+def test_an_unbounded_axis_gets_a_round_top(primed_history):
+    """Ticks like 466.6 / 373.3 are what an automatic axis lands on; 0 / 300 / 600 cost
+    nothing to read."""
+    chart = cli._render_chart([([0.0, 560.0], "x", "cyan")], None, 60, 8)
+    labels = axis_labels(chart, T.AXIS_W_RATE)
+    assert [lab.strip() for lab in labels] == ["600", "300", "0"]
     # Labels sit in a fixed-width field so the plot never shifts when the top changes.
-    assert [lab.strip() for lab in seen["lab"]] == ["0", "300", "600"]
-    assert len({len(lab) for lab in seen["lab"]}) == 1
+    assert len({len(lab) for lab in labels}) == 1
 
 
-def test_a_fixed_axis_keeps_its_own_ticks(monkeypatch, primed_history):
-    seen = {}
-    monkeypatch.setattr(cli.plt, "yticks", lambda pos, lab: seen.update(pos=pos, lab=lab))
-    cli._render_chart([([0.0, 42.0], "x", "cyan")], (0, 100), 60, 8)
-    assert seen["pos"] == [0, 50, 100]
+def test_a_fixed_axis_keeps_its_own_ticks(primed_history):
+    chart = cli._render_chart([([0.0, 42.0], "x", "cyan")], (0, 100), 60, 8)
+    assert [lab.strip() for lab in axis_labels(chart, T.AXIS_W_PCT)] == ["100", "50", "0"]
+
+
+def test_a_chart_is_exactly_as_large_as_it_was_asked_to_be(primed_history):
+    for w, h in ((40, 8), (61, 9), (116, 12)):
+        rows = cli.get_net_chart(w, h).plain.split("\n")
+        assert len(rows) == h and {len(r) for r in rows} == {w}, (w, h)
+
+
+def test_the_curve_reaches_the_floor_and_the_ceiling():
+    """0 is the lowest dot of the bottom row, the axis top the highest dot of the top row."""
+    cells = T.CHART_CELLS["braille"]
+    chart = cli._render_chart([([0.0] * 30, "x", "cyan")], (0, 100), 40, 8)
+    rows = chart.plain.split("\n")[:-1]
+    floor_only = cells.glyphs[cells.bits[-1][0] | cells.bits[-1][1]]
+    assert set(rows[-1][T.AXIS_W_PCT:]) == {floor_only}
+    chart = cli._render_chart([([100.0] * 30, "x", "cyan")], (0, 100), 40, 8)
+    top_only = cells.glyphs[cells.bits[0][0] | cells.bits[0][1]]
+    assert set(chart.plain.split("\n")[0][T.AXIS_W_PCT:]) == {top_only}
+
+
+def test_the_block_level_draws_quadrants_not_braille(primed_history):
+    cli.set_glyph_level("block")
+    out = plain(cli.get_cpu_chart(60, 10))
+    assert not [ch for ch in out if 0x2800 <= ord(ch) <= 0x28FF]
+    assert set(out) & set(T.CHART_CELLS["hd"].glyphs[1:])
+
+
+def test_now_sits_at_the_right_edge_and_the_window_start_at_the_left(primed_history):
+    cli.sample_interval = 0.5
+    axis = cli.get_cpu_chart(60, 10).plain.split("\n")[-1]
+    assert axis.rstrip().endswith("now") and axis.index("-30s") < axis.index("-15s") < axis.index("now")
+    narrow = cli.get_cpu_chart(T.AXIS_W_PCT + 6, 6).plain.split("\n")[-1]
+    assert "now" in narrow and "-15s" not in narrow, "a label with no room is dropped, never overlapped"
 
 
 def test_the_cpu_subtitle_names_the_window_and_the_latest_value(primed_history):
@@ -479,12 +539,23 @@ def test_the_ascii_chart_fades_as_well(ascii_mode):
 
 
 def test_a_chart_wider_than_eighty_columns_is_not_clamped_to_a_phantom_terminal(monkeypatch):
-    """plotext limits a plot to the terminal size it detects - 80 columns in a pipe, a test or
-    a screenshot render. A 116-column chart came back 80 wide, ending two thirds across the
-    panel while the meter above it ran to the edge. The renderer decides the size, not plotext."""
+    """The plotting library the charts once used limited a plot to the terminal size IT detected -
+    80 columns in a pipe, a test or a screenshot render. A 116-column chart came back 80 wide, ending two thirds across the
+    panel while the meter above it ran to the edge. The caller decides the size, nothing else."""
     from rich.cells import cell_len
     monkeypatch.delenv("COLUMNS", raising=False)
     values = [50.0] * 110
     out = plain(cli._render_chart([(values, "x", cli.ramp_rgb(0.5), True)], (0.0, 100.0), 116, 10), width=116, height=10)
     widest = max(cell_len(l.rstrip()) for l in out.splitlines())
     assert widest >= 110, f"chart is only {widest} cells wide in a 116-column slot"
+
+
+def test_a_steep_edge_of_a_line_is_joined_not_left_as_two_dots():
+    """An unfilled series that jumps from the floor to the ceiling between two columns: the
+    edge is drawn through every row, or a spike reads as two unrelated dots."""
+    values = [0.0] * 10 + [100.0] * 10
+    chart = cli._render_chart([(values, "x", "cyan")], (0, 100), 40, 9)
+    rows = [row[T.AXIS_W_PCT:] for row in chart.plain.split("\n")[:-1]]
+    assert all(row.strip() for row in rows), "a row of the plot is empty: the edge has a gap"
+    middle = rows[len(rows) // 2]
+    assert len(middle.replace(" ", "")) == 1, "the edge is one column wide, not an area"

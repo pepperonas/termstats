@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "termstats"
-version = "0.7.0"
+version = "0.8.0"
 description = "Beautiful terminal server dashboard with real-time charts"
 readme = "README.md"
 license = "MIT"
@@ -37,7 +37,6 @@ classifiers = [
 ]
 dependencies = [
     "psutil>=5.9",
-    "plotext>=5.2,<6",
     "rich>=13.0",
 ]
 

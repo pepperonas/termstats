@@ -79,14 +79,15 @@ def test_cli_reports_the_package_version():
 
 # --- dependency pins --------------------------------------------------------------
 
-def test_plotext_is_capped_below_six():
-    """6.0.0 removed the 5.x API the charts are built on - see test_charts.py."""
-    assert re.search(r'"plotext>=[\d.]+,<6"', PYPROJECT)
+def test_plotext_is_not_a_dependency_any_more():
+    """The charts are rasterised in cli.py since 0.8.0 (see test_charts.py); the library cost
+    half a second of start-up and most of every frame."""
+    assert "plotext" not in PYPROJECT
 
 
 def test_every_imported_third_party_package_is_declared():
     declared = set(re.findall(r'"([a-z0-9_-]+)[><=]', PYPROJECT))
-    assert {"psutil", "plotext", "rich"} <= declared
+    assert {"psutil", "rich"} <= declared
 
 
 # --- the rename stays done --------------------------------------------------------

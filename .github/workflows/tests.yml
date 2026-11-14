@@ -36,8 +36,8 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Show the resolved dependency versions
-        # A fresh resolve is exactly how the plotext 6.0.0 break arrived; print it.
-        run: pip list | grep -Ei 'psutil|plotext|rich'
+        # A fresh resolve is exactly how a dependency's breaking release arrives; print it.
+        run: pip list | grep -Ei 'psutil|rich'
 
       - name: Unit tests
         run: pytest

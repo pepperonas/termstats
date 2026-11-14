@@ -11,6 +11,42 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-14
+
+A resource pass: a live dashboard at the default interval took 14.7 % of one core on the
+machine it was measured on (140×42, ~700 processes) and takes 5.4 % now; a frame costs about
+21 ms of CPU instead of 73. The README's new *Resource use* section carries the table.
+
+### Changed
+
+- **The history charts are rasterised by termstats itself** (`cli._dot_chart`): one pass over
+  the dot columns, 2×4 braille dots or 2×2 quadrants per cell, about 1 ms per chart where the
+  plotting library needed 20–50 ms. The picture keeps its geometry — fixed-width y axis with
+  top, middle and floor, a filled area with the line drawn over it, the vertical gradient,
+  one row of time labels — with two corrections: `now` sits at the right edge of the plot
+  and the window's start at the left (the old labels were one sample off and the first one
+  was pushed out of narrow charts), and a label that has no room is dropped rather than
+  overlapped.
+- **The process table reads the CPU share only**, and the name, memory share and RSS for the
+  rows that are drawn. Asking for all of it for every process was half of a frame's CPU; on
+  macOS a name longer than fifteen characters costs an extra system call.
+- **A live session re-reads slow facts at their own pace**: the process table at most once a
+  second (`PROC_SCAN_S`), partition usage every 5 s (`DISK_SCAN_S`), the connection count
+  every 2 s (`CONN_SCAN_S`). Snapshots and `--demo` always read; nothing a report prints is a
+  remembered value.
+- **Every frame is painted once.** The live dashboard runs rich's `Live` with
+  `auto_refresh=False`, as the microphone screens already did; with the refresh thread on,
+  the unchanged picture was rendered and written a second time between two frames (3.9
+  full-screen paints a second at 2 planned, 145 KB/s to the terminal instead of 74).
+- The block glyph level (`TERMSTATS_GLYPHS=block`) draws its charts in quadrant blocks from
+  the same rasteriser.
+
+### Removed
+
+- **The plotext dependency.** Two runtime dependencies are left, psutil and rich. With it go
+  the `<6` pin, the `Charts need plotext 5.x` note and the 5.x API guard — a breaking release
+  of a plotting library can no longer cost the charts.
+
 ## [0.7.0] - 2026-09-15
 
 ### Added

@@ -11,7 +11,7 @@ def plain(renderable, width=80, height=40):
     """Render something the way a terminal would, then strip the styling.
 
     Assertions go against what a human would SEE. The renderables carry rich markup,
-    embedded ANSI from plotext and nested layouts; matching on their repr would pin the
+    styled spans and nested layouts; matching on their repr would pin the
     implementation rather than the output.
 
     ⚠️ A bare Text is printed with its own no_wrap/overflow passed explicitly, because
