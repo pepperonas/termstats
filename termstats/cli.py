@@ -2597,6 +2597,7 @@ def print_help():
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
     print("  TERMSTATS_GLYPHS=LEVEL   braille | block | ascii (default: detected)")
     print("  TERMSTATS_NERD_FONT=1    Icons in panel titles (needs a Nerd Font)")
+    print("  TERMSTATS_NATIVE=0       Never hand the live dashboard to termstats-native")
     print("  NO_COLOR=1               No colour at all; TERM=dumb also drops to ASCII")
     print()
     print("Examples:")
@@ -2638,6 +2639,76 @@ def _stdout_is_interactive():
         return bool(sys.stdout.isatty())
     except Exception:
         return False
+
+
+# ---------------------------------------------------------------------------------
+# The native core
+#
+# native/ holds the same dashboard as a Rust program (`termstats-native`): direct system
+# calls, a cell grid, only the changed cells sent to the terminal. Where it is installed,
+# the live dashboard is handed over to it - 0.3 % of a core instead of 5.4 % - and it hands
+# back when a microphone screen is asked for. Nothing else is delegated: snapshots, --demo,
+# the audio modes, the ASCII and 16-colour fallbacks and Windows are drawn here.
+# ---------------------------------------------------------------------------------
+
+NATIVE_ENV = "TERMSTATS_NATIVE"
+NATIVE_BINARY = "termstats-native"
+_NATIVE_OFF = ("0", "off", "no", "false")
+_NATIVE_AUTO = ("", "1", "on", "yes", "true", "auto")
+
+
+def native_core():
+    """The native dashboard this session can be handed to, or None.
+
+    None whenever the native picture would not be THIS picture: a demo (its numbers are
+    scripted here), a glyph level or colour depth the native core does not draw, Nerd
+    Font titles, no terminal, Windows - or TERMSTATS_NATIVE=0.
+    """
+    choice = os.environ.get(NATIVE_ENV, "").strip()
+    if choice.lower() in _NATIVE_OFF:
+        return None
+    if IS_WINDOWS or DEMO is not None or not _stdout_is_interactive():
+        return None
+    if CAPS.glyphs != "braille" or CAPS.nerd or CAPS.color == "16":
+        return None
+    if choice.lower() not in _NATIVE_AUTO:              # an explicit path
+        return choice if os.path.isfile(choice) and os.access(choice, os.X_OK) else None
+    return shutil.which(NATIVE_BINARY)
+
+
+def _own_command():
+    """How the native core finds this program again when a microphone screen is asked for."""
+    here = sys.argv[0] if sys.argv and sys.argv[0] else ""
+    if here and os.path.isfile(here) and os.access(here, os.X_OK):
+        return os.path.abspath(here)
+    return shutil.which("termstats")
+
+
+def native_argv(path, interval, device=None):
+    """The command line that makes the native core draw what run_live() would have."""
+    argv = [path, "--live", "--interval", f"{interval:g}", "--theme", THEME.name]
+    if COMPACT:
+        argv.append("--compact")
+    if NO_BORDER:
+        argv.append("--no-border")
+    back = _own_command()
+    if back:
+        argv += ["--python", back]
+        if device is not None:
+            argv += ["--", "--device", device]
+    return argv
+
+
+def hand_over_to_native(interval, device=None):
+    """Become the native dashboard. Returns only if there is none, or it cannot be started."""
+    path = native_core()
+    if path is None:
+        return
+    try:
+        sys.stdout.flush()
+        os.execv(path, native_argv(path, interval, device))
+    except OSError:
+        return                                          # not startable: draw it ourselves
 
 
 def _fail(message):
@@ -2817,6 +2888,7 @@ def main():
     active_view = audio_mode or "performance"
     while True:
         if active_view == "performance":
+            hand_over_to_native(interval, device)       # does not return when it succeeds
             next_view = run_live(interval)
         else:
             try:

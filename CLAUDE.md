@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.8.0**, 1322 tests.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.0**, 1353 pytest tests + 43 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -52,8 +52,10 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1322 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1353 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── native/           # termstats-native: the dashboard in Rust (Cargo.toml, src/{main,ui,screen,color,themes}.rs, src/sys/{macos,linux}.rs)
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
+├── tools/gen_native_themes.py  # theme.py -> native/src/themes.rs (GENERATED, a test checks it is current)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
 ├── docs/screenshots/     # the PNGs the README embeds (compact, no-border, narrow, snapshot, list-themes, glyphs, colours, help)
 ├── tools/demo.tape   # VHS script: `vhs tools/demo.tape` -> termstats-demo.gif
@@ -70,10 +72,11 @@ from `theme.GLYPH_PROBE`. If you need a new glyph or colour, add it to `theme.py
 
 ## Version bumps
 
-The version lives in **two** places and both must move together:
+The version lives in **three** places and all must move together:
 
 - `pyproject.toml` → `version = "X.Y.Z"`
 - `termstats/__init__.py` → `__version__ = "X.Y.Z"`
+- `native/Cargo.toml` → `version = "X.Y.Z"` (`test_native` is red otherwise; then `cargo build` so `Cargo.lock` follows)
 
 Then: CHANGELOG entry (top released heading must equal the version), README `# -> termstats X.Y.Z`
 line, `python tools/badges.py` (the committed `version.json` must match — `test_badges` is red
@@ -423,6 +426,60 @@ start-up in (0.35 s of the 20 s run).
 ⚠️ The README pictures were NOT re-rendered for 0.8.0: they still show the plotext charts and
 `v0.7.0` in the header. The geometry is the same; re-run `tools/screenshots.py` + the browser
 rasterisation when the pictures are next touched.
+
+## The native core (0.9.0)
+
+User, right after 0.8.0: "can another technology go further than Python? check exactly,
+research, deliver the maximum". Measured before building: a C loop over `proc_pidinfo` scans
+the process table in 0.5 ms where psutil needs 8.9; rich's layout was 11 of the remaining
+21 ms. So: **`native/` = `termstats-native`, Rust, one dependency (`libc`)**. 0.35 % of a core
+and 7 MB at 140×42 against 5.4 % / 36 MB; ~0.7 ms CPU per frame; ~9 KB/s to the terminal.
+
+- `src/sys/{macos,linux}.rs` - collectors. macOS: `host_processor_info`, `host_statistics64`,
+  `vm.swapusage`, `getfsstat`, `NET_RT_IFLIST2`, IOKit for disk throughput (`extern "C"`,
+  CFString keys made once), `proc_listallpids` + `proc_pidinfo(PROC_PIDTASKINFO)`; names via
+  `proc_pidpath` for DRAWN rows only. Linux: `/proc/{stat,meminfo,mounts,net/dev,diskstats}`,
+  `/proc/<pid>/stat`. Same arithmetic as psutil so both dashboards agree to the digit.
+  ⚠️ **APFS: "blocks minus free blocks" is the same for every volume of a container** - an
+  empty volume read 97 % full; the per-volume figure is `getattrlist(ATTR_VOL_SPACEUSED)`
+  (what psutil does on macOS too). ⚠️ `pti_total_user/system` are mach ticks: multiply by
+  the timebase (125/3 on Apple silicon). ⚠️ Linux pids have seven digits (pid column widens).
+- `src/screen.rs` - `Screen` (cells) and `Painter`: `diff()` writes only changed runs (runs
+  closer than 4 cells are joined), one write, inside `CSI ?2026 h/l`; `lines()` for snapshots.
+- `src/ui.rs` - `State` (samples, histories, eased fills, peaks) and the layout: a PORT of
+  `render_dashboard()`. `tests/test_native.py` compares 23 constants between the two
+  programs and requires `themes.rs` to be exactly what the generator prints.
+  One deliberate difference: `core_columns` knows the width and the cores are never laid
+  out for more rows than the panel got - `TOTAL` is never cropped (Python crops below 80×24).
+- `src/main.rs` - args (same spellings), cbreak + alternate screen, `poll()` until the next
+  tick (signals WITHOUT `SA_RESTART`, so SIGWINCH/SIGINT interrupt it), panic hook that
+  restores the terminal (release builds abort on panic - no destructor runs).
+- Hand-over: `cli.native_core()` / `hand_over_to_native()` in `main()`'s view loop -
+  `os.execv`, only for the live dashboard, never for demo / block+ascii glyphs / 16 colours /
+  nerd titles / no tty / Windows. The native core gets `--python <termstats>` and, after
+  `--`, the device args; `b`/`d`/`x` exec Python again. ⚠️ **`conftest` sets
+  `TERMSTATS_NATIVE=0` for every test** - with the core installed, a test that reaches the
+  live loop would replace pytest with it.
+- Build/install here: `cd native && cargo install --path . --force` → `~/.cargo/bin/termstats-native`
+  (installed on this Mac since 2026-11-14, so `termstats`/`ts` hand over). Linux static:
+  `rustup target add aarch64-unknown-linux-musl` + `RUSTFLAGS="-C linker=rust-lld -C
+  link-self-contained=yes" cargo build --release --target …` - no cross gcc needed; the
+  aarch64 binary was run once on raspi5 (`--once`, `--bench`) and removed again.
+- Verification harnesses (session scratchpad pattern): a pty runner that sets `TIOCSWINSZ`,
+  drains the master, reads `RUSAGE_CHILDREN`; a key script (q / Esc / Ctrl+C / arrow key must
+  NOT quit / x with a fake `--python` / resize). `termstats-native --bench` prints the
+  per-part costs. ⚠️ zsh: `echo ======` is an error (`=word` expansion) - quote it.
+- Mutation batch (32, both programs): 27 caught at once, 5 blind and each for a different
+  reason worth remembering - an EQUIVALENT mutant (the off-switch list is only reachable when
+  a file is literally named "0": the pin now creates one), a mutant that only cost
+  efficiency (the run joiner: now a cursor-move count is pinned), a pin that measured the
+  wrong column (names stayed aligned while the pid touched them), a hysteresis test that
+  never approached the threshold from below, and a merge test whose new pid sat at the END
+  of the list where no neighbour could lend it a past.
+- Not ported, on purpose: connection count, `--demo`, audio, ASCII/block glyphs, Windows.
+  ⚠️ `mac-screen-agent`'s "Last" view calls the PYTHON `render_dashboard` (another session
+  maintains that) - `--size`/`--samples` exist so a service can ask the native core for a
+  frame instead.
 
 ## Leaving a session (0.5.0)
 

@@ -124,6 +124,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [What the dashboard shows](#what-the-dashboard-shows) — the panels, disk on macOS, fitting the terminal
 - [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
 - [Resource use](#resource-use) — what a frame costs, measured, and the levers that are yours
+- [The native core](#the-native-core) — the same dashboard in Rust: 0.3 % of a core, 7 MB
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
 - [Health Report (optional)](#health-report-optional)
@@ -155,7 +156,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - **`--demo`** — a scripted machine (network burst, CPU spike, filling disk) that plays the same way every time
 - **Microphone modes** — `-eq` a 28-band spectrum analyser with peak hold, `-bpm` a tempo detector, `-db` a level meter, `-x` level and tempo side by side; the headline number is drawn five rows tall, eased between samples and flaring on the beat; optional `termstats[audio]` extra, `--demo` plays scripted music
 - **They Move** — 30 frames a second; bars ease in seconds not frames, leave an afterglow that falls under gravity, peak markers hold then drop, every beat is an envelope that nudges the bars, lights the dot and flares the tempo, and a metronome sweeps between beats
-- **Light on the Machine** — a frame costs about 20 ms of CPU: the charts are rasterised in-process, the process table is read once a second, and nothing is drawn twice ([Resource use](#resource-use))
+- **Light on the Machine** — with the optional [native core](#the-native-core) the live dashboard takes about 0.3 % of one CPU core and 7 MB; without it, about 5 % ([Resource use](#resource-use))
 - **Zero Config** — flags and environment variables only; no config file, no state on disk
 
 ## Installation
@@ -213,7 +214,7 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version   # -> termstats 0.8.0
+termstats --version   # -> termstats 0.9.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -328,6 +329,7 @@ is drawn from four named colours the theme chooses itself.
 | `TERMSTATS_THEME=name` | Default theme (the `--theme` flag overrides it) |
 | `TERMSTATS_GLYPHS=braille\|block\|ascii` | Force a glyph level — `block` for fonts without braille, `ascii` for the plainest terminal |
 | `TERMSTATS_NERD_FONT=1` | Prefix panel titles with Nerd Font icons |
+| `TERMSTATS_NATIVE=0` | Never hand the live dashboard to `termstats-native` (see [The native core](#the-native-core)); a path instead of `0` names the binary to use |
 | `NO_COLOR` | Any value: no colour and no bold/dim at all ([no-color.org](https://no-color.org)) |
 | `COLORTERM=truecolor` / `24bit` | Enables 24-bit colour where `TERM` alone would suggest 256 |
 | `WT_SESSION` | Set by Windows Terminal, which exports neither `TERM` nor `COLORTERM`; read as 24-bit colour |
@@ -628,20 +630,22 @@ music before the first frame, so a tempo is already on screen.
 ## Resource use
 
 A dashboard that is left running all day should not show up in its own process list. Measured
-on an Apple-silicon MacBook with ~700 processes, a 140×42 terminal and the default 0.5 s
-interval, over 20 seconds in a real pseudo-terminal (start-up included):
+on an Apple-silicon MacBook with ~700 processes, the default 0.5 s interval, in a real
+pseudo-terminal, start-up included (20 s runs for the Python columns, 30 s for the native one):
 
-| | 0.7.0 | 0.8.0 |
-|---|---|---|
-| CPU, default interval (0.5 s) | 14.7 % of one core | **5.4 %** |
-| CPU, same at 200×60 | 19.3 % | **7.3 %** |
-| CPU at `-i 1` | — | **3.6 %** |
-| CPU per frame (render + print) | ~73 ms | **~21 ms** |
-| Bytes written to the terminal | 145 KB/s | **74 KB/s** |
-| Full-screen paints per second | 3.9 | **2.0** (one per frame) |
-| Resident memory | 45 MB | **36 MB** |
+| | 0.7.0 | 0.8.0 (Python) | 0.9.0 ([native core](#the-native-core)) |
+|---|---|---|---|
+| CPU at 140×42 | 14.7 % of one core | 5.4 % | **0.35 %** |
+| CPU at 200×60 | 19.3 % | 7.3 % | **0.3 %** |
+| CPU at `-i 1`, 140×42 | — | 3.6 % | **0.2 %** |
+| CPU per frame | ~73 ms | ~21 ms | **~0.7 ms** |
+| Bytes written to the terminal | 145 KB/s | 74 KB/s | **~9 KB/s** |
+| What is repainted | the whole screen, 3.9× a second | the whole screen, 2× a second | **only the cells that changed** |
+| Resident memory | 45 MB | 36 MB | **7 MB** |
 
-Where the time went, and what 0.8.0 did about each:
+Two rounds of work are behind those columns.
+
+**0.8.0 made the Python program a third of its cost**, in the order the profile gave:
 
 - **The two history charts cost 20–50 ms each** — more than everything else in the frame
   together. They were drawn by a general plotting library that interpolates every line into
@@ -655,18 +659,93 @@ Where the time went, and what 0.8.0 did about each:
   session re-reads the table at most once a second.
 - **Every frame was painted twice.** rich's own refresh thread re-rendered and re-sent the
   unchanged picture between two frames. The loop paints each frame itself; the thread is off.
-  This halves what your terminal emulator has to parse and draw as well, which never shows up
-  in termstats' own numbers.
 - **Slow facts were read at frame rate.** Partition usage is re-read every 5 s and the
   connection count every 2 s in a live session, instead of twice per frame.
 
 None of this applies to a snapshot or to `--demo`: `--once` measures everything for the one
 frame it prints, and the demo advances by frames, not by the wall clock.
 
-What is left is mostly rich laying out and styling the screen (~11 ms a frame) and one system
-call per process once a second. The remaining levers are yours: **the cost is per frame**, so
-`termstats -i 1` halves it and `-i 2` halves it again, and a smaller window is cheaper than a
-large one.
+**0.9.0 asked what was left — and the answer was Python itself.** Of the 21 ms a frame
+still cost, 11 ms were rich laying out and styling the screen, 9 ms were psutil walking the
+process table (one system call per process — and about twelve microseconds of interpreter
+around each), and the rest were small. None of that is a mistake to fix; it is what the
+language costs. The same work in a compiled program:
+
+| One frame at 140×42 | Python 0.8.0 | native |
+|---|---|---|
+| Process table, ~700 processes | 8.9 ms | 0.65 ms |
+| CPU, memory, network, disks | ~4 ms | 0.15 ms |
+| Layout and drawing | ~11 ms | 0.03 ms |
+| Encoding for the terminal | (in the above) | 0.1 ms |
+
+That is the [native core](#the-native-core): what remains in it is almost entirely the
+kernel's own work.
+
+The remaining levers are yours either way: **the cost is per frame**, so `-i 1` halves it and
+`-i 2` halves it again.
+
+## The native core
+
+`native/` holds the system dashboard a second time, as a Rust program: **`termstats-native`**.
+Same panels, same layout budget, same number formats, same six themes — the colour tables are
+generated from `theme.py`, and a test compares the layout constants of the two programs — at
+about a fifteenth of the CPU and a fifth of the memory of the Python program.
+
+```bash
+cargo install --git https://github.com/pepperonas/termstats termstats-native   # needs Rust
+termstats                # hands the live dashboard to the native core from now on
+termstats-native         # or run it directly
+```
+
+**You do not have to change what you type.** When `termstats-native` is on the `PATH`,
+`termstats` starts it for the live dashboard and steps aside (`exec`, no second process).
+The keys `b`, `d` and `x` lead back to the microphone screens — the native core starts the
+Python program again for them — and `s` there returns to the native dashboard. Everything
+else is still drawn by Python: snapshots (`--once`, pipes), `--demo`, the microphone modes,
+the `block` and `ascii` glyph levels, 16-colour terminals, Nerd Font titles, and Windows.
+`TERMSTATS_NATIVE=0` keeps the dashboard in Python; `TERMSTATS_NATIVE=/path/to/binary` names
+a binary that is not on the `PATH`.
+
+Three things make the difference, in this order:
+
+- **The machine is read with direct system calls.** mach, sysctl and libproc on macOS, `/proc`
+  on Linux — one dependency (`libc`), nothing between the program and the kernel. The whole
+  process table costs about 0.65 ms; the name of a process is asked for only for the rows
+  that are drawn.
+- **Only what changed reaches the terminal.** A frame is drawn into a grid of cells and
+  compared with what the terminal already shows; the difference goes out in one write,
+  bracketed by synchronized-output marks (a terminal that does not know them ignores them).
+  A dashboard at rest changes a few dozen cells a frame — about a tenth of the bytes, and
+  your terminal emulator's own work shrinks with them. That part never shows in termstats'
+  numbers, and on a busy screen it is the larger one.
+- **Between two frames the process sleeps in one `poll()`.** A key or a resize wakes it,
+  nothing else does: no timer slices, no refresh thread.
+
+Its own options — the same spellings as `termstats` where they exist:
+
+```
+termstats-native [-i SEC] [--theme NAME] [--compact] [--no-border]
+                 [--once] [--size COLSxROWS] [--samples N] [--list-themes] [--version]
+```
+
+`--size 140x42` gives a snapshot its size when there is no terminal to ask (a service, a
+web view); `--samples 30 -i 1` takes thirty samples before it prints, so the charts are
+filled. `termstats-native --bench` prints what each part of a frame costs on the machine it
+runs on.
+
+**Linux** is served by the same source (`/proc`, `statvfs`); static binaries need no
+toolchain on the target:
+
+```bash
+rustup target add aarch64-unknown-linux-musl          # or x86_64-unknown-linux-musl
+cd native && RUSTFLAGS="-C linker=rust-lld -C link-self-contained=yes" \
+    cargo build --release --target aarch64-unknown-linux-musl
+```
+
+What the native core does not do, on purpose: it has no connection count (root-only on
+macOS, and a walk over every socket elsewhere), and on a terminal too small for the plan it
+packs the cores tighter instead of cropping the panel — the one place its picture is better
+than the one it copies.
 
 ## Platform Support
 
@@ -698,6 +777,8 @@ skipped, and a denied connection count is omitted instead of shown as zero.
 - [rich](https://github.com/Textualize/rich) — terminal formatting
 - optional, for the microphone modes only: [numpy](https://numpy.org) and
   [sounddevice](https://python-sounddevice.readthedocs.io) — the `termstats[audio]` extra
+- optional, for [the native core](#the-native-core): a Rust toolchain to build it once; the
+  binary itself needs nothing
 
 The charts are drawn in **Unicode braille** (U+2800–U+28FF), which packs 2×4 dots into one
 character cell. Font coverage for that block is near-universal; if yours lacks it the charts
@@ -778,8 +859,11 @@ termstats/
 │   ├── demo.py          # the scripted machine behind --demo
 │   ├── audio.py         # -eq/-bpm/-db: dBFS, log bands, peak hold, tempo estimator, demo synth (numpy)
 │   └── capture.py       # the microphone (sounddevice), imported lazily, every failure a sentence
+├── native/              # the same dashboard in Rust: termstats-native (cargo; one dependency, libc)
+│   └── src/             # main.rs loop+tty · sys/ macOS+Linux collectors · screen.rs cells+diff · ui.rs layout
 ├── tests/               # pytest suite (pure unit tests, psutil stubbed)
 ├── tools/badges.py      # generates .github/badges/*.json for the headline badges
+├── tools/gen_native_themes.py  # writes native/src/themes.rs from theme.py (a test checks it is current)
 ├── tools/demo.tape      # VHS recording script for the --demo GIF
 ├── tools/screenshots.py # renders every README picture from --demo (SVG + index.html for the browser)
 ├── docs/screenshots/    # the rendered PNGs the README embeds
@@ -810,6 +894,7 @@ python -m termstats      # same thing without the console script
 pytest                   # the whole suite, about three seconds
 pytest -q tests/test_args.py
 env -u COLORTERM TERM=dumb pytest      # must be green too: the suite pins its own capabilities
+(cd native && cargo test --release)    # the native core's own suite, 43 tests
 ```
 
 The exact count is on the badge at the top of this file — it is generated, not typed.
@@ -949,7 +1034,7 @@ That choice is what the rest follows from.
 | | termstats | htop | btop | glances |
 |---|---|---|---|---|
 | Kind | dashboard | process manager | dashboard + process manager | dashboard, also web/server |
-| Language | Python | C | C++ | Python |
+| Language | Python, with an optional native core in Rust | C | C++ | Python |
 | Configuration | none — flags and environment only | `htoprc` | `btop.conf` | `glances.conf` |
 | One-shot output for cron / files | yes, automatic when piped | no | no | yes (`--stdout`, `--export`) |
 | History charts | braille area charts, CPU + network | meters only | braille graphs, several | sparklines + history mode |

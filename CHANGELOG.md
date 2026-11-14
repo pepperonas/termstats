@@ -11,6 +11,40 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-14
+
+The question after 0.8.0 was whether another technology could go further than Python can.
+It can, by a factor of fifteen: the live dashboard takes about 0.35 % of one core and 7 MB
+in the new native core, against 5.4 % and 36 MB.
+
+### Added
+
+- **`termstats-native`, the system dashboard in Rust** (`native/`). Same panels, layout
+  budget, number formats and themes; one dependency (`libc`). It reads the machine with
+  direct system calls (mach, sysctl, libproc and IOKit on macOS; `/proc` on Linux), draws
+  into a grid of cells and sends the terminal only the cells that changed, in one write
+  inside synchronized-output marks, and sleeps in a single `poll()` between frames. Measured
+  on the machine of the 0.8.0 table: 0.35 % of a core at 140×42 (Python: 5.4 %), about
+  0.7 ms of CPU per frame (21 ms), ~9 KB/s to the terminal (74 KB/s), 7 MB resident (36 MB).
+  Verified on macOS/arm64 and on Linux/aarch64 (a static musl binary on a Raspberry Pi 5).
+- **`termstats` hands the live dashboard to the native core when it is installed** (`exec` —
+  no second process), and the native core starts `termstats` again for the microphone
+  screens (`b`, `d`, `x`); `s` there returns to it. Snapshots, `--demo`, the microphone
+  modes, the `block`/`ascii` glyph levels, 16-colour terminals, Nerd Font titles and Windows
+  stay in Python. `TERMSTATS_NATIVE=0` switches the hand-over off, a path selects a binary.
+- Native-only options: `--size COLSxROWS` (a snapshot without a terminal to ask),
+  `--samples N` (a snapshot with filled charts) and `--bench` (what each part of a frame
+  costs on this machine).
+- `tools/gen_native_themes.py` writes the native colour tables from `theme.py`; a test fails
+  when they are not current, another when a layout constant differs between the two programs.
+- CI builds and tests the native core on Linux and macOS.
+
+### Changed
+
+- The native core packs the per-core meters tighter (or draws a heat strip) when a terminal
+  is too short or too narrow for the plan, so `TOTAL` is never cropped; the Python layout
+  still crops below its 80×24 floor.
+
 ## [0.8.0] - 2026-11-14
 
 A resource pass: a live dashboard at the default interval took 14.7 % of one core on the

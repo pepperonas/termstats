@@ -12,6 +12,13 @@ from termstats import theme
 
 
 @pytest.fixture(autouse=True)
+def no_native_core(monkeypatch):
+    """⚠️ A test that runs main() into the live dashboard would otherwise exec the native
+    core on a machine that has it installed - and replace the pytest process with it."""
+    monkeypatch.setenv("TERMSTATS_NATIVE", "0")
+
+
+@pytest.fixture(autouse=True)
 def clean_module_state():
     """Reset every piece of cross-call state termstats carries between renders."""
     for dq in (cli.cpu_history, cli.steal_history, cli.net_sent_history, cli.net_recv_history):

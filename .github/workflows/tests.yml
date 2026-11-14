@@ -11,6 +11,32 @@ defaults:
     shell: bash
 
 jobs:
+  native:
+    # The native core (native/, Rust): its own suite, and a release build that must start.
+    name: native / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustc --version && cargo --version
+      - name: Tests
+        run: cargo test --release
+      - name: Build and smoke test
+        # No terminal on a runner: a bare call must print a snapshot and exit, not hang.
+        run: |
+          cargo build --release
+          ./target/release/termstats-native --version
+          ./target/release/termstats-native --size 140x42 > snapshot.txt
+          grep -q TERMSTATS snapshot.txt && grep -q TOTAL snapshot.txt
+          ./target/release/termstats-native --bench
+
   test:
     name: ${{ matrix.os }} / py${{ matrix.python }}
     runs-on: ${{ matrix.os }}
@@ -20,8 +46,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.13"]
         include:
-          # The floor claimed in pyproject.toml - keep it honest.
-          - os: ubuntu-latest
+          # The floor claimed in pyproject.toml - keep it honest. Pinned to 24.04: the
+          # 26.04 image that ubuntu-latest became has no Python 3.9 build to install.
+          - os: ubuntu-24.04
             python: "3.9"
     steps:
       - uses: actions/checkout@v4
