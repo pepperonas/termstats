@@ -695,6 +695,7 @@ impl State {
         let (plot_w, plot_h) = (r.w - axis_w, r.h - 1);
         let (dot_w, dot_h) = (plot_w * 2, plot_h * 4);
         let mut masks = vec![0u32; plot_w * plot_h];
+        let mut lined = vec![false; plot_w * plot_h];       // the cell holds a line: no fill dots
         let mut owner = vec![0usize; plot_w * plot_h];      // 0 = empty, else series index + 1
         for (si, (values, _colour, fill)) in series.iter().enumerate() {
             let n = values.len();
@@ -718,9 +719,23 @@ impl State {
                 };
                 for dot in first..=last {
                     let cell = (plot_h - 1 - dot / 4) * plot_w + x / 2;
-                    masks[cell] |= BRAILLE_BITS[3 - dot % 4][x % 2];
-                    // A line's colour wins over the fill's, so the line stays visible.
-                    if !fill || owner[cell] == 0 {
+                    let bit = BRAILLE_BITS[3 - dot % 4][x % 2];
+                    // A cell has one colour, so a cell a line crosses shows the line's dots
+                    // only: with the fill's dots kept, a thin trace through the area would
+                    // become a row of solid blocks in the line's colour.
+                    if *fill {
+                        if !lined[cell] {
+                            masks[cell] |= bit;
+                            if owner[cell] == 0 {
+                                owner[cell] = si + 1;
+                            }
+                        }
+                    } else if lined[cell] {
+                        masks[cell] |= bit;
+                        owner[cell] = si + 1;
+                    } else {
+                        masks[cell] = bit;
+                        lined[cell] = true;
                         owner[cell] = si + 1;
                     }
                 }

@@ -362,8 +362,10 @@ fn the_line_keeps_its_colour_inside_the_area() {
     let mut scr = Screen::new(40, 10);
     let series = [(vec![80.0; 60], 0x00ff00, true), (vec![40.0; 60], 0x0000ff, false)];
     s.chart(&mut scr, Rect { x: 0, y: 0, w: 40, h: 10 }, &series, Some((0.0, 100.0)), AXIS_W_PCT);
-    let blue = scr.cells.iter().filter(|c| c.fg == 0x0000ff).count();
-    assert_eq!(blue, 37, "one cell per column carries the line's colour");
+    let blue: Vec<_> = scr.cells.iter().filter(|c| c.fg == 0x0000ff).collect();
+    assert_eq!(blue.len(), 37, "one cell per column carries the line's colour");
+    // ... and shows the line only: a full cell in the line's colour would be a solid block.
+    assert!(blue.iter().all(|c| (c.ch as u32 - 0x2800).count_ones() == 2), "a flat line is two dots per cell");
 }
 
 #[test]

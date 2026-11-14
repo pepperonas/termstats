@@ -7,7 +7,7 @@
 # release's SHA256SUMS and puts it into ~/.local/bin. Nothing else is touched, and nothing is
 # run as root.
 #
-#   TERMSTATS_VERSION=v0.9.1   install that release instead of the latest
+#   TERMSTATS_VERSION=v0.9.2   install that release instead of the latest
 #   TERMSTATS_BIN_DIR=/path    install there instead of ~/.local/bin
 #
 # macOS (Apple silicon, Intel) and Linux (x86_64, aarch64; static, any distribution). On

@@ -11,6 +11,20 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-14
+
+### Fixed
+
+- **A line drawn over a filled area is a thin trace again.** Since 0.8.0 the cells a line
+  crossed kept the area's dots and took the line's colour - the network chart's tx line
+  turned into rows of solid blocks wherever it ran through the rx area. Such a cell now
+  shows the line's dots only, in both the Python program and the native core.
+
+### Changed
+
+- Every picture in this README is re-rendered from 0.9.2 (`tools/screenshots.py`): they
+  still showed the charts and the version of 0.6.0 and 0.7.0.
+
 ## [0.9.1] - 2026-11-14
 
 ### Added

@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.1**, 1375 pytest tests + 43 `cargo test` in `native/`.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.2**, 1375 pytest tests + 43 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -423,9 +423,14 @@ with `process_time`, not wall time (this Mac often runs at load 80+); cProfile i
 loops ~8x, so rank with it and measure with plain timers; the pty harness must count
 start-up in (0.35 s of the 20 s run).
 
-⚠️ The README pictures were NOT re-rendered for 0.8.0: they still show the plotext charts and
-`v0.7.0` in the header. The geometry is the same; re-run `tools/screenshots.py` + the browser
-rasterisation when the pictures are next touched.
+**0.9.2 - pictures re-rendered, and what they showed:** all 18 README pictures were rendered
+again (`tools/screenshots.py` → `python3 -m http.server` → Playwright element screenshots,
+`scale: 'css'`; same pixel sizes as before). Comparing the new hero with the old one found a
+regression of the 0.8.0 rasteriser: a LINE over a filled area kept the area's dots in its
+cells and coloured them like the line - the tx line became rows of solid yellow blocks.
+A cell a line crosses now shows the line's dots only (`lined[]` in `_dot_chart`, the same in
+`native/src/ui.rs`). **Lesson: after replacing a renderer, look at the rendered picture
+beside the old one** - the tests pinned "the line's colour is there", which was true.
 
 ## The native core (0.9.0)
 

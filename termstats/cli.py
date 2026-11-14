@@ -942,7 +942,9 @@ def _dot_chart(series, ylim, width, height, axis_w, span_s):
     always had: a fixed-width y axis (top, middle, floor), the plot, one row of time labels.
     A filled series is an area from the floor up; any other series is a line, joined
     vertically between neighbouring columns so a steep edge does not break into dots. A cell
-    takes the colour of a LINE that crosses it, else of the fill - the line stays visible.
+    has ONE colour, so a cell a line crosses shows the line's dots only, in the line's colour:
+    keeping the fill's dots there as well would paint the whole cell in the line's colour and
+    turn a thin trace through the area into a row of solid blocks.
     """
     cells = T.CHART_CELLS[GLYPHS.chart_marker]
     if ylim is None:
@@ -955,6 +957,7 @@ def _dot_chart(series, ylim, width, height, axis_w, span_s):
     dot_w, dot_h = plot_w * cells.cols, plot_h * cells.rows
     ncols, nrows, bits = cells.cols, cells.rows, cells.bits
     masks = [0] * (plot_w * plot_h)
+    lined = [False] * (plot_w * plot_h)          # the cell holds a line: fill dots are not added
     owner = [None] * (plot_w * plot_h)
 
     for entry in series:
@@ -975,9 +978,17 @@ def _dot_chart(series, ylim, width, height, axis_w, span_s):
             cx, column_bits = x // ncols, x % ncols
             for dot in range(first, last + 1):
                 i = (plot_h - 1 - dot // nrows) * plot_w + cx
-                masks[i] |= bits[nrows - 1 - dot % nrows][column_bits]
-                if not fill or owner[i] is None:
+                bit = bits[nrows - 1 - dot % nrows][column_bits]
+                if fill:
+                    if not lined[i]:
+                        masks[i] |= bit
+                        if owner[i] is None:
+                            owner[i] = style
+                elif lined[i]:
+                    masks[i] |= bit
                     owner[i] = style
+                else:
+                    masks[i], lined[i], owner[i] = bit, True, style
 
     muted = _chart_style(MUTED)
     labels = {(plot_h - 1) // 2: (lo + hi) / 2, plot_h - 1: lo, 0: hi}

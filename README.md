@@ -183,7 +183,7 @@ termstats-native
 
 The script downloads the binary for your machine from the latest release, checks it against
 the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
-`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.9.1` a
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.9.2` a
 particular release.
 
 Or by hand — pick your machine:
@@ -208,7 +208,7 @@ with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries
 ### The Python program — pipx (recommended)
 
 ```bash
-pipx install https://github.com/pepperonas/termstats/releases/download/v0.9.1/termstats-0.9.1-py3-none-any.whl
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.9.2/termstats-0.9.2-py3-none-any.whl
 ```
 
 That is the released version. The current state of the repository instead:
@@ -220,7 +220,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user https://github.com/pepperonas/termstats/releases/download/v0.9.1/termstats-0.9.1-py3-none-any.whl
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.9.2/termstats-0.9.2-py3-none-any.whl
 ```
 
 ### From source
@@ -261,8 +261,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version          # -> termstats 0.9.1
-termstats-native --version   # -> termstats-native 0.9.1
+termstats --version          # -> termstats 0.9.2
+termstats-native --version   # -> termstats-native 0.9.2
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).

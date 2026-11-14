@@ -292,8 +292,9 @@ def test_only_one_network_series_is_filled():
 
 
 def test_the_line_stays_visible_inside_the_area():
-    """tx runs BELOW the top of the rx area here: the cells it crosses must carry its colour,
-    or the line vanishes exactly where the two series are compared."""
+    """tx runs BELOW the top of the rx area here. A cell has one colour, so the cells the
+    line crosses carry the line's colour and the line's dots ONLY - with the fill's dots kept
+    as well, the thin trace would be a row of solid blocks in the line's colour."""
     flat(rx=800.0, tx=400.0)
     chart = cli.get_net_chart(60, 10)
     lines = chart.plain.split("\n")
@@ -301,7 +302,11 @@ def test_the_line_stays_visible_inside_the_area():
     tx_rows = [r for r in range(len(lines) - 1) if tx_hex in colours(chart, r)]
     assert len(tx_rows) == 1
     row = lines[tx_rows[0]][T.AXIS_W_RATE:]
-    assert set(row) == {T.CHART_CELLS["braille"].glyphs[255]}, "the area under the line is still drawn"
+    cells = T.CHART_CELLS["braille"]
+    assert len(set(row)) == 1 and " " not in row, "one unbroken trace across the plot"
+    dots = bin(cells.glyphs.index(row[0])).count("1")
+    assert dots == cells.cols, f"a flat line is one dot per dot column, not a filled cell ({dots} dots)"
+    assert set(lines[tx_rows[0] + 1][T.AXIS_W_RATE:]) == {cells.glyphs[255]}, "the area below the line is drawn"
 
 
 def test_network_series_colours_come_from_the_ramp():
