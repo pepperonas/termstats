@@ -125,6 +125,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
 - [Resource use](#resource-use) — what a frame costs, measured, and the levers that are yours
 - [The native core](#the-native-core) — the same dashboard in Rust: 0.3 % of a core, 7 MB
+- [History and recommendation](#history-and-recommendation) — record what the machine does, get a computer recommended after 14 days
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
 - [Health Report (optional)](#health-report-optional)
@@ -183,7 +184,7 @@ termstats-native
 
 The script downloads the binary for your machine from the latest release, checks it against
 the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
-`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.9.2` a
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.10.0` a
 particular release.
 
 Or by hand — pick your machine:
@@ -208,7 +209,7 @@ with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries
 ### The Python program — pipx (recommended)
 
 ```bash
-pipx install https://github.com/pepperonas/termstats/releases/download/v0.9.2/termstats-0.9.2-py3-none-any.whl
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.10.0/termstats-0.10.0-py3-none-any.whl
 ```
 
 That is the released version. The current state of the repository instead:
@@ -220,7 +221,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user https://github.com/pepperonas/termstats/releases/download/v0.9.2/termstats-0.9.2-py3-none-any.whl
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.10.0/termstats-0.10.0-py3-none-any.whl
 ```
 
 ### From source
@@ -261,8 +262,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version          # -> termstats 0.9.2
-termstats-native --version   # -> termstats-native 0.9.2
+termstats --version          # -> termstats 0.10.0
+termstats-native --version   # -> termstats-native 0.10.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -798,6 +799,87 @@ What the native core does not do, on purpose: it has no connection count (root-o
 macOS, and a walk over every socket elsewhere), and on a terminal too small for the plan it
 packs the cores tighter instead of cropping the panel — the one place its picture is better
 than the one it copies.
+
+## History and recommendation
+
+termstats can keep a history of what the machine does and, after two weeks, say which
+computer fits that use: the cheapest current Mac that meets it at three levels of headroom,
+plus the best machine that runs Linux. Both commands are done by
+[the native core](#the-native-core) (macOS and Linux; not Windows).
+
+```bash
+termstats record install     # record from every login on, in the background
+termstats record status      # is it running, which day of the 14 it is, how big the log is
+termstats recommend          # the recommendation, once 14 days are on file
+termstats recommend --now    # a first impression from what is there, marked provisional
+termstats recommend --json   # the same for another program
+termstats record uninstall   # stop and remove the service; the history stays
+termstats record purge       # delete the history
+```
+
+`termstats-native record ...` is the same thing without the Python program.
+
+### What is recorded
+
+A background service (a launchd agent on macOS, a systemd user unit on Linux) takes a light
+reading every 5 seconds and looks at the process table every 30. It keeps **one line a
+minute**, written five minutes at a time:
+
+| | per minute |
+|---|---|
+| Processor | average, 95th percentile and maximum load; how many cores were busy at once; how often one core was pinned while the rest idled |
+| Memory | used (average, maximum), what the machine *wanted* (used plus what it had to compress or swap out), swap, memory pressure |
+| Graphics | utilisation, average and maximum |
+| Storage, network | space in use, bytes read and written, bytes received and sent |
+| Circumstances | mains or battery, charge, thermal throttling, number of external displays |
+| Who | the names of the three programs that used the most CPU time and the most memory |
+
+A value the system does not offer stays an empty field, it is never written as zero. Time
+the machine slept is marked as a gap and not counted as idle.
+
+The log is plain text, tab-separated, one file a day:
+`~/.local/state/termstats/history/YYYY-MM-DD.tsv` (`TERMSTATS_STATE_DIR` or `XDG_STATE_HOME`
+move it). The files are readable only by you (`0600`), hold program **names** and nothing
+else about what you do - no arguments, no paths, no window titles - and are never sent
+anywhere: termstats does not talk to the network. About 300 KB a day, 4 MB a fortnight; files older than 90
+days are deleted (`record --keep-days N`).
+
+Measured on a MacBook Pro (M1 Pro, ~700 processes) over ten minutes: **0.024 % of a core (0.14 s of CPU time) and 6.2 MB of memory - 5.5 MB of that is what the program occupies before it has done anything**.
+
+### How the recommendation is made
+
+`termstats recommend` reads the last four weeks at most and reduces them to a need:
+
+- **Memory**: the 99th percentile of what the machine wanted, plus headroom, rounded up to a
+  size that is sold.
+- **Processor**: the load at the 95th percentile and how long it stayed near the limit,
+  converted through the benchmark score of the chip it was measured on. A history from an
+  M1 Pro and one from an M4 ask for different things at the same percentage.
+- **Graphics**: the 95th percentile and the share of time above 80 %.
+- **Storage**: what is in use, its growth over the period, plus reserve.
+- **Form**: time on battery decides whether desktops qualify; sustained thermal throttling
+  rules out fanless machines.
+
+Three levels are named - *just enough*, *fits*, *with reserve* (10 %, 30 % and 80 % of
+memory headroom, with matching targets for the other parts) - each with model, chip, memory,
+storage, the list price in euro and the figures from your own history that led to it. If
+the current machine is enough, the report says so.
+
+The machines come from `catalog/hardware.json`: every Mac Apple currently sells, with each
+memory and storage step at its price in the German Apple store, and a selection of machines
+that run Linux (Framework, TUXEDO, ThinkPad, mini PCs). Each entry carries its source and
+the catalogue its date; a catalogue older than 120 days says so in the report. It ships
+with the release and is never fetched.
+
+### What it cannot know
+
+- Benchmark scores compare classes of chips, not percent. Graphics scores for Macs (Metal)
+  and for the other machines (OpenCL) are only roughly comparable.
+- Prices are list prices on the catalogue's date; some Linux entries are temporary shop
+  prices, and a chip too new to have published scores is left out rather than guessed.
+- Software that needs one particular system, ports, screen size, weight: yours to weigh.
+- Two weeks describe those two weeks. A fortnight without the heavy project recommends a
+  smaller machine than you need.
 
 ## Platform Support
 

@@ -1,4 +1,4 @@
-use super::{usage_percent, CpuTimes, Disk, Mem, Net, ProcSample, SKIP_FS};
+use super::{usage_percent, CpuTimes, Disk, Mem, Net, ProcSample, Vitals, SKIP_FS};
 use std::fs;
 use std::io::Read;
 
@@ -208,4 +208,77 @@ pub fn proc_name(pid: i32) -> String {
         }
     }
     if comm.is_empty() { "?".to_string() } else { comm }
+}
+
+// --- what the recorder reads besides the dashboard's numbers --------------------------------
+
+fn read_trimmed(path: &std::path::Path) -> Option<String> {
+    fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+}
+
+/// Memory pressure from PSI: the share of the last ten seconds in which some task waited
+/// for memory. Under 5 % is normal, under 25 % a warning, above that critical.
+fn memory_pressure() -> Option<u8> {
+    let text = fs::read_to_string("/proc/pressure/memory").ok()?;
+    let some = text.lines().find(|l| l.starts_with("some"))?;
+    let avg10: f64 = some.split_ascii_whitespace().find_map(|f| f.strip_prefix("avg10="))?.parse().ok()?;
+    Some(if avg10 >= 25.0 { 2 } else if avg10 >= 5.0 { 1 } else { 0 })
+}
+
+fn drm_entries() -> Vec<std::path::PathBuf> {
+    fs::read_dir("/sys/class/drm").map(|d| d.flatten().map(|e| e.path()).collect()).unwrap_or_default()
+}
+
+/// `full` also asks for the power source and the displays (see the macOS twin).
+pub fn vitals(full: bool) -> Vitals {
+    let mut v = Vitals { pressure: memory_pressure(), ..Vitals::default() };
+    let drm = drm_entries();
+    // amdgpu and a few others publish a busy percentage; where none does, the field stays empty.
+    v.gpu_pct = drm.iter().filter_map(|card| read_trimmed(&card.join("device/gpu_busy_percent"))?.parse::<f64>().ok())
+        .fold(None, |best: Option<f64>, pct| Some(best.map_or(pct, |b| b.max(pct))));
+    if !full {
+        return v;
+    }
+    // Connectors are named card0-HDMI-A-1, card0-eDP-1, ...; the built-in panel is eDP, LVDS or DSI.
+    let connectors: Vec<_> = drm.iter().filter(|p| p.join("status").exists()).collect();
+    if !connectors.is_empty() {
+        let external = connectors.iter().filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let builtin = ["eDP", "LVDS", "DSI"].iter().any(|k| name.contains(k));
+            !builtin && read_trimmed(&p.join("status")).as_deref() == Some("connected")
+        }).count();
+        v.ext_displays = Some(external.min(255) as u8);
+    }
+    if let Ok(supplies) = fs::read_dir("/sys/class/power_supply") {
+        for supply in supplies.flatten().map(|e| e.path()) {
+            match read_trimmed(&supply.join("type")).as_deref() {
+                Some("Mains") | Some("USB") => {
+                    if let Some(online) = read_trimmed(&supply.join("online")) {
+                        v.on_ac = Some(v.on_ac.unwrap_or(false) || online == "1");
+                    }
+                }
+                Some("Battery") => {
+                    v.battery_pct = read_trimmed(&supply.join("capacity")).and_then(|c| c.parse::<u8>().ok()).or(v.battery_pct);
+                }
+                _ => {}
+            }
+        }
+        // A battery without a reported mains supply: discharging means on battery.
+        if v.battery_pct.is_some() && v.on_ac.is_none() {
+            v.on_ac = Some(true);
+        }
+    }
+    v
+}
+
+/// (model, chip name), e.g. ("Raspberry Pi 5 Model B Rev 1.0", "Cortex-A76").
+pub fn machine() -> (String, String) {
+    let model = ["/sys/devices/virtual/dmi/id/product_name", "/proc/device-tree/model"].iter()
+        .find_map(|p| read_trimmed(std::path::Path::new(p)))
+        .map(|m| m.trim_end_matches('\0').to_string()).unwrap_or_default();
+    let cpuinfo = fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    let chip = ["model name", "Model", "Hardware", "cpu model"].iter()
+        .find_map(|key| cpuinfo.lines().find(|l| l.starts_with(key)).and_then(|l| l.split_once(':')).map(|(_, v)| v.trim().to_string()))
+        .unwrap_or_default();
+    (model, chip)
 }

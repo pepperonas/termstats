@@ -239,3 +239,52 @@ def test_the_layout_constants_agree_in_both_programs():
              "DISK_SCAN_S": cli.DISK_SCAN_S}
     for name, value in pairs.items():
         assert const(name) == float(value), name
+
+
+# --- record / recommend: commands only the native core has ----------------------------------
+
+@pytest.mark.parametrize("command", ["record", "recommend"])
+def test_the_history_commands_become_the_native_program(installed, monkeypatch, command):
+    run_main(monkeypatch, command, "--now", "status")
+    assert installed == [("/opt/bin/termstats-native", ["/opt/bin/termstats-native", command, "--now", "status"])]
+
+
+def test_their_help_is_the_native_help(installed, monkeypatch):
+    """`termstats record --help` must not print THIS program's help and exit."""
+    printed = []
+    monkeypatch.setattr(cli, "print_help", lambda: printed.append(1))
+    run_main(monkeypatch, "record", "--help")
+    assert printed == [] and installed[0][1][1:] == ["record", "--help"]
+
+
+def test_the_dashboard_switch_does_not_hide_the_history_commands(installed, monkeypatch):
+    """TERMSTATS_NATIVE=0 keeps the DASHBOARD in Python. The recorder exists nowhere else."""
+    monkeypatch.setenv(cli.NATIVE_ENV, "0")
+    assert cli.native_core() is None and cli.native_binary() == "/opt/bin/termstats-native"
+    run_main(monkeypatch, "recommend")
+    assert len(installed) == 1
+
+
+def test_without_the_native_core_the_command_says_how_to_get_it(installed, monkeypatch, capsys):
+    monkeypatch.setattr(cli.shutil, "which", lambda name: None)
+    monkeypatch.setattr(sys, "argv", ["termstats", "record", "install"])
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+    assert exit_info.value.code == 2 and installed == []
+    message = capsys.readouterr().err
+    assert "termstats-native" in message and "install.sh | sh" in message
+
+
+def test_on_windows_the_history_commands_say_so(installed, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "IS_WINDOWS", True)
+    monkeypatch.setattr(sys, "argv", ["termstats", "recommend"])
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert installed == [] and "macOS and Linux only" in capsys.readouterr().err
+
+
+def test_a_word_that_is_not_a_command_is_still_an_unknown_option(installed, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["termstats", "recorder"])
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main()
+    assert exit_info.value.code == 2 and installed == []

@@ -16,7 +16,7 @@ fn machine(ncores: usize, ndisks: usize, live: bool) -> State {
     s.core_pct = (0..ncores).map(|i| (i * 37 % 101) as f64).collect();
     s.total_pct = 42.5;
     s.steal_pct = 1.5;
-    s.mem = Mem { total: 16 << 30, used: 6 << 30, available: 7 << 30, swap_total: 4 << 30, swap_used: 1 << 30 };
+    s.mem = Mem { total: 16 << 30, used: 6 << 30, available: 7 << 30, swap_total: 4 << 30, swap_used: 1 << 30, ..Mem::default() };
     s.disks = (0..ndisks).map(|i| Disk { mount: format!("/Volumes/disk number {i}"), total: 500 << 30, used: (100 + i as u64) << 30,
                                           percent: 20.0 + i as f64 }).collect();
     s.net = Net { sent: 3 << 30, recv: 9 << 30 };
@@ -594,4 +594,15 @@ fn changes_close_together_travel_in_one_run() {
     scr.set(20, 1, 'c', NONE, false);
     scr.set(60, 1, 'd', NONE, false);
     assert_eq!(painter.diff(&scr).matches('H').count(), 2, "far apart: two runs, nothing in between");
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_program_installed_under_its_version_number_is_named_after_its_directory() {
+    use crate::sys::name_from_path;
+    assert_eq!(name_from_path("/usr/bin/zsh").as_deref(), Some("zsh"));
+    assert_eq!(name_from_path("/Users/a/.local/share/claude/versions/2.1.325").as_deref(), Some("claude"));
+    assert_eq!(name_from_path("/Applications/Foo.app/Contents/MacOS/12").as_deref(), Some("Foo.app"));
+    assert_eq!(name_from_path("/1/2/3").as_deref(), Some("3"), "nothing better to offer: the file name stays");
+    assert_eq!(name_from_path(""), None);
 }

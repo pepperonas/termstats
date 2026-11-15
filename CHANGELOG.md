@@ -11,6 +11,30 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-15
+
+### Added
+
+- **A history.** `termstats record install` starts a background service (launchd agent on
+  macOS, systemd user unit on Linux) that writes one line a minute about processor, memory,
+  graphics, storage, network, power, heat, displays and the three largest consumers by name
+  to `~/.local/state/termstats/history/YYYY-MM-DD.tsv`. `record status`, `uninstall`,
+  `purge` and `--keep-days` manage it. Plain text, readable only by the user, never sent
+  anywhere. Measured over ten minutes: 0.024 % of a core, 6.2 MB.
+- **A recommendation.** `termstats recommend` turns 14 days of that history into the
+  cheapest current Mac that meets the measured need at three levels of headroom (just
+  enough / fits / with reserve), plus the best machine that runs Linux - each with price
+  and the figures that led to it. `--now` gives a provisional first impression, `--json`
+  the same for another program.
+- **A hardware catalogue**, `catalog/hardware.json`: every Mac currently sold with each
+  memory and storage step at its German list price, and machines that run Linux, each entry
+  with its source. `tools/gen_native_catalog.py` turns it into the native core's tables.
+- The native core reads graphics utilisation, memory pressure and compressed memory,
+  thermal state, power source and external displays (macOS: IOKit, sysctl, libnotify;
+  Linux: `/proc/pressure`, `/sys/class`).
+- Both commands are done by `termstats-native` and run on macOS and Linux. The Python
+  program passes them through and names the install command when the native core is missing.
+
 ## [0.9.2] - 2026-11-14
 
 ### Fixed

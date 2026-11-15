@@ -29,6 +29,26 @@ pub struct Mem {
     pub available: u64,
     pub swap_total: u64,
     pub swap_used: u64,
+    /// RAM the memory compressor occupies, and what its contents would occupy uncompressed.
+    /// Together they say how much memory the machine WANTS beyond what it has (0 on Linux).
+    pub compressed: u64,
+    pub uncompressed: u64,
+}
+
+/// What the recorder reads besides the dashboard's numbers. A field is None where the
+/// machine does not report it - a desktop has no battery, a server no display - and the
+/// history keeps it empty rather than writing a zero that would read as a measurement.
+#[derive(Clone, Copy, Default)]
+pub struct Vitals {
+    /// GPU utilisation in percent.
+    pub gpu_pct: Option<f64>,
+    /// Memory pressure: 0 normal, 1 warning, 2 critical.
+    pub pressure: Option<u8>,
+    /// Thermal pressure: 0 nominal, 1 moderate, 2 heavy, 3 or more = throttled hard.
+    pub thermal: Option<u8>,
+    pub on_ac: Option<bool>,
+    pub battery_pct: Option<u8>,
+    pub ext_displays: Option<u8>,
 }
 
 pub struct Disk {

@@ -5,8 +5,8 @@ Guidance for Claude Code when working in this repository.
 ## What this is
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
-processes, live history charts). Pure Python, no server, no config file, no state on disk.
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.9.2**, 1375 pytest tests + 43 `cargo test` in `native/`.
+processes, live history charts). Pure Python, no server, no config file; the only state on disk is the optional history (0.10.0).
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.10.0**, 1546 pytest tests + 89 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -485,6 +485,46 @@ and 7 MB at 140×42 against 5.4 % / 36 MB; ~0.7 ms CPU per frame; ~9 KB/s to the
   ⚠️ `mac-screen-agent`'s "Last" view calls the PYTHON `render_dashboard` (another session
   maintains that) - `--size`/`--samples` exist so a service can ask the native core for a
   frame instead.
+
+## History and recommendation (0.10.0)
+
+User 2026-11-15: record the load as sparingly as possible and, after two weeks, recommend a
+computer (focus Apple, plus hardware that runs Linux). Decided by question: background
+service with autostart; program NAMES may be logged; three tiers from the data.
+
+- **`native/src/record.rs`** - `termstats-native record [install|uninstall|status|purge]
+  [--keep-days N]`. 5 s readings, process scan every 30 s, `Aggregate` → one `Minute` line,
+  flushed five at a time (and on SIGTERM) to `~/.local/state/termstats/history/YYYY-MM-DD.tsv`
+  (0600; `TERMSTATS_STATE_DIR` > `XDG_STATE_HOME`). Format `termstats-history v1`, 28
+  tab-separated columns, header names the machine. Empty field = not reported, never 0.
+  `Aggregate::watched(slept)` turns sleep into `gap_s` instead of idle. flock = one instance.
+  Service: launchd agent `io.celox.termstats.recorder` / systemd user unit
+  `termstats-recorder.service`. One-time notification after `READY_DAYS` = 14.
+  **Demand** = used + (uncompressed − compressed), at least used + swap: what the machine
+  wanted, not what it had.
+- **Measured (ten minutes, this Mac): 0.024 % of a core, 6.2 MB.** The plan's 4 MB target was
+  wrong: `termstats-native --version` alone has 5.5 MB RSS (dyld + system frameworks).
+- **`native/src/recommend.rs`** - `profile()` (percentiles over the minutes) → `need()` per
+  `Tier` (ram ×1.10/1.30/1.80, cpu target 80/60/40 %, ssd ×1.25/1.5/2.0 after 1/2/4 years of
+  damped growth) → `pick()` = cheapest configuration that meets it; `text()` / `json()`.
+  Load is converted through the score of the chip it was measured on (`current_chip`: the
+  longest brand the machine's name contains, then the core count).
+- **`catalog/hardware.json`** is the source; `tools/gen_native_catalog.py` writes
+  `native/src/catalog.rs` (GENERATED; `tests/test_catalog.py` requires it current). Chips
+  without scores and variants without a price are left out by the generator, not guessed.
+  Apple: every Mac on apple.com/de on 2026-11-15 with each RAM/SSD step. Linux side:
+  Framework, TUXEDO, ThinkPad, mini PCs; machines sold with Windows carry `os: "Linux"` plus
+  `preinstalled`. ⚠️ Linux GPU scores are OpenCL, Apple's Metal. Refresh the catalogue with a
+  release; the report warns when it is older than 120 days.
+- Python: `termstats record …` / `termstats recommend …` are passed through before any
+  parsing (`run_native_command`); `TERMSTATS_NATIVE=0` does NOT hide them (`native_binary`).
+- Linux checked once on raspi5 (static aarch64, two minutes, files removed).
+- Mutation batch (25): 4 blind at first - the tight storage factor (test only bounded the
+  middle tier), an EQUIVALENT exact-brand branch (removed), "demand is the minute's highest"
+  (never fed a falling value), and the gap check, which sat in the I/O loop (moved into
+  `Aggregate::watched`). The loop's own call site has no unit test; the live run covers it.
+- The recorder runs on this Mac since 2026-11-15 (`termstats record status`); the first real
+  recommendation is due 2026-11-29.
 
 ## Releases (0.9.1)
 

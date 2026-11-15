@@ -11,7 +11,10 @@
 //!
 //! The microphone modes, `--demo` and Windows stay with the Python program.
 
+mod catalog;
 mod color;
+mod recommend;
+mod record;
 mod screen;
 mod sys;
 mod themes;
@@ -177,6 +180,9 @@ Usage: termstats-native [options]
 Environment: TERMSTATS_THEME, NO_COLOR, COLORTERM, TERM, COLUMNS, LINES.
 Keys: q, Esc or Ctrl+C to leave.
 
+History:  termstats-native record --help      one line a minute, kept on this machine
+          termstats-native recommend --help   which computer fits what was recorded
+
 The microphone modes (-eq, -bpm, -db, -x), --demo and Windows are served by the Python
 program `termstats`; this is its system dashboard at a fraction of the CPU.
 ";
@@ -256,7 +262,106 @@ fn bench() {
     println!("{:<34}{:>9} bytes in the last frame", "", bytes);
 }
 
+const RECORD_HELP: &str = "\
+termstats-native record - keep a history of what this machine does
+
+  record                  run the recorder in the foreground (what the service runs)
+  record install          start it at every login, in the background
+  record uninstall        stop it and remove the service (the history stays)
+  record status           is it running, how many days are on file
+  record purge            delete the history
+
+      --keep-days N       delete day files older than N days (default 90)
+
+One line a minute goes to ~/.local/state/termstats/history/YYYY-MM-DD.tsv - plain text,
+readable only by you, never sent anywhere. Set TERMSTATS_STATE_DIR to keep it elsewhere.
+After 14 days, 'termstats-native recommend' turns it into a recommendation.
+";
+
+const RECOMMEND_HELP: &str = "\
+termstats-native recommend - which computer fits what this one was used for
+
+  recommend             the recommendation, once 14 days of history are on file
+  recommend --now       a first impression from the days recorded so far (marked provisional)
+  recommend --json      the same as JSON, for another program
+
+It reads the history 'termstats-native record' keeps, reduces it to what the machine wanted
+(memory, processor, graphics, storage, mobility) and names the cheapest current Mac that
+meets it at three levels of headroom, plus the best machine that runs Linux.
+";
+
+/// `recommend ...`: the history turned into a recommendation.
+fn recommend_command(args: &[String]) -> i32 {
+    let (mut now_flag, mut as_json) = (false, false);
+    for arg in args {
+        match arg.as_str() {
+            "-h" | "--help" | "-help" => { print!("{RECOMMEND_HELP}"); return 0 }
+            "--now" | "-now" => now_flag = true,
+            "--json" | "-json" => as_json = true,
+            other => fail(&format!("unknown recommend option '{other}' (try 'recommend --help')")),
+        }
+    }
+    let state = record::state_dir();
+    let now = record::now_wall();
+    // Four weeks at most: older history describes an older way of working.
+    let history = record::load(&record::history_dir(&state), now - 28 * 86400);
+    let days = record::span_days(&history.minutes);
+    let ready = days >= record::READY_DAYS;
+    let Some(machine) = history.machine.filter(|_| !history.minutes.is_empty()) else {
+        eprintln!("termstats-native: no history yet. Start recording with:  termstats-native record install");
+        return 1;
+    };
+    if !ready && !now_flag {
+        println!("{} of {} days of history are on file - the recommendation comes when the fortnight is complete.", days, record::READY_DAYS);
+        println!("A first impression from what is there:  termstats-native recommend --now");
+        return 0;
+    }
+    let profile = recommend::profile(&history.minutes, &machine);
+    let report = recommend::build(&profile, &machine, catalog::CHIPS, catalog::DEVICES, catalog::STAND,
+                                  recommend::days_since(catalog::STAND, now), ready);
+    print!("{}", if as_json { recommend::json(&report) } else { recommend::text(&report) });
+    0
+}
+
+/// `record ...`: the history recorder and its service.
+fn record_command(args: &[String]) -> i32 {
+    let state = record::state_dir();
+    let mut keep_days = record::DEFAULT_KEEP_DAYS;
+    let mut action: Option<&str> = None;
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        match arg.as_str() {
+            "-h" | "--help" | "-help" => { print!("{RECORD_HELP}"); return 0 }
+            "--keep-days" | "-keep-days" => {
+                keep_days = match rest.next().and_then(|v| v.parse::<i64>().ok()) {
+                    Some(days) if (1..=3650).contains(&days) => days,
+                    _ => fail("--keep-days needs a number of days from 1 to 3650"),
+                };
+            }
+            "install" | "uninstall" | "status" | "purge" if action.is_none() => action = Some(arg.as_str()),
+            other => fail(&format!("unknown record option '{other}' (try 'record --help')")),
+        }
+    }
+    let outcome = match action {
+        None => return record::run(&state, keep_days),
+        Some("status") => Ok(record::status(&state).trim_end().to_string()),
+        Some("install") => record::install(&state),
+        Some("uninstall") => record::uninstall(),
+        _ => record::purge(&state),
+    };
+    match outcome {
+        Ok(text) => { println!("{text}"); 0 }
+        Err(error) => { eprintln!("termstats-native: {error}"); 1 }
+    }
+}
+
 fn main() {
+    let all: Vec<String> = std::env::args().skip(1).collect();
+    match all.first().map(String::as_str) {
+        Some("record") => std::process::exit(record_command(&all[1..])),
+        Some("recommend") => std::process::exit(recommend_command(&all[1..])),
+        _ => {}
+    }
     let mut interval = 0.5f64;
     let mut theme_name = std::env::var("TERMSTATS_THEME").ok().filter(|v| !v.is_empty());
     let (mut compact, mut no_border, mut once, mut live) = (false, false, false, false);

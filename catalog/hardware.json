@@ -1,0 +1,3638 @@
+{
+  "stand": "2026-11-15",
+  "notes": {
+    "apple": {
+      "price_source": "apple.com/de store: embedded product data of the /de/shop/buy-mac/<family> pages plus the store's own configurator API (/de/shop/api/cto/update-config), fetched 2026-11-15. All prices EUR incl. VAT.",
+      "core_fields": "Apple now names three core classes (Super / Performance / Effizienz). perf_cores = Super + Performance cores, eff_cores = Effizienz cores; super_cores is given separately where Apple states it. For M5 Pro/Max/Ultra Apple lists no efficiency cores at all.",
+      "benchmark_source": "Geekbench 6 Mac Benchmark Chart (https://browser.geekbench.com/mac-benchmarks, tabs Single-Core / Multi-Core / Metal), read 2026-11-15. Each chip uses the scores of the one Mac model named in ref_model."
+    }
+  },
+  "chips": {
+    "apple-a18-pro-6c": {
+      "name": "Apple A18 Pro (6 CPU / 5 GPU)",
+      "perf_cores": 2,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 5,
+      "single": 2932,
+      "multi": 7275,
+      "gpu": 31158,
+      "ref_model": "MacBook Neo",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-10c-8g": {
+      "name": "Apple M5 (10 CPU / 8 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 6,
+      "super_cores": 4,
+      "gpu_cores": 8,
+      "single": 3579,
+      "multi": 17059,
+      "gpu": 65649,
+      "ref_model": "MacBook Air (13-inch, 2026), 10 CPU / 8 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-10c": {
+      "name": "Apple M5 (10 CPU / 10 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 6,
+      "super_cores": 4,
+      "gpu_cores": 10,
+      "single": 3579,
+      "multi": 17059,
+      "gpu": 70728,
+      "ref_model": "MacBook Air (13-inch, 2026), 10 CPU / 10 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m6-12c": {
+      "name": "Apple M6 (12 CPU / 12 GPU)",
+      "perf_cores": 6,
+      "eff_cores": 6,
+      "super_cores": 2,
+      "gpu_cores": 12,
+      "single": 3976,
+      "multi": 21619,
+      "gpu": 90180,
+      "ref_model": "MacBook Pro (14-inch, M6); Mac mini (2026) scores 4005 / 21872 / 89375",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m6-12c-imac": {
+      "name": "Apple M6 (12 CPU / 12 GPU, iMac, 4.6 GHz)",
+      "perf_cores": 6,
+      "eff_cores": 6,
+      "super_cores": 2,
+      "gpu_cores": 12,
+      "single": 3917,
+      "multi": 20537,
+      "gpu": 87354,
+      "ref_model": "iMac (24-inch, 2026), 12 CPU / 12 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m6-10c-imac": {
+      "name": "Apple M6 (10 CPU / 10 GPU, iMac)",
+      "perf_cores": 5,
+      "eff_cores": 5,
+      "super_cores": 2,
+      "gpu_cores": 10,
+      "single": 3890,
+      "multi": 18212,
+      "gpu": null,
+      "ref_model": "iMac (24-inch, 2026), 10 CPU / 10 GPU (no Metal row in the chart)",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-pro-15c": {
+      "name": "Apple M5 Pro (15 CPU / 16 GPU)",
+      "perf_cores": 15,
+      "eff_cores": 0,
+      "super_cores": 5,
+      "gpu_cores": 16,
+      "single": 3682,
+      "multi": 29551,
+      "gpu": 125226,
+      "ref_model": "MacBook Pro (14-inch, 2026), 15 CPU / 16 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-pro-18c": {
+      "name": "Apple M5 Pro (18 CPU / 20 GPU)",
+      "perf_cores": 18,
+      "eff_cores": 0,
+      "super_cores": 6,
+      "gpu_cores": 20,
+      "single": 3679,
+      "multi": 33490,
+      "gpu": 135965,
+      "ref_model": "MacBook Pro (14-inch, 2026), 18 CPU / 20 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-max-18c-32g": {
+      "name": "Apple M5 Max (18 CPU / 32 GPU)",
+      "perf_cores": 18,
+      "eff_cores": 0,
+      "super_cores": 6,
+      "gpu_cores": 32,
+      "single": 3694,
+      "multi": 34572,
+      "gpu": 194758,
+      "ref_model": "MacBook Pro (14-inch, 2026), 18 CPU / 32 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-max-18c-40g": {
+      "name": "Apple M5 Max (18 CPU / 40 GPU)",
+      "perf_cores": 18,
+      "eff_cores": 0,
+      "super_cores": 6,
+      "gpu_cores": 40,
+      "single": 3694,
+      "multi": 34572,
+      "gpu": 240422,
+      "ref_model": "MacBook Pro (14-inch, 2026), 18 CPU / 40 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-ultra-30c": {
+      "name": "Apple M5 Ultra (30 CPU / 64 GPU)",
+      "perf_cores": 30,
+      "eff_cores": 0,
+      "super_cores": 10,
+      "gpu_cores": 64,
+      "single": 3716,
+      "multi": 47122,
+      "gpu": 332842,
+      "ref_model": "Mac Studio (2026), 30 CPU / 64 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m5-ultra-36c": {
+      "name": "Apple M5 Ultra (36 CPU / 80 GPU)",
+      "perf_cores": 36,
+      "eff_cores": 0,
+      "super_cores": 12,
+      "gpu_cores": 80,
+      "single": 3722,
+      "multi": 51744,
+      "gpu": 344448,
+      "ref_model": "Mac Studio (2026), 36 CPU / 80 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m1-8c": {
+      "name": "Apple M1 (8 CPU / 8 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 8,
+      "single": 2165,
+      "multi": 8234,
+      "gpu": 28196,
+      "ref_model": "MacBook Air (Late 2020), 8 CPU / 8 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m1-pro-8c": {
+      "name": "Apple M1 Pro (8 CPU / 14 GPU)",
+      "perf_cores": 6,
+      "eff_cores": 2,
+      "super_cores": null,
+      "gpu_cores": 14,
+      "single": 2193,
+      "multi": 11209,
+      "gpu": 61093,
+      "ref_model": "MacBook Pro (14-inch, 2021), M1 Pro 8 cores",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m1-pro-10c": {
+      "name": "Apple M1 Pro (10 CPU / 16 GPU)",
+      "perf_cores": 8,
+      "eff_cores": 2,
+      "super_cores": null,
+      "gpu_cores": 16,
+      "single": 2201,
+      "multi": 13899,
+      "gpu": 65463,
+      "ref_model": "MacBook Pro (14-inch, 2021), M1 Pro 10 cores",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m1-max-10c": {
+      "name": "Apple M1 Max (10 CPU, 24 or 32 GPU)",
+      "perf_cores": 8,
+      "eff_cores": 2,
+      "super_cores": null,
+      "gpu_cores": null,
+      "single": 2215,
+      "multi": 14150,
+      "gpu": 108825,
+      "ref_model": "MacBook Pro (16-inch, 2021), M1 Max 10 cores (chart does not separate 24 / 32 GPU cores)",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m2-8c": {
+      "name": "Apple M2 (8 CPU, 8 or 10 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": null,
+      "single": 2346,
+      "multi": 9646,
+      "gpu": 39709,
+      "ref_model": "MacBook Air (2022), M2 8 cores (chart does not separate 8 / 10 GPU cores; MacBook Air 15-inch 2023 with 10 GPU: 2345 / 9574 / 42662)",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m2-pro-10c": {
+      "name": "Apple M2 Pro (10 CPU / 16 GPU)",
+      "perf_cores": 6,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 16,
+      "single": 2397,
+      "multi": 13662,
+      "gpu": 74346,
+      "ref_model": "MacBook Pro (14-inch, 2023), 10 CPU / 16 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m2-pro-12c": {
+      "name": "Apple M2 Pro (12 CPU / 19 GPU)",
+      "perf_cores": 8,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 19,
+      "single": 2419,
+      "multi": 16564,
+      "gpu": 82826,
+      "ref_model": "MacBook Pro (14-inch, 2023), 12 CPU / 19 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m2-max-12c": {
+      "name": "Apple M2 Max (12 CPU / 38 GPU)",
+      "perf_cores": 8,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 38,
+      "single": 2491,
+      "multi": 17005,
+      "gpu": 139552,
+      "ref_model": "MacBook Pro (16-inch, 2023), 12 CPU / 38 GPU (30-GPU version: same CPU scores, no Metal row)",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m3-8c": {
+      "name": "Apple M3 (8 CPU / 10 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 10,
+      "single": 2774,
+      "multi": 11541,
+      "gpu": 47889,
+      "ref_model": "MacBook Pro (14-inch, Nov 2023), 8 CPU / 10 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m3-pro-11c": {
+      "name": "Apple M3 Pro (11 CPU / 14 GPU)",
+      "perf_cores": 5,
+      "eff_cores": 6,
+      "super_cores": null,
+      "gpu_cores": 14,
+      "single": 2801,
+      "multi": 15249,
+      "gpu": 70120,
+      "ref_model": "MacBook Pro (14-inch, Nov 2023), 11 CPU / 14 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m3-pro-12c": {
+      "name": "Apple M3 Pro (12 CPU / 18 GPU)",
+      "perf_cores": 6,
+      "eff_cores": 6,
+      "super_cores": null,
+      "gpu_cores": 18,
+      "single": 2798,
+      "multi": 16638,
+      "gpu": 77122,
+      "ref_model": "MacBook Pro (14-inch, Nov 2023), 12 CPU / 18 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m3-max-14c": {
+      "name": "Apple M3 Max (14 CPU / 30 GPU)",
+      "perf_cores": 10,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 30,
+      "single": 2822,
+      "multi": 22078,
+      "gpu": 131635,
+      "ref_model": "MacBook Pro (16-inch, Nov 2023), 14 CPU / 30 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m3-max-16c": {
+      "name": "Apple M3 Max (16 CPU / 40 GPU)",
+      "perf_cores": 12,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 40,
+      "single": 2825,
+      "multi": 24721,
+      "gpu": 167179,
+      "ref_model": "MacBook Pro (16-inch, Nov 2023), 16 CPU / 40 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m4-10c": {
+      "name": "Apple M4 (10 CPU / 10 GPU)",
+      "perf_cores": 4,
+      "eff_cores": 6,
+      "super_cores": null,
+      "gpu_cores": 10,
+      "single": 3204,
+      "multi": 15034,
+      "gpu": 52812,
+      "ref_model": "MacBook Air (13-inch, 2025), 10 CPU / 10 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m4-pro-12c": {
+      "name": "Apple M4 Pro (12 CPU / 16 GPU)",
+      "perf_cores": 8,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 16,
+      "single": 3326,
+      "multi": 21647,
+      "gpu": 102706,
+      "ref_model": "MacBook Pro (14-inch, 2024), 12 CPU / 16 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m4-pro-14c": {
+      "name": "Apple M4 Pro (14 CPU / 20 GPU)",
+      "perf_cores": 10,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 20,
+      "single": 3343,
+      "multi": 24744,
+      "gpu": 114294,
+      "ref_model": "MacBook Pro (14-inch, 2024), 14 CPU / 20 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m4-max-14c": {
+      "name": "Apple M4 Max (14 CPU / 32 GPU)",
+      "perf_cores": 10,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 32,
+      "single": 3411,
+      "multi": 25454,
+      "gpu": 168987,
+      "ref_model": "MacBook Pro (16-inch, 2024), 14 CPU / 32 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "apple-m4-max-16c": {
+      "name": "Apple M4 Max (16 CPU / 40 GPU)",
+      "perf_cores": 12,
+      "eff_cores": 4,
+      "super_cores": null,
+      "gpu_cores": 40,
+      "single": 3383,
+      "multi": 28398,
+      "gpu": 205755,
+      "ref_model": "MacBook Pro (16-inch, 2024), 16 CPU / 40 GPU",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true
+    },
+    "intel-i9-9880h": {
+      "name": "Intel Core i9-9880H (8 cores, MacBook Pro 16\" Late 2019)",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "super_cores": null,
+      "gpu_cores": null,
+      "single": 1327,
+      "multi": 6472,
+      "gpu": 35590,
+      "ref_model": "MacBook Pro (16-inch Late 2019), i9-9880H; gpu = AMD Radeon Pro 5500M from https://browser.geekbench.com/metal-benchmarks (Radeon Pro 5300M: 33130, 5600M: 58489)",
+      "source": "https://browser.geekbench.com/mac-benchmarks",
+      "verified": true,
+      "brand": "i9-9880H"
+    },
+    "amd-ryzen-ai-5-340": {
+      "name": "AMD Ryzen AI 5 340 (Radeon 840M)",
+      "perf_cores": 6,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2115,
+      "multi": 9054,
+      "gpu": 11983,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-7-350": {
+      "name": "AMD Ryzen AI 7 350 (Radeon 860M)",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2114,
+      "multi": 11348,
+      "gpu": 20282,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-365": {
+      "name": "AMD Ryzen AI 9 365 (Radeon 880M)",
+      "perf_cores": 10,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2235,
+      "multi": 13499,
+      "gpu": 26811,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-hx-370": {
+      "name": "AMD Ryzen AI 9 HX 370 (Radeon 890M)",
+      "perf_cores": 12,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2350,
+      "multi": 15042,
+      "gpu": 31214,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-max-385": {
+      "name": "AMD Ryzen AI Max 385 (Radeon 8050S)",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": 32,
+      "single": 2329,
+      "multi": 13896,
+      "gpu": 71643,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-max-395": {
+      "name": "AMD Ryzen AI Max+ 395 (Radeon 8060S)",
+      "perf_cores": 16,
+      "eff_cores": 0,
+      "gpu_cores": 40,
+      "single": 2428,
+      "multi": 20934,
+      "gpu": 86120,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-max-pro-495": {
+      "name": "AMD Ryzen AI Max+ PRO 495",
+      "perf_cores": 16,
+      "eff_cores": 0,
+      "gpu_cores": 40,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://frame.work/de/de/products/desktop-diy-amd-aimax400/configuration/new",
+      "verified": false
+    },
+    "amd-ryzen-ai-max-495": {
+      "name": "AMD Ryzen AI Max+ 495",
+      "perf_cores": 16,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://eu.bee-link.com/products/beelink-gtr9-pro-amd-ryzen-ai-max-495",
+      "verified": false
+    },
+    "amd-ryzen-7-h-255": {
+      "name": "AMD Ryzen 7 H 255 (Radeon 780M)",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": 21347,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": false
+    },
+    "amd-ryzen-ai-5-pro-440": {
+      "name": "AMD Ryzen AI 5 PRO 440 (Radeon 840M)",
+      "perf_cores": 6,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": 11983,
+      "gpu_api": "opencl",
+      "source": "https://www.notebookcheck.net/Ryzen-AI-5-PRO-440-vs-Ryzen-AI-7-PRO-450_20468_20464.247596.0.html",
+      "verified": false
+    },
+    "amd-ryzen-ai-7-pro-450": {
+      "name": "AMD Ryzen AI 7 PRO 450 (Radeon 860M)",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": 20282,
+      "gpu_api": "opencl",
+      "source": "https://www.notebookcheck.net/Ryzen-AI-5-PRO-440-vs-Ryzen-AI-7-PRO-450_20468_20464.247596.0.html",
+      "verified": false
+    },
+    "amd-ryzen-ai-7-445": {
+      "name": "AMD Ryzen AI 7 445 (Radeon 840M)",
+      "perf_cores": 6,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": 11983,
+      "gpu_api": "opencl",
+      "source": "https://www.notebookcheck.net/AMD-Ryzen-AI-7-445-Processor-Benchmarks-and-Specs.1197764.0.html",
+      "verified": false
+    },
+    "amd-ryzen-5-pro-224": {
+      "name": "AMD Ryzen 5 PRO 224",
+      "perf_cores": null,
+      "eff_cores": null,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadt/lenovo-thinkpad-t14-gen-7-14-inch-amd/len101t0168",
+      "verified": false
+    },
+    "amd-ryzen-5-pro-216": {
+      "name": "AMD Ryzen 5 PRO 216",
+      "perf_cores": null,
+      "eff_cores": null,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadt/lenovo-thinkpad-t14-gen-7-14-inch-amd/len101t0168",
+      "verified": false
+    },
+    "amd-ryzen-7-pro-250": {
+      "name": "AMD Ryzen 7 PRO 250",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 1768,
+      "multi": 9818,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": true
+    },
+    "intel-core-ultra-5-325": {
+      "name": "Intel Core Ultra 5 325",
+      "perf_cores": 4,
+      "eff_cores": 4,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://frame.work/de/de/products/laptop13pro-diy-intel-ultra-3/configuration/new",
+      "verified": false
+    },
+    "intel-core-ultra-7-356h": {
+      "name": "Intel Core Ultra 7 356H",
+      "perf_cores": 4,
+      "eff_cores": 12,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://www.notebookcheck.org/Intel-Panther-Lake-Ultra-7-356H-Notebook-Processor.1202114.0.html",
+      "verified": false
+    },
+    "intel-core-ultra-x7-358h": {
+      "name": "Intel Core Ultra X7 358H (Arc B390)",
+      "perf_cores": 4,
+      "eff_cores": 12,
+      "gpu_cores": 12,
+      "single": null,
+      "multi": null,
+      "gpu": 51933,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": false
+    },
+    "intel-core-ultra-x9-388h": {
+      "name": "Intel Core Ultra X9 388H (Arc B390)",
+      "perf_cores": 4,
+      "eff_cores": 12,
+      "gpu_cores": 12,
+      "single": null,
+      "multi": null,
+      "gpu": 51933,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": false
+    },
+    "amd-ryzen-ai-7-350-rtx-5060": {
+      "name": "AMD Ryzen AI 7 350 + NVIDIA GeForce RTX 5060 Laptop GPU 8 GB",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2114,
+      "multi": 11348,
+      "gpu": 99530,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-365-rtx-5060": {
+      "name": "AMD Ryzen AI 9 365 + NVIDIA GeForce RTX 5060 Laptop GPU 8 GB",
+      "perf_cores": 10,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2235,
+      "multi": 13499,
+      "gpu": 99530,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-hx-370-rtx-5060": {
+      "name": "AMD Ryzen AI 9 HX 370 + NVIDIA GeForce RTX 5060 Laptop GPU 8 GB",
+      "perf_cores": 12,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2350,
+      "multi": 15042,
+      "gpu": 99530,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-7-350-rtx-5070": {
+      "name": "AMD Ryzen AI 7 350 + NVIDIA GeForce RTX 5070 Laptop GPU 8 GB",
+      "perf_cores": 8,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2114,
+      "multi": 11348,
+      "gpu": 115072,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-365-rtx-5070": {
+      "name": "AMD Ryzen AI 9 365 + NVIDIA GeForce RTX 5070 Laptop GPU 8 GB",
+      "perf_cores": 10,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2235,
+      "multi": 13499,
+      "gpu": 115072,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "amd-ryzen-ai-9-hx-370-rtx-5070": {
+      "name": "AMD Ryzen AI 9 HX 370 + NVIDIA GeForce RTX 5070 Laptop GPU 8 GB",
+      "perf_cores": 12,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": 2350,
+      "multi": 15042,
+      "gpu": 115072,
+      "gpu_api": "opencl",
+      "source": "https://browser.geekbench.com/opencl-benchmarks",
+      "verified": true
+    },
+    "broadcom-bcm2712": {
+      "name": "Broadcom BCM2712 (Raspberry Pi 5, VideoCore VII)",
+      "perf_cores": 4,
+      "eff_cores": 0,
+      "gpu_cores": null,
+      "single": null,
+      "multi": null,
+      "gpu": null,
+      "gpu_api": null,
+      "source": "https://browser.geekbench.com/processor-benchmarks",
+      "verified": false
+    }
+  },
+  "devices": [
+    {
+      "id": "macbook-neo",
+      "vendor": "Apple",
+      "name": "MacBook Neo",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 13.0,
+      "fanless": true,
+      "released": "2026-03",
+      "variants": [
+        {
+          "chip": "apple-a18-pro-6c",
+          "base_price_eur": 799,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 256,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 256,
+              "plus_eur": 0
+            },
+            {
+              "gb": 512,
+              "plus_eur": 100
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-neo",
+      "verified": true,
+      "note": "Two fixed models (256 GB 799 EUR, 512 GB 899 EUR), no configurator; the March 2026 Newsroom DE launch price was 'ab 699 Euro', the store shows 799 EUR today."
+    },
+    {
+      "id": "macbook-air-13",
+      "vendor": "Apple",
+      "name": "MacBook Air 13\"",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 13.6,
+      "fanless": true,
+      "released": "2026-03",
+      "variants": [
+        {
+          "chip": "apple-m5-10c-8g",
+          "base_price_eur": 1399,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            },
+            {
+              "gb": 32,
+              "plus_eur": 440
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-10c",
+          "base_price_eur": 1509,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-air",
+      "verified": true,
+      "note": "Apple rule: any upgrade to 24 GB+ RAM or 1 TB+ SSD automatically ships the 10-core-GPU M5 at no extra charge, so upgraded prices are 1399 EUR + surcharges (e.g. 16 GB/1 TB = 1729, 24 GB/1 TB = 1949) and are listed under the 8-GPU variant; the 10-GPU chip alone with 16 GB/512 GB costs 1509 EUR (+110)."
+    },
+    {
+      "id": "macbook-air-15",
+      "vendor": "Apple",
+      "name": "MacBook Air 15\"",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 15.3,
+      "fanless": true,
+      "released": "2026-03",
+      "variants": [
+        {
+          "chip": "apple-m5-10c",
+          "base_price_eur": 1699,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            },
+            {
+              "gb": 32,
+              "plus_eur": 440
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-air",
+      "verified": true,
+      "note": ""
+    },
+    {
+      "id": "macbook-pro-14",
+      "vendor": "Apple",
+      "name": "MacBook Pro 14\" (Liquid Retina XDR)",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 14.2,
+      "fanless": false,
+      "released": "2026-03",
+      "variants": [
+        {
+          "chip": "apple-m6-12c",
+          "released": "2026-11",
+          "base_price_eur": 2299,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            },
+            {
+              "gb": 32,
+              "plus_eur": 440
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-pro-15c",
+          "released": "2026-03",
+          "base_price_eur": 2899,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-pro-18c",
+          "released": "2026-03",
+          "base_price_eur": 3149,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-32g",
+          "released": "2026-03",
+          "base_price_eur": 4799,
+          "base_ram_gb": 36,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 36,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-40g",
+          "released": "2026-03",
+          "base_price_eur": 5459,
+          "base_ram_gb": 48,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 48,
+              "plus_eur": 0
+            },
+            {
+              "gb": 64,
+              "plus_eur": 440
+            },
+            {
+              "gb": 128,
+              "plus_eur": 2200
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-pro",
+      "verified": true,
+      "note": "Device-level release is the M5 Pro/Max launch (March 2026); the M6 model shipped 6 Nov 2026 (variant field 'released'). Nano-texture display +165 EUR; RAM/SSD sizes beyond the listed ones require the next chip tier."
+    },
+    {
+      "id": "macbook-pro-16",
+      "vendor": "Apple",
+      "name": "MacBook Pro 16\" (Liquid Retina XDR)",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 16.2,
+      "fanless": false,
+      "released": "2026-03",
+      "variants": [
+        {
+          "chip": "apple-m5-pro-18c",
+          "base_price_eur": 3399,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-32g",
+          "base_price_eur": 5099,
+          "base_ram_gb": 36,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 36,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-40g",
+          "base_price_eur": 5699,
+          "base_ram_gb": 48,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 48,
+              "plus_eur": 0
+            },
+            {
+              "gb": 64,
+              "plus_eur": 440
+            },
+            {
+              "gb": 128,
+              "plus_eur": 2200
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-pro",
+      "verified": true,
+      "note": "No M6 option in 16 inch. Nano-texture display +165 EUR."
+    },
+    {
+      "id": "macbook-pro-14-proled",
+      "vendor": "Apple",
+      "name": "MacBook Pro 14\" (PROLED XDR, Tandem OLED, Touch)",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 14.2,
+      "fanless": false,
+      "released": "2026-11",
+      "variants": [
+        {
+          "chip": "apple-m5-pro-15c",
+          "base_price_eur": 3299,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-pro-18c",
+          "base_price_eur": 3539,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-32g",
+          "base_price_eur": 5199,
+          "base_ram_gb": 36,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 36,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 7700
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-40g",
+          "base_price_eur": 5859,
+          "base_ram_gb": 48,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 48,
+              "plus_eur": 0
+            },
+            {
+              "gb": 64,
+              "plus_eur": 440
+            },
+            {
+              "gb": 128,
+              "plus_eur": 2200
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 7700
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-pro-proled-xdr",
+      "verified": true,
+      "note": "Separate product line sold next to the Liquid Retina models; pre-order from 28 Oct 2026, shipping from 6 Nov 2026."
+    },
+    {
+      "id": "macbook-pro-16-proled",
+      "vendor": "Apple",
+      "name": "MacBook Pro 16\" (PROLED XDR, Tandem OLED, Touch)",
+      "form": "laptop",
+      "os": "macOS",
+      "display_inch": 16.3,
+      "fanless": false,
+      "released": "2026-11",
+      "variants": [
+        {
+          "chip": "apple-m5-pro-18c",
+          "base_price_eur": 3899,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-32g",
+          "base_price_eur": 5599,
+          "base_ram_gb": 36,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 36,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 7700
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-40g",
+          "base_price_eur": 6199,
+          "base_ram_gb": 48,
+          "base_ssd_gb": 2048,
+          "ram_options": [
+            {
+              "gb": 48,
+              "plus_eur": 0
+            },
+            {
+              "gb": 64,
+              "plus_eur": 440
+            },
+            {
+              "gb": 128,
+              "plus_eur": 2200
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2048,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1100
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3300
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 7700
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/macbook-pro-proled-xdr",
+      "verified": true,
+      "note": ""
+    },
+    {
+      "id": "mac-mini",
+      "vendor": "Apple",
+      "name": "Mac mini",
+      "form": "desktop",
+      "os": "macOS",
+      "display_inch": null,
+      "fanless": false,
+      "released": "2026-09",
+      "variants": [
+        {
+          "chip": "apple-m6-12c",
+          "base_price_eur": 1049,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 256,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            },
+            {
+              "gb": 32,
+              "plus_eur": 440
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 256,
+              "plus_eur": 0
+            },
+            {
+              "gb": 512,
+              "plus_eur": 220
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 550
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 1100
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-pro-15c",
+          "base_price_eur": 1999,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 4180
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-pro-18c",
+          "base_price_eur": 2219,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            },
+            {
+              "gb": 48,
+              "plus_eur": 660
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1100
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 4180
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/mac-mini",
+      "verified": true,
+      "note": "Available since 22 Sep 2026; Geekbench lists the Mac mini M6 slightly above the MacBook Pro M6 used for the chip entry (4005 / 21872 / 89375)."
+    },
+    {
+      "id": "imac-24",
+      "vendor": "Apple",
+      "name": "iMac 24\"",
+      "form": "all-in-one",
+      "os": "macOS",
+      "display_inch": 23.5,
+      "fanless": false,
+      "released": "2026-11",
+      "variants": [
+        {
+          "chip": "apple-m6-10c-imac",
+          "base_price_eur": 1799,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 256,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 256,
+              "plus_eur": 0
+            },
+            {
+              "gb": 512,
+              "plus_eur": 220
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 550
+            }
+          ]
+        },
+        {
+          "chip": "apple-m6-12c-imac",
+          "base_price_eur": 1999,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 256,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 24,
+              "plus_eur": 220
+            },
+            {
+              "gb": 32,
+              "plus_eur": 440
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 256,
+              "plus_eur": 0
+            },
+            {
+              "gb": 512,
+              "plus_eur": 220
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 550
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 1100
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/imac",
+      "verified": true,
+      "note": "Apple states the visible diagonal as 23.5 inch; shipping from 6 Nov 2026; 32 GB and 2 TB only with the 12-core model."
+    },
+    {
+      "id": "mac-studio",
+      "vendor": "Apple",
+      "name": "Mac Studio",
+      "form": "desktop",
+      "os": "macOS",
+      "display_inch": null,
+      "fanless": false,
+      "released": "2026-09",
+      "variants": [
+        {
+          "chip": "apple-m5-max-18c-32g",
+          "base_price_eur": 2999,
+          "base_ram_gb": 36,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 36,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 4180
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-max-18c-40g",
+          "base_price_eur": 3659,
+          "base_ram_gb": 48,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 48,
+              "plus_eur": 0
+            },
+            {
+              "gb": 64,
+              "plus_eur": 440
+            },
+            {
+              "gb": 128,
+              "plus_eur": 2200
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1024,
+              "plus_eur": 330
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 880
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1980
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 4180
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-ultra-30c",
+          "base_price_eur": 6599,
+          "base_ram_gb": 96,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 96,
+              "plus_eur": 0
+            },
+            {
+              "gb": 256,
+              "plus_eur": 4400
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3850
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 8250
+            }
+          ]
+        },
+        {
+          "chip": "apple-m5-ultra-36c",
+          "base_price_eur": 8029,
+          "base_ram_gb": 96,
+          "base_ssd_gb": 1024,
+          "ram_options": [
+            {
+              "gb": 96,
+              "plus_eur": 0
+            },
+            {
+              "gb": 256,
+              "plus_eur": 4400
+            },
+            {
+              "gb": 512,
+              "plus_eur": 17050
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1024,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2048,
+              "plus_eur": 550
+            },
+            {
+              "gb": 4096,
+              "plus_eur": 1650
+            },
+            {
+              "gb": 8192,
+              "plus_eur": 3850
+            },
+            {
+              "gb": 16384,
+              "plus_eur": 8250
+            }
+          ]
+        }
+      ],
+      "source": "https://www.apple.com/de/shop/buy-mac/mac-studio",
+      "verified": true,
+      "note": "Available since 22 Sep 2026 (512 GB RAM option from end of October 2026); 16 TB SSD only with M5 Ultra."
+    },
+    {
+      "id": "framework-laptop-13-amd",
+      "vendor": "Framework",
+      "name": "Laptop 13 DIY Edition (AMD Ryzen AI 300 Series)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 13.5,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Framework sells the DIY Edition without an OS and states on the configurator 'bringen Sie Ihr Betriebssystem mit, auch Linux'.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-5-340",
+          "base_price_eur": 1288,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-350",
+          "base_price_eur": 1598,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370",
+          "base_price_eur": 2008,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        }
+      ],
+      "source": "https://frame.work/de/de/products/laptop13-diy-amd-ai300/configuration/new",
+      "verified": true,
+      "note": "Read 2026-11-15. DIY system prices without RAM/SSD are 959 / 1269 / 1679 EUR (sale, 'Vorher' 1059 EUR for the 340); base_price here = system + cheapest RAM kit (8 GB, +179) + cheapest SSD (500 GB SN7100, +150), 2.2K display, no OS, no power adapter/expansion cards. RAM steps use the cheapest kit per capacity (16 GB = 1x16 +305, 32 GB = 1x32 +575, 64 GB = 2x32 +1150); 8 TB is the SANDISK 850X. The model header showed an 'Out of stock' badge next to the generation tabs, so availability of this non-Pro model is uncertain."
+    },
+    {
+      "id": "framework-laptop-13-pro-intel",
+      "vendor": "Framework",
+      "name": "Laptop 13 Pro DIY Edition (Intel Core Ultra Series 3)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": "2026-04",
+      "linux_support": "Framework sells the DIY Edition without an OS for Linux and its configurator says the pre-built edition is 'Ready to use with Windows or Ubuntu pre-installed'.",
+      "variants": [
+        {
+          "chip": "intel-core-ultra-5-325",
+          "base_price_eur": 1768,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 401
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1071
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "intel-core-ultra-x7-358h",
+          "base_price_eur": 2328,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 401
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1071
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "intel-core-ultra-x9-388h",
+          "base_price_eur": 2558,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 401
+            },
+            {
+              "gb": 64,
+              "plus_eur": 1071
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        }
+      ],
+      "source": "https://frame.work/de/de/products/laptop13pro-diy-intel-ultra-3/configuration/new",
+      "verified": true,
+      "note": "Successor generation of the Laptop 13; read 2026-11-15, still pre-order (Batch 24, 'Versand im Januar'). DIY system prices 1349 / 1909 / 2139 EUR; base_price = system + LPCAMM2 16 GB (+269) + 500 GB SSD (+150). RAM is socketed LPCAMM2 (LPDDR5X). 2.8K touchscreen; display size not read from the page. 'released' is the announcement month from secondary sources (Tom's Hardware/Phoronix), not from Framework."
+    },
+    {
+      "id": "framework-laptop-13-pro-amd",
+      "vendor": "Framework",
+      "name": "Laptop 13 Pro DIY Edition (AMD Ryzen AI 300 Series)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Framework sells the DIY Edition without an OS for Linux ('bringen Sie Ihr Betriebssystem mit, auch Linux').",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-7-350",
+          "base_price_eur": 1908,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370",
+          "base_price_eur": 2188,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        }
+      ],
+      "source": "https://frame.work/de/de/products/laptop13pro-diy-amd-ai300/configuration/new",
+      "verified": true,
+      "note": "Read 2026-11-15, pre-order. DIY system prices 1579 / 1859 EUR; base_price = system + 8 GB DDR5 SO-DIMM (+179) + 500 GB SSD (+150). Display size and release month not read from a primary page."
+    },
+    {
+      "id": "framework-laptop-16-amd",
+      "vendor": "Framework",
+      "name": "Laptop 16 DIY Edition (AMD Ryzen AI 300 Series)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 16,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Framework sells the DIY Edition without an OS for Linux ('bringen Sie Ihr Betriebssystem mit, auch Linux').",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-5-340",
+          "base_price_eur": 1738,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-350",
+          "base_price_eur": 2083,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370",
+          "base_price_eur": 2423,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-350-rtx-5070",
+          "base_price_eur": 2823,
+          "base_ram_gb": 8,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 8,
+              "plus_eur": 0
+            },
+            {
+              "gb": 16,
+              "plus_eur": 126
+            },
+            {
+              "gb": 32,
+              "plus_eur": 396
+            },
+            {
+              "gb": 48,
+              "plus_eur": 966
+            },
+            {
+              "gb": 64,
+              "plus_eur": 971
+            },
+            {
+              "gb": 96,
+              "plus_eur": 2111
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        }
+      ],
+      "source": "https://frame.work/de/de/products/laptop16-diy-amd-ai300/configuration/new",
+      "verified": true,
+      "note": "Read 2026-11-15. DIY system prices 1409 / 1754 / 2094 EUR (340 and 350 are pre-order, Batch 9, 'Versand im Dezember'); base_price = system + 8 GB (+179) + 500 GB SSD (+150) with the plain Expansion Bay Shell; mandatory input modules (from about 24 EUR) and power adapter are not included. Graphics modules: RTX 5070 8 GB +740 EUR (4th variant), Radeon RX 7700S 2nd Gen +400 EUR (Geekbench 6 OpenCL 77145); the RTX 5070 12 GB module was not available with the Ryzen AI 7 350. Display size taken from the model name; release month not read."
+    },
+    {
+      "id": "framework-desktop",
+      "vendor": "Framework",
+      "name": "Desktop DIY Edition (AMD Ryzen AI Max 300 / PRO 400 Series)",
+      "form": "desktop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Framework sells the DIY Edition without an OS for Linux, and the pre-built PRO 400 model lists 'Operating System: Fedora 44 KDE Plasma'.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-max-385",
+          "base_price_eur": 1579,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-395",
+          "base_price_eur": 2359,
+          "base_ram_gb": 64,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 64,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-395",
+          "base_price_eur": 4039,
+          "base_ram_gb": 128,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 128,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-pro-495",
+          "base_price_eur": 7809,
+          "base_ram_gb": 192,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 192,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 90
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 415
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 829
+            },
+            {
+              "gb": 8000,
+              "plus_eur": 2385
+            }
+          ]
+        }
+      ],
+      "source": "https://frame.work/de/de/products/desktop-diy-amd-aimax300/configuration/new",
+      "verified": true,
+      "note": "Read 2026-11-15. RAM soldered (LPDDR5x), sold as fixed configs: DIY mainboard+case prices 1429 (385/32 GB), 2209 (395/64 GB), 3889 (395/128 GB), 7659 EUR (PRO 495/192 GB, pre-order, Limited Batch 3, 'Versand im Dezember'; pre-built with 2 TB and Fedora 8379 EUR). base_price = system + 500 GB SSD (+150); SSD surcharges were read on the PRO 400 configurator (same list as the laptops) and are assumed identical for the 300 series; CPU fan, power cable and tiles selections of the 300-series configurator were not opened and may add cost."
+    },
+    {
+      "id": "tuxedo-infinitybook-pro-14-gen10-amd",
+      "vendor": "TUXEDO",
+      "name": "InfinityBook Pro 14 - Gen10 - AMD",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 14,
+      "fanless": false,
+      "released": null,
+      "linux_support": "TUXEDO Computers is a Linux-first vendor and ships the device with Linux (TUXEDO OS) preinstalled and configured.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-7-h-255",
+          "base_price_eur": 1362,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-350",
+          "base_price_eur": 1462,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-365",
+          "base_price_eur": 1592,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370",
+          "base_price_eur": 1812,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        }
+      ],
+      "source": "https://www.tuxedocomputers.com/de/TUXEDO-InfinityBook-Pro-14-Gen10.tuxedo",
+      "verified": true,
+      "note": "Read 2026-11-15 (prices incl. VAT). H 255, AI 7 350 and AI 9 365 were marked 'lagernd ab 1.12.2026', only the HX 370 was in stock; 96 GB RAM was 'restlos vergriffen'. SSD steps are the cheapest drive per capacity (WD Blue SN5100 / Kingston NV3). Display size taken from the model name (3K 2880x1800 16:10 panel)."
+    },
+    {
+      "id": "tuxedo-infinitybook-max-15-gen10-amd",
+      "vendor": "TUXEDO",
+      "name": "InfinityBook Max 15 - Gen10 - AMD",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 15,
+      "fanless": false,
+      "released": null,
+      "linux_support": "TUXEDO Computers is a Linux-first vendor and ships the device with Linux (TUXEDO OS) preinstalled and configured.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-7-350-rtx-5060",
+          "base_price_eur": 2132,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-365-rtx-5060",
+          "base_price_eur": 2252,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370-rtx-5060",
+          "base_price_eur": 2422,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-350-rtx-5070",
+          "base_price_eur": 2307,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-365-rtx-5070",
+          "base_price_eur": 2427,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-9-hx-370-rtx-5070",
+          "base_price_eur": 2597,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 500,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 222
+            },
+            {
+              "gb": 64,
+              "plus_eur": 462
+            },
+            {
+              "gb": 128,
+              "plus_eur": 1742
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 500,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 50
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 200
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 565
+            }
+          ]
+        }
+      ],
+      "source": "https://www.tuxedocomputers.com/de/TUXEDO-InfinityBook-Max-15-Gen10-AMD.tuxedo",
+      "verified": true,
+      "note": "Read 2026-11-15 (prices incl. VAT). CPU and GPU are sold as a combined option; the shop writes 'AMD Ryzen AI 9 370' for the HX 370; the AI 9 365 + RTX 5070 combination was 'lagernd ab 11.1.2027'. Display size taken from the model name (2560x1600 16:10, 300 Hz panel); exact diagonal not read."
+    },
+    {
+      "id": "lenovo-thinkpad-t14-gen7-amd",
+      "vendor": "Lenovo",
+      "name": "ThinkPad T14 Gen 7 (14\" AMD)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 14,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Per a secondary summary of Lenovo's spec page, the T14 Gen 7 lists Fedora and Ubuntu as preload options; a Ubuntu/Red Hat certification entry was not checked.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-5-pro-440",
+          "base_price_eur": 1706.64,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-pro-450",
+          "base_price_eur": 1899.13,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            },
+            {
+              "gb": 32,
+              "plus_eur": 284.39
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-5-pro-224",
+          "base_price_eur": 1701.76,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-5-pro-216",
+          "base_price_eur": 1739.26,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-7-pro-250",
+          "base_price_eur": 2141.46,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        }
+      ],
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadt/thinkpad-t14-gen-7-14-inch-amd/len101t0156",
+      "verified": true,
+      "note": "Current successor of the T14 Gen 6. Read 2026-11-15; prices are Lenovo's discounted web prices for ready-made models with Windows 11 (list prices 2194.01 / 2384.02 / 2744.01 EUR etc.), RAM is DDR5 SO-DIMM but sold as fixed configs here (CTO surcharges not readable). Other models: AI 5 PRO 440 16 GB/512 GB Win Pro 1753.11; AI 7 PRO 450 32 GB/512 GB 2226.87. The Ryzen 5 PRO 224/216 and 7 PRO 250 models are on a second product page (len101t0168).",
+      "preinstalled": "Windows 11 (Linux preload per Lenovo spec sheet, not offered in the DE web shop models)"
+    },
+    {
+      "id": "lenovo-thinkpad-t14s-gen7-amd",
+      "vendor": "Lenovo",
+      "name": "ThinkPad T14s Gen 7 (14\" AMD)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 14,
+      "fanless": false,
+      "released": "2026-04",
+      "linux_support": "No Linux preload or certification was confirmed for this model from a primary source; ThinkPad T-series are normally Ubuntu/Red Hat certified.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-7-445",
+          "base_price_eur": 1977.7,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 218.71
+            }
+          ]
+        }
+      ],
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadt/thinkpad-t14s-gen-7-14-inch-amd/len101t0171",
+      "verified": true,
+      "note": "Read 2026-11-15; discounted web prices (list 2424.01 EUR). RAM is LPDDR5X-8533, sold as fixed configs; the 1 TB step also switches Windows 11 Home to Pro (same config with Pro and 512 GB: 2016.10 EUR). Release month from notebookcheck (secondary).",
+      "preinstalled": "Windows 11"
+    },
+    {
+      "id": "lenovo-thinkpad-x1-carbon-gen14",
+      "vendor": "Lenovo",
+      "name": "ThinkPad X1 Carbon Gen 14 Aura Edition (14\" Intel)",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 14,
+      "fanless": false,
+      "released": null,
+      "linux_support": "No Linux preload or certification was confirmed for this generation from a primary source; earlier X1 Carbon generations were Ubuntu/Red Hat certified.",
+      "variants": [
+        {
+          "chip": "intel-core-ultra-5-325",
+          "base_price_eur": 2819.0,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "intel-core-ultra-7-356h",
+          "base_price_eur": 3224.01,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            },
+            {
+              "gb": 1000,
+              "plus_eur": 470
+            }
+          ]
+        }
+      ],
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadx1/lenovo-thinkpad-x1-carbon-gen-14-aura-edition-14-inch-intel/len101t0159",
+      "verified": true,
+      "note": "Read 2026-11-15; no discount shown. RAM is LPDDR5X-8533, sold as fixed configs. A further model (Ultra 5 325, 32 GB, 256 GB, Windows 11 Home) costs 2834.01 EUR. The older Gen 13 was still listed from 1825.70 EUR.",
+      "preinstalled": "Windows 11"
+    },
+    {
+      "id": "lenovo-thinkpad-p14s-gen7-amd",
+      "vendor": "Lenovo",
+      "name": "ThinkPad P14s Gen 7 (14\" AMD) Mobile Workstation",
+      "form": "laptop",
+      "os": "Linux",
+      "display_inch": 14,
+      "fanless": false,
+      "released": null,
+      "linux_support": "No Linux preload or certification was confirmed for this generation from a primary source; ThinkPad P-series workstations are normally Ubuntu/Red Hat certified.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-5-pro-440",
+          "base_price_eur": 1492.52,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 256,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 256,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-pro-450",
+          "base_price_eur": 1662.22,
+          "base_ram_gb": 16,
+          "base_ssd_gb": 512,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 512,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-7-pro-450",
+          "base_price_eur": 2269.27,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        }
+      ],
+      "source": "https://www.lenovo.com/de/de/p/laptops/thinkpad/thinkpadp/thinkpad-p14s-gen-7-14-inch-amd/len101t0165",
+      "verified": true,
+      "note": "Read 2026-11-15; discounted web prices (list 1864.01 / 2054.02 / 2994.02 EUR). Integrated graphics only (no discrete GPU in the AMD P14s); DDR5 SO-DIMM but sold as fixed configs. A P16s Gen 5 (16\" AMD) is sold from 2054.01 EUR (AI 5 PRO 440, 16 GB LPDDR5X, 512 GB), 2194.02 (AI 7 PRO 450, 16 GB/512 GB) and 2864.02 EUR (32 GB/1 TB).",
+      "preinstalled": "Windows 11"
+    },
+    {
+      "id": "gmktec-evo-x2",
+      "vendor": "GMKtec",
+      "name": "EVO-X2 (AMD Ryzen AI Max+ 395) Mini PC",
+      "form": "desktop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": "2025-05",
+      "linux_support": "No vendor Linux preload or certification was found; Linux support rests on the upstream Strix Halo kernel/Mesa support.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-max-395",
+          "base_price_eur": 1999.99,
+          "base_ram_gb": 64,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 64,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-395",
+          "base_price_eur": 3349.99,
+          "base_ram_gb": 128,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 128,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 150
+            }
+          ]
+        }
+      ],
+      "source": "https://de.gmktec.com/products/gmktec-evo-x2-amd-ryzen%E2%84%A2-ai-max-395-mini-pc-1",
+      "verified": true,
+      "note": "Prices from the vendor's DE store product feed (de.gmktec.com/products.json, currency EUR) on 2026-11-15, all three configs in stock; RAM soldered, sold as fixed configs. 'released' is the store listing date. The newer EVO-X3 (same chip, 128 GB/2 TB) is listed at 3599.99 EUR.",
+      "preinstalled": "Windows 11 (Linux installable by the user)"
+    },
+    {
+      "id": "beelink-gtr9-pro",
+      "vendor": "Beelink",
+      "name": "GTR9 Pro (AMD Ryzen AI Max+ 395 / 495)",
+      "form": "desktop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Beelink's EU store sells a GTR9 Pro SKU with Ubuntu preinstalled ('OpenClaw & Local LLM Pre-installed'); no Ubuntu/Red Hat certification was found.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-ai-max-395",
+          "base_price_eur": 4599.0,
+          "base_ram_gb": 128,
+          "base_ssd_gb": 2000,
+          "ram_options": [
+            {
+              "gb": 128,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2000,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 180
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-495",
+          "base_price_eur": 5299.0,
+          "base_ram_gb": 128,
+          "base_ssd_gb": 2000,
+          "ram_options": [
+            {
+              "gb": 128,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2000,
+              "plus_eur": 0
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-ai-max-495",
+          "base_price_eur": 8039.0,
+          "base_ram_gb": 192,
+          "base_ssd_gb": 2000,
+          "ram_options": [
+            {
+              "gb": 192,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 2000,
+              "plus_eur": 0
+            },
+            {
+              "gb": 4000,
+              "plus_eur": 460
+            }
+          ]
+        }
+      ],
+      "source": "https://eu.bee-link.com/products/beelink-gtr9-pro-amd-ryzen-ai-max-395",
+      "verified": true,
+      "note": "Prices from the vendor's EU store product feed (eu.bee-link.com/products.json, currency EUR) on 2026-11-15; RAM soldered, sold as fixed configs. The Ubuntu SKU of the 395 costs 4619 EUR (2 TB) / 4799 EUR (4 TB, pre-order), which is where the 4 TB step comes from. The Max+ 495 model (store listing dated 2026-11-11) is a separate product page (…/beelink-gtr9-pro-amd-ryzen-ai-max-495).",
+      "preinstalled": "Windows 11 or Ubuntu (vendor SKU)"
+    },
+    {
+      "id": "beelink-ser9-pro-h255",
+      "vendor": "Beelink",
+      "name": "SER9 Pro (AMD Ryzen 7 H 255)",
+      "form": "desktop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": null,
+      "linux_support": "Beelink's EU store sells a SER9 Pro SKU with Ubuntu preinstalled ('OpenClaw Pre-Installed'); no Ubuntu/Red Hat certification was found.",
+      "variants": [
+        {
+          "chip": "amd-ryzen-7-h-255",
+          "base_price_eur": 769.0,
+          "base_ram_gb": 24,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 24,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            },
+            {
+              "gb": 2000,
+              "plus_eur": 180
+            }
+          ]
+        },
+        {
+          "chip": "amd-ryzen-7-h-255",
+          "base_price_eur": 1059.0,
+          "base_ram_gb": 32,
+          "base_ssd_gb": 1000,
+          "ram_options": [
+            {
+              "gb": 32,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": [
+            {
+              "gb": 1000,
+              "plus_eur": 0
+            }
+          ]
+        }
+      ],
+      "source": "https://eu.bee-link.com/products/beelink-ser9-pro-amd-ryzen-7-h-255-openclaw",
+      "verified": true,
+      "note": "Prices from the vendor's EU store product feed on 2026-11-15; RAM soldered (LPDDR5x-6400), sold as fixed configs. 769 EUR is the Ubuntu SKU (24 GB/1 TB, in stock; the 2 TB Ubuntu-only option was out of stock); the regular Windows listing costs 899 EUR (24 GB/1 TB) and 1059 EUR (32 GB/1 TB, pre-order).",
+      "preinstalled": "Ubuntu (vendor SKU) or Windows 11"
+    },
+    {
+      "id": "raspberry-pi-5-16gb-kit",
+      "vendor": "Raspberry Pi",
+      "name": "5 16 GB",
+      "form": "desktop",
+      "os": "Linux",
+      "display_inch": null,
+      "fanless": false,
+      "released": "2025-01",
+      "linux_support": "Raspberry Pi ships and maintains its own Debian-based Linux, Raspberry Pi OS, for the board.",
+      "variants": [
+        {
+          "chip": "broadcom-bcm2712",
+          "base_price_eur": 387.9,
+          "base_ram_gb": 16,
+          "base_ssd_gb": null,
+          "ram_options": [
+            {
+              "gb": 16,
+              "plus_eur": 0
+            }
+          ],
+          "ssd_options": []
+        }
+      ],
+      "source": "https://www.berrybase.de/raspberry-pi-5-16gb-active-cooler-starter-kit-mit-aluminium-gehaeuse",
+      "verified": false,
+      "note": "Reseller price (BerryBase search result page, 2026-11-15), marked 'nicht lieferbar'. Prices on the same day were inconsistent: bare 16 GB board 415.90 EUR (not deliverable), B-Ware board 395.10 EUR (in stock), 'Active Cooler Kit' 342.90 EUR (not deliverable); kit contents and storage were not read. RAM soldered. The kit includes the fan-based Active Cooler, hence fanless=false. Release month from notebookcheck (secondary)."
+    }
+  ],
+  "open_points": [
+    "apple: Mac Pro: https://www.apple.com/de/shop/buy-mac/mac-pro and https://www.apple.com/de/mac-pro/ both redirect to the Mac overview, which no longer lists a Mac Pro - treated as not sold, no device entry.",
+    "apple: MacBook Air 13: the 1509 EUR for M5 10-GPU with 16 GB/512 GB is the store's 'Ab' price for that chip and was cross-checked only indirectly (configurator total 1923.99 EUR = 1509 + Final Cut Pro 349.99 + 35 W adapter 65); a direct quote of that bare configuration could not be pulled from the API.",
+    "apple: RAM/SSD surcharges are the configurator's price deltas for options that keep the same chip; sizes that force a chip change (e.g. 36/128 GB on M5 Pro, 8 TB on M5 Pro, 48+ GB on Mac mini M6) are deliberately left out of that variant's lists.",
+    "apple: fanless=false for MacBook Pro, Mac mini, iMac and Mac Studio is not stated explicitly on apple.com/de (only the Mac mini spec page mentions its thermal system); fanless=true is confirmed by Apple for MacBook Air (product page) and MacBook Neo (Newsroom DE).",
+    "apple: Education prices and the nano-texture / stand / Ethernet options were not captured.",
+    "apple: MacBook Neo: store price today (799 / 899 EUR) is higher than the Newsroom DE launch price (ab 699 EUR, March 2026); the date and reason of the change were not researched.",
+    "apple: Geekbench: scores are per Mac model, not per chip; one reference model per chip was chosen (see ref_model). No Metal score exists in the chart for the iMac M6 10-core (gpu null).",
+    "apple: Geekbench: the chart does not separate GPU-core variants for M1 Max (24/32) and M2 (8/10); gpu_cores is null there.",
+    "apple: Intel i9-9880H: Geekbench has no per-Mac Metal row; gpu uses the Radeon Pro 5500M value from the Metal chart on the assumption that this was the standard GPU of the 2.3 GHz i9 configuration (5300M would be 33130) - not verified against an Apple source.",
+    "apple: Core splits of the older comparison chips (M1 to M4 families) come from Apple's compare page where listed (M1, M2, M3, M4, M1 Pro 10c, M1 Max, M2 Pro 12c, M2 Max, M3 Max 16c, M4 Pro 14c, M4 Max 16c); the lower sub-variants (M1 Pro 8c, M2 Pro 10c, M3 Pro 11c/12c, M3 Max 14c, M4 Pro 12c, M4 Max 14c) are from Apple's historic specs as remembered, not re-verified today.",
+    "apple: Extra fields beyond the requested schema: top-level 'meta', chip fields 'super_cores' and 'ref_model', and variant field 'released' on macbook-pro-14.",
+    "linux: GPU scores are Geekbench 6 OpenCL; they are only roughly comparable with Geekbench 6 Metal scores of Apple chips (different API and drivers), and Geekbench lists several differently named entries per GPU (e.g. Radeon 8060S: 86120 as 'AMD Radeon(TM) 8060S Graphics' but 91472, 83568 and 78546 under other driver strings; Radeon 780M: 21347, 24388, 25072) - the Windows-driver-named entry was used.",
+    "linux: All prices were read on 2026-11-15 during a DRAM shortage and are volatile (Framework charges +610 EUR for 2x16 GB DDR5; Strix Halo 128 GB mini PCs cost 3350-4600 EUR; Raspberry Pi 5 16 GB about 390-416 EUR).",
+    "linux: No Geekbench 6 chart entry (browser.geekbench.com/processor-benchmarks, 827 CPUs) existed for: Ryzen 7 H 255, Ryzen AI 5 PRO 440, Ryzen AI 7 PRO 450, Ryzen AI 7 445, Ryzen 5 PRO 224, Ryzen 5 PRO 216, Ryzen AI Max+ 495 / PRO 495, Core Ultra 5 325, Core Ultra 7 356H, Core Ultra X7 358H, Core Ultra X9 388H, Broadcom BCM2712 - single/multi are null.",
+    "linux: iGPU assignment for chips marked verified=false is from secondary sources (notebookcheck: PRO 450 -> Radeon 860M, PRO 440 and AI 7 445 -> Radeon 840M; X7 358H/X9 388H -> Arc B390 with 12 Xe cores) and the GPU score is the chart value of that GPU; the Ryzen 7 H 255 -> Radeon 780M mapping is from the TUXEDO shop text. No GPU score was assigned to Core Ultra 5 325, Core Ultra 7 356H, Ryzen AI Max+ 495 (a 'Radeon 8065S' entry with OpenCL 96202 exists but was not mapped), Ryzen 5/7 PRO 2xx or the Raspberry Pi (no usable OpenCL/Vulkan entry).",
+    "linux: Core counts: Framework and TUXEDO pages give only totals for AMD chips, so all cores are in perf_cores and eff_cores=0; the Zen 5 / Zen 5c split (reported by secondary sources as 4+8 for HX 370, 4+4 for AI 7 350 / PRO 450, 3+3 for AI 5 340 / PRO 440, 2+4 for AI 7 445) is not broken out. Core counts for Ryzen AI 7 445, AI 5 PRO 440, AI 7 PRO 450 and Core Ultra 7 356H come from secondary sources; Ryzen 5 PRO 224/216, Ryzen 7 PRO 250, Ryzen AI Max+ 495 (non-PRO) and BCM2712 were not read and are null. For Intel Series 3, eff_cores = E-cores + LP E-cores (X7/X9: 8+4; Ultra 5 325: 0+4).",
+    "linux: Release months are null wherever no page read in this session stated them (Framework Laptop 13/16/Desktop, both TUXEDO models, ThinkPad T14/X1 Carbon/P14s, Beelink models); the given ones are secondary (Framework 13 Pro announcement 2026-04, T14s Gen 7 2026-04, Pi 5 16 GB 2025-01) or a store listing date (GMKtec EVO-X2 2025-05).",
+    "linux: Lenovo: only ready-made Windows models of lenovo.com/de were readable; configure-to-order RAM/SSD surcharges and a Linux/no-OS option could not be read, and Ubuntu / Red Hat certification of the 2026 generations (T14 Gen 7, T14s Gen 7, X1 Carbon Gen 14, P14s Gen 7, P16s Gen 5) was not checked against ubuntu.com/certified or the Red Hat catalogue. Lenovo web prices are temporary discount prices.",
+    "linux: Framework DIY base prices are composed (system + cheapest RAM + cheapest SSD) because the DIY edition is sold without both; power adapter, expansion cards, Laptop 16 input modules and Framework Desktop fan/tiles/power cable are not included. Framework Desktop 300-series SSD surcharges were not opened on its own configurator and are taken from the identical list on the PRO 400 and laptop configurators.",
+    "linux: Display sizes: Framework Laptop 13 Pro (both) not read (null); Framework Laptop 16 and both TUXEDO models are taken from the model name, the InfinityBook Max 15 diagonal is not confirmed.",
+    "linux: Mini-PC prices (Beelink, GMKtec) come from the stores' own Shopify product feeds (products.json, shop currency EUR verified via cart.js), not from the rendered product page; checkout price, VAT display and shipping were not verified. GMKtec EVO-X2 has no documented vendor Linux support.",
+    "linux: Raspberry Pi 5 16 GB kit: reseller price only (verified=false), not deliverable on 2026-11-15, kit contents unknown; the originally linked BerryBase 'Starterkit 64GB microSDHC' 16 GB page returned 'Seite nicht gefunden'.",
+    "linux: Not covered: Slimbook, Minisforum (MS-S1 MAX 128 GB/2 TB was 4319 EUR, UM880 Plus Ryzen 7 8845HS 16 GB/512 GB 739 EUR in the store.minisforum.de feed), ThinkPad T14 Gen 7 Intel, P16s with discrete GPU, Framework pre-built editions (except the Desktop PRO 495 price in the note)."
+  ]
+}

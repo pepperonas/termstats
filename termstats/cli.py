@@ -2604,6 +2604,11 @@ def print_help():
     print(f"The microphone modes need the audio extra:  {AUDIO_HINT}")
     print("Live keys: s statistics dashboard, b BPM, d dB, x both; Esc or q exits")
     print()
+    print("History and recommendation (macOS, Linux; done by termstats-native):")
+    print("  termstats record install   Keep one line of system history a minute, from every login on")
+    print("  termstats record status    Is it recording, how many of the 14 days are on file")
+    print("  termstats recommend        Which computer fits what was recorded (--now for a first look)")
+    print()
     print("Environment:")
     print(f"  {T.THEME_ENV}=NAME     Default theme (the flag wins)")
     print("  TERMSTATS_GLYPHS=LEVEL   braille | block | ascii (default: detected)")
@@ -2722,6 +2727,35 @@ def hand_over_to_native(interval, device=None):
         return                                          # not startable: draw it ourselves
 
 
+NATIVE_COMMANDS = ("record", "recommend")
+NATIVE_INSTALL = "curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh"
+
+
+def native_binary():
+    """Where termstats-native is, for the commands only it has. Unlike native_core() this
+    does not ask whether the DASHBOARD may be handed over: the history recorder and the
+    recommendation exist nowhere else, so TERMSTATS_NATIVE=0 does not hide them - only an
+    explicit path in that variable is honoured."""
+    choice = os.environ.get(NATIVE_ENV, "").strip()
+    if choice and choice.lower() not in _NATIVE_OFF + _NATIVE_AUTO:
+        return choice if os.path.isfile(choice) and os.access(choice, os.X_OK) else None
+    return shutil.which(NATIVE_BINARY)
+
+
+def run_native_command(args):
+    """`termstats record ...` / `termstats recommend ...`: become the native program."""
+    if IS_WINDOWS:
+        _fail(f"'{args[0]}' needs the native core, which runs on macOS and Linux only")
+    path = native_binary()
+    if path is None:
+        _fail(f"'{args[0]}' is done by termstats-native, which is not installed. Install it with:\n  {NATIVE_INSTALL}")
+    try:
+        sys.stdout.flush()
+        os.execv(path, [path] + list(args))
+    except OSError as exc:
+        _fail(f"cannot start {path}: {exc}")
+
+
 def _fail(message):
     print(f"termstats: {message}", file=sys.stderr)
     print("Try 'termstats --help' for usage.", file=sys.stderr)
@@ -2765,6 +2799,11 @@ def main():
     detect_capabilities()
     configure_console()
     args = sys.argv[1:]
+
+    # The history recorder and the recommendation live in the native core; their own
+    # options (and --help) are its business, so this comes before anything is parsed here.
+    if args and args[0] in NATIVE_COMMANDS:
+        run_native_command(args)
 
     if any(a in _HELP_FLAGS for a in args):
         print_help()
