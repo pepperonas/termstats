@@ -11,6 +11,21 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-15
+
+### Changed
+- **`termstats recommend` always names two set-ups: a laptop to carry and a machine for the
+  desk.** Until now time on battery decided the form - a history recorded at the socket got
+  desktops, one with 5 % on battery got laptops only. But where the next job is done is not
+  in the history. Each of the three levels is now answered both ways, followed by what each
+  level asks for, the price gap between the two at the fitting level, the share of time on
+  battery and with an external display, and a note that a desktop's price is the computer
+  alone. The Linux alternative is named both ways too. Time on battery changes no pick.
+- **Breaking, `recommend --json`:** each entry of `tiers` carries `laptop` and `desktop`
+  instead of `pick`; `linux` is an object with `laptop` and `desktop`; the top-level
+  `portable` and `need.portable` are gone. `profile.battery_share` is unchanged.
+- `examples/daily-report.example.py` shows one table per set-up and the comparison.
+
 ## [0.10.1] - 2026-11-15
 
 ### Added

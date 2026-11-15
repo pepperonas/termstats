@@ -182,7 +182,7 @@ def lines_of(s, machine):
 
 
 def recommendation():
-    """(text report, the middle tier's pick as a short string or None, the JSON report or {})."""
+    """(text report, the middle tier's laptop and desktop as a short string or None, the JSON report or {})."""
     binary = native_bin()
     if not binary:
         return "termstats-native ist nicht installiert - keine Empfehlung.", None, {}
@@ -190,9 +190,10 @@ def recommendation():
     short, data = None, {}
     try:
         data = json.loads(subprocess.run([binary, "recommend", "--now", "--json"], capture_output=True, text=True, timeout=60).stdout)
-        pick = data["tiers"][1]["pick"]
-        if pick:
-            short = f'{pick["name"]}, {pick["ram_gb"]} GB, {pick["price_eur"]} EUR'
+        fit = data["tiers"][1]
+        parts = [f'{label} {pick["name"]}, {pick["ram_gb"]} GB, {pick["price_eur"]} EUR'
+                 for label, pick in (("mobil", fit.get("laptop")), ("Desktop", fit.get("desktop"))) if pick]
+        short = "; ".join(parts) or None
     except (ValueError, KeyError, IndexError, TypeError, subprocess.SubprocessError):
         pass
     return (text.stdout or text.stderr).rstrip() or "Keine Empfehlung erhalten.", short, data
@@ -382,6 +383,9 @@ SHORT_DE = {"memory": "Arbeitsspeicher", "storage": "Datenträger", "processor":
 RAM_FACTOR, SSD_FACTOR = (1.10, 1.30, 1.80), (1.25, 1.5, 2.0)     # the tiers' headroom, as termstats applies it
 
 
+SETUP_DE = (("laptop", "Mobil (MacBook)"), ("desktop", "Schreibtisch (Desktop)"))
+
+
 def euro(value):
     return f"{value:,.0f} €".replace(",", ".")
 
@@ -425,18 +429,36 @@ def german(data):
     if not machine.get("chip_known", True):
         verdict += (f' Sein Chip ({machine["chip"]}) steht nicht im Katalog; Prozessor und Grafik ließen sich deshalb nicht vergleichen, '
                     "die Auswahl stützt sich nur auf Speicher, Datenträger und Mobilität.")
-    portable = bool(data["tiers"] and data["tiers"][0]["need"].get("portable"))
-    form = ("Im Akkubetrieb genutzt, deshalb kommen nur Laptops in Frage." if portable
-            else "Nie im Akkubetrieb genutzt, deshalb kommen auch Desktops in Frage.")
-    tiers = []
+    form = ("Genannt sind immer beide Aufbauten, mobil und für den Schreibtisch: "
+            "wo der nächste Auftrag erledigt wird, steht nicht im Verlauf.")
+    tiers, setups = [], {"laptop": [], "desktop": []}
     for i, tier in enumerate(data["tiers"]):
         need = tier["need"]
         why = [f'Speicher {de(need["ram_gb"], 0)} GB = {de(pr["ram_p99_gb"])} GB × {de(RAM_FACTOR[i], 2)}',
                f'Datenträger {de(need["ssd_gb"], 0)} GB = {de(pr["disk_used_gb"], 0)} GB × {de(SSD_FACTOR[i], 2)} plus Zuwachs']
         if machine.get("multi"):
             why.append(f'Prozessor mindestens {de(need["multi"] * 100 / machine["multi"], 0)} % des jetzigen {machine["chip"]}')
-        tiers.append((TIER_DE.get(tier["tier"], tier["tier"]), tier["pick"], "; ".join(why)))
-    extras = [(label, pick) for label, pick in (("als Laptop", data.get("portable")), ("unter Linux", data.get("linux"))) if pick]
+        label = TIER_DE.get(tier["tier"], tier["tier"])
+        tiers.append((label, "; ".join(why)))
+        for kind in setups:
+            setups[kind].append((label, tier.get(kind)))
+    linux = data.get("linux") or {}
+    for kind in setups:
+        setups[kind].append(("unter Linux (passt)", linux.get(kind)))
+    fit = data["tiers"][1] if len(data["tiers"]) > 1 else {}
+    display = "" if pr["display_share"] is None else f'{pct(pr["display_share"])} der Zeit hing ein externer Monitor am Rechner'
+    compare = []
+    if fit.get("laptop") and fit.get("desktop"):
+        gap = fit["laptop"]["price_eur"] - fit["desktop"]["price_eur"]
+        compare.append(f'In der Stufe „passt“ kostet das MacBook {euro(abs(gap))} {"mehr" if gap >= 0 else "weniger"} als der Desktop.')
+    compare.append("Mobil: " + ("der Verlauf stammt von einem Rechner ohne Akku" if pr["battery_share"] is None
+                                else f'im Verlauf lief der Rechner {pct(pr["battery_share"])} der Zeit im Akkubetrieb')
+                   + (f'; {display}' if display else "") + ". Die Auswahl hängt davon nicht ab.")
+    if any(pick and pick.get("form") == "desktop" for _label, pick in setups["desktop"]):
+        compare.append("Desktop: der Preis gilt für den Rechner allein. Monitor, Tastatur und Maus kommen dazu, soweit sie nicht schon da sind"
+                       + (f' ({display})' if display else "") + ".")
+    if fit.get("need", {}).get("no_fanless"):
+        compare.append("Rechner ohne Lüfter sind in beiden Aufbauten ausgeschlossen: die Last hielt über längere Zeit an.")
     try:
         stand = f'{dt.date.fromisoformat(data["catalogue"]):%d.%m.%Y}'
     except ValueError:
@@ -448,7 +470,8 @@ def german(data):
         notes.insert(0, f'Der Katalog ist {data["catalogue_age_days"]} Tage alt: Modelle und Preise können sich geändert haben, termstats aktualisieren.')
     provisional = "" if data.get("ready", True) else (f'Vorläufig: erst {hist["days"]} von 14 Tagen sind aufgezeichnet. '
                                                       "Die Empfehlung kann sich noch deutlich ändern.")
-    return {"facts": facts, "verdict": verdict, "form": form, "tiers": tiers, "extras": extras, "notes": notes, "provisional": provisional}
+    return {"facts": facts, "verdict": verdict, "form": form, "tiers": tiers, "setups": setups, "compare": compare, "notes": notes,
+            "provisional": provisional}
 
 
 def german_plain(g):
@@ -456,9 +479,13 @@ def german_plain(g):
     out = ([g["provisional"], ""] if g["provisional"] else []) + ["Was der Verlauf sagt"]
     out += [f"  {label + ':':<{width}}{text}" for label, text in g["facts"]]
     out += ["", g["verdict"], g["form"], ""]
-    for label, pick, why in g["tiers"]:
-        out += [f"{label}:  " + (pick_text(pick) if pick else "nichts im Katalog erfüllt das"), f"    {why}"]
-    out += [f"{label}:  {pick_text(pick)}" for label, pick in g["extras"]]
+    for kind, title in SETUP_DE:
+        out.append(title)
+        out += [f"  {label}:  " + (pick_text(pick) if pick else "nichts im Katalog erfüllt das") for label, pick in g["setups"][kind]]
+        out.append("")
+    out.append("Was jede Stufe verlangt (für beide Aufbauten gleich)")
+    out += [f"  {label}:  {why}" for label, why in g["tiers"]]
+    out += ["", "Die beiden Aufbauten im Vergleich"] + [f"  {line}" for line in g["compare"]]
     return "\n".join(out + [""] + g["notes"])
 
 CSS = """
@@ -468,6 +495,11 @@ body { margin: 0; font-family: -apple-system, "Helvetica Neue", "Segoe UI", Aria
 h1 { font-size: 19pt; margin: 0 0 2px; letter-spacing: -0.01em; }
 .sub { color: #52514e; margin: 0 0 14px; }
 h2 { font-size: 12pt; margin: 15px 0 2px; }
+h3 { font-size: 10.5pt; margin: 12px 0 3px; }
+table.picks { table-layout: fixed; }
+table.picks th:nth-child(1) { width: 18%; } table.picks th:nth-child(2) { width: 27%; } table.picks th:nth-child(3) { width: 29%; }
+table.picks th:nth-child(4) { width: 10%; } table.picks th:nth-child(5) { width: 7%; } table.picks th:nth-child(6) { width: 9%; }
+section p { margin: 3px 0; }
 .note { color: #52514e; font-size: 9pt; margin: 0 0 6px; }
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 6px; }
 .tile { border: 1px solid #e4e3dd; border-radius: 8px; padding: 9px 11px; }
@@ -548,20 +580,24 @@ def report_html(day, machine, rows, summary, pairs, report, g):
         out.append(f'<pre>{esc(unfold(report))}</pre></section>')
     else:
         if g["provisional"]:
-            out.append(f'<div class="warn"><b>Vorläufig.</b> {esc(g["provisional"].split(": ", 1)[1].capitalize())}</div>')
+            out.append(f'<div class="warn"><b>Vorläufig.</b> {esc(g["provisional"].split(": ", 1)[1][:1].upper() + g["provisional"].split(": ", 1)[1][1:])}</div>')
         out.append(f'<p class="lead">{esc(g["verdict"])} {esc(g["form"])}</p>')
-        rows_ = [(label, pick, why) for label, pick, why in g["tiers"]] + [(label, pick, "") for label, pick in g["extras"]]
-        out.append('<table><tr><th>Stufe</th><th>Gerät</th><th>Chip</th><th class="r">Speicher</th><th class="r">SSD</th><th class="r">Preis</th></tr>')
-        for label, pick, why in rows_:
-            has = ' class="has"' if why else ""
-            if pick:
-                out.append(f'<tr{has}><td class="n"><b>{esc(label)}</b></td><td>{esc(pick["vendor"] + " " + pick["name"])}</td><td>{esc(pick["chip"])}</td>'
-                           f'<td class="r">{pick["ram_gb"]} GB</td><td class="r">{size(pick["ssd_gb"])}</td><td class="r">{esc(euro(pick["price_eur"]))}</td></tr>')
-            else:
-                out.append(f'<tr{has}><td class="n"><b>{esc(label)}</b></td><td colspan="5">nichts im Katalog erfüllt das</td></tr>')
-            if why:
-                out.append(f'<tr><td></td><td colspan="5" class="why">{esc(why)}</td></tr>')
-        out.append("</table></section>")
+        for kind, title in SETUP_DE:
+            out.append(f'<h3>{esc(title)}</h3><table class="picks"><tr><th>Stufe</th><th>Gerät</th><th>Chip</th><th class="r">Speicher</th><th class="r">SSD</th>'
+                       '<th class="r">Preis</th></tr>')
+            for label, pick in g["setups"][kind]:
+                if pick:
+                    out.append(f'<tr><td class="n"><b>{esc(label)}</b></td><td>{esc(pick["vendor"] + " " + pick["name"])}</td><td>{esc(pick["chip"])}</td>'
+                               f'<td class="r">{pick["ram_gb"]} GB</td><td class="r">{size(pick["ssd_gb"])}</td><td class="r">{esc(euro(pick["price_eur"]))}'
+                               + ("" if pick.get("verified", True) else " *") + '</td></tr>')
+                else:
+                    out.append(f'<tr><td class="n"><b>{esc(label)}</b></td><td colspan="5">nichts im Katalog erfüllt das</td></tr>')
+            out.append("</table>")
+        if any(pick and not pick.get("verified", True) for kind in g["setups"] for _label, pick in g["setups"][kind]):
+            out.append('<p class="note">* Preis nicht beim Hersteller bestätigt.</p>')
+        out.append('<h3>Was jede Stufe verlangt</h3><p class="note">Für beide Aufbauten gleich.</p><table class="facts">'
+                   + "".join(f"<tr><td>{esc(label)}</td><td>{esc(why)}</td></tr>" for label, why in g["tiers"]) + "</table>")
+        out.append('<h3>Die beiden Aufbauten im Vergleich</h3>' + "".join(f"<p>{esc(line)}</p>" for line in g["compare"]) + "</section>")
         out.append('<section><h2>Was der Verlauf sagt</h2><table class="facts">'
                    + "".join(f"<tr><td>{esc(label)}</td><td>{esc(text)}</td></tr>" for label, text in g["facts"]) + "</table>"
                    + "".join(f'<p class="note">{esc(note)}</p>' for note in g["notes"]) + "</section>")

@@ -215,8 +215,6 @@ pub struct Need {
     pub multi: f64,
     pub single: f64,
     pub gpu: f64,
-    /// It was used away from a socket: only laptops qualify.
-    pub portable: bool,
     /// Sustained load or heat: a machine without a fan would throttle.
     pub no_fanless: bool,
 }
@@ -243,7 +241,6 @@ pub fn need(p: &Profile, current: Option<&Chip>, tier: Tier) -> Need {
             need.gpu = chip.gpu as f64 * factor.clamp(0.2, 3.0);
         }
     }
-    need.portable = p.battery_share.unwrap_or(0.0) >= 0.05;
     need.no_fanless = p.sustained_share >= 0.05 || p.thermal_share.unwrap_or(0.0) >= 0.02;
     need
 }
@@ -285,7 +282,7 @@ pub fn current_chip<'a>(chips: &'a [Chip], machine: &Machine) -> Option<&'a Chip
 }
 
 fn config(device: &'static Device, variant: &'static Variant, chip: &Chip, need: &Need) -> Option<Choice> {
-    if need.portable && device.form != "laptop" || need.no_fanless && device.fanless {
+    if need.no_fanless && device.fanless {
         return None;
     }
     if (chip.multi as f64) < need.multi || (chip.single as f64) < need.single || (chip.gpu as f64) < need.gpu {
@@ -298,11 +295,29 @@ fn config(device: &'static Device, variant: &'static Variant, chip: &Chip, need:
                   source: device.source, multi: chip.multi })
 }
 
-/// The cheapest configuration of the given system that meets the need; among equally
-/// priced ones the faster.
-pub fn pick(devices: &'static [Device], chips: &[Chip], need: &Need, os: &str, laptops_only: bool) -> Option<Choice> {
+/// The two ways a computer is set up. Both are always answered: a fortnight at one desk
+/// says nothing about where the next job is done, so time on battery never rules one out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Form {
+    /// Carried: a laptop.
+    Laptop,
+    /// Stays put: a desktop or an all-in-one.
+    Desktop,
+}
+
+pub const FORMS: [Form; 2] = [Form::Laptop, Form::Desktop];
+
+impl Form {
+    fn takes(self, device: &Device) -> bool {
+        (device.form == "laptop") == (self == Form::Laptop)
+    }
+}
+
+/// The cheapest configuration of the given system and form that meets the need; among
+/// equally priced ones the faster.
+pub fn pick(devices: &'static [Device], chips: &[Chip], need: &Need, os: &str, form: Form) -> Option<Choice> {
     let mut best: Option<Choice> = None;
-    for device in devices.iter().filter(|d| d.os == os && (!laptops_only || d.form == "laptop")) {
+    for device in devices.iter().filter(|d| d.os == os && form.takes(d)) {
         for variant in device.variants {
             let Some(chip) = chip_by_id(chips, variant.chip) else { continue };
             let Some(candidate) = config(device, variant, chip, need) else { continue };
@@ -344,10 +359,11 @@ pub struct Report<'a> {
     pub machine: &'a Machine,
     pub current: Option<&'a Chip>,
     pub needs: [Need; 3],
-    pub picks: [Option<Choice>; 3],
-    /// The fitting tier as a laptop, when the pick itself is a desktop.
-    pub portable: Option<Choice>,
-    pub linux: Option<Choice>,
+    /// macOS, one pick per tier: to carry and for the desk.
+    pub laptops: [Option<Choice>; 3],
+    pub desktops: [Option<Choice>; 3],
+    /// The fitting tier running Linux, in the order of `FORMS`.
+    pub linux: [Option<Choice>; 2],
     pub catalogue: &'a str,
     pub catalogue_age_days: i64,
     pub ready: bool,
@@ -357,13 +373,10 @@ pub fn build<'a>(p: &'a Profile, machine: &'a Machine, chips: &'a [Chip], device
                  catalogue_age_days: i64, ready: bool) -> Report<'a> {
     let current = current_chip(chips, machine);
     let needs = TIERS.map(|tier| need(p, current, tier));
-    let picks = [0, 1, 2].map(|i| pick(devices, chips, &needs[i], "macOS", false));
-    let portable = match &picks[1] {
-        Some(choice) if choice.form != "laptop" => pick(devices, chips, &needs[1], "macOS", true),
-        _ => None,
-    };
-    let linux = pick(devices, chips, &needs[1], "Linux", needs[1].portable);
-    Report { profile: p, machine, current, needs, picks, portable, linux, catalogue, catalogue_age_days, ready }
+    let laptops = [0, 1, 2].map(|i| pick(devices, chips, &needs[i], "macOS", Form::Laptop));
+    let desktops = [0, 1, 2].map(|i| pick(devices, chips, &needs[i], "macOS", Form::Desktop));
+    let linux = FORMS.map(|form| pick(devices, chips, &needs[1], "Linux", form));
+    Report { profile: p, machine, current, needs, laptops, desktops, linux, catalogue, catalogue_age_days, ready }
 }
 
 fn euro(amount: u32) -> String {
@@ -471,28 +484,44 @@ pub fn text(r: &Report) -> String {
         let _ = writeln!(out, "  Its chip ({}) is not in the catalogue, so processor and graphics could not be compared: the picks below rest on memory, storage and mobility only.", r.machine.chip);
     }
 
-    let _ = writeln!(out, "\nRecommendation (macOS){}",
-                     if r.needs[1].portable { "  - used on battery, so laptops only" } else { "  - never used on battery, so desktops qualify" });
-    for (i, tier) in TIERS.iter().enumerate() {
-        match &r.picks[i] {
-            Some(choice) => {
-                let _ = writeln!(out, "  {:<14}{}  -  {}{}", tier.label(), describe(choice), euro(choice.price_eur), if choice.verified { "" } else { "  (price not from the maker's own page)" });
-            }
-            None => { let _ = writeln!(out, "  {:<14}nothing in the catalogue meets this", tier.label()); }
+    let _ = writeln!(out, "\nRecommendation (macOS)  - to carry and for the desk, whatever the battery says: where the next job is done is not in the history");
+    let line = |out: &mut String, label: &str, choice: &Option<Choice>| {
+        match choice {
+            Some(c) => { let _ = writeln!(out, "    {:<14}{}  -  {}{}", label, describe(c), euro(c.price_eur), if c.verified { "" } else { "  (price not from the maker's own page)" }); }
+            None => { let _ = writeln!(out, "    {:<14}nothing in the catalogue meets this", label); }
         }
-        let _ = writeln!(out, "  {:<14}{}", "", reasons(p, &r.needs[i], *tier, r.current));
+    };
+    for (title, picks) in [("To carry (laptop)", &r.laptops), ("For the desk (desktop)", &r.desktops)] {
+        let _ = writeln!(out, "  {title}");
+        for (i, tier) in TIERS.iter().enumerate() {
+            line(&mut out, tier.label(), &picks[i]);
+        }
+    }
+    let _ = writeln!(out, "  What each level asks for, either way");
+    for (i, tier) in TIERS.iter().enumerate() {
+        let _ = writeln!(out, "    {:<14}{}", tier.label(), reasons(p, &r.needs[i], *tier, r.current));
+    }
+    let _ = writeln!(out, "  The two set-ups");
+    if let (Some(laptop), Some(desktop)) = (&r.laptops[1], &r.desktops[1]) {
+        let (gap, word) = if laptop.price_eur >= desktop.price_eur { (laptop.price_eur - desktop.price_eur, "more") } else { (desktop.price_eur - laptop.price_eur, "less") };
+        let _ = writeln!(out, "    At the fitting level the laptop costs {} {} than the desk machine.", euro(gap), word);
+    }
+    let _ = writeln!(out, "    The laptop: {}{}.",
+                     match p.battery_share {
+                         Some(battery) => format!("this history was on battery {} of the time", pct(battery)),
+                         None => "this history is from a machine without a battery".to_string(),
+                     },
+                     p.display_share.map_or(String::new(), |s| format!(" and had an external display {} of the time", pct(s))));
+    if r.desktops.iter().flatten().any(|c| c.form == "desktop") {
+        let _ = writeln!(out, "    The desk machine: the price is the computer alone - a display, keyboard and pointing device come on top unless they are there already{}.",
+                         p.display_share.map_or(String::new(), |s| format!(" (an external display was connected {} of the time)", pct(s))));
     }
     if r.needs[1].no_fanless {
-        let _ = writeln!(out, "  Machines without a fan are left out: the load was sustained ({} of the time in runs of ten minutes or more).", pct(p.sustained_share));
-    }
-    if let Some(choice) = &r.portable {
-        let _ = writeln!(out, "  as a laptop   {}  -  {}  (the fitting tier, if it has to move)", describe(choice), euro(choice.price_eur));
+        let _ = writeln!(out, "    Machines without a fan are left out of both: the load was sustained ({} of the time in runs of ten minutes or more).", pct(p.sustained_share));
     }
     let _ = writeln!(out, "\nRunning Linux instead (the fitting tier)");
-    match &r.linux {
-        Some(choice) => { let _ = writeln!(out, "  {}  -  {}{}", describe(choice), euro(choice.price_eur), if choice.verified { "" } else { "  (price not from the maker's own page)" }); }
-        None => { let _ = writeln!(out, "  nothing in the catalogue meets this"); }
-    }
+    line(&mut out, "to carry", &r.linux[0]);
+    line(&mut out, "for the desk", &r.linux[1]);
 
     let _ = writeln!(out, "\nHow to read this");
     let _ = writeln!(out, "  The cheapest configuration that meets each level is named; prices are list prices in euro from the catalogue of {}.", r.catalogue);
@@ -531,20 +560,20 @@ pub fn json(r: &Report) -> String {
     let p = r.profile;
     let tiers: Vec<String> = TIERS.iter().enumerate().map(|(i, tier)| {
         let n = &r.needs[i];
-        format!("{{\"tier\":{},\"need\":{{\"ram_gb\":{:.1},\"ssd_gb\":{:.0},\"multi\":{:.0},\"gpu\":{:.0},\"portable\":{},\"no_fanless\":{}}},\"pick\":{}}}",
-                json_string(tier.label()), n.ram_gb, n.ssd_gb, n.multi, n.gpu, n.portable, n.no_fanless, json_choice(&r.picks[i]))
+        format!("{{\"tier\":{},\"need\":{{\"ram_gb\":{:.1},\"ssd_gb\":{:.0},\"multi\":{:.0},\"gpu\":{:.0},\"no_fanless\":{}}},\"laptop\":{},\"desktop\":{}}}",
+                json_string(tier.label()), n.ram_gb, n.ssd_gb, n.multi, n.gpu, n.no_fanless, json_choice(&r.laptops[i]), json_choice(&r.desktops[i]))
     }).collect();
     let tops = |list: &[(String, f64)]| list.iter().map(|(name, v)| format!("[{},{:.2}]", json_string(name), v)).collect::<Vec<_>>().join(",");
     let (enough, short) = current_meets(p, &r.needs[1], r.current);
     let short: Vec<String> = short.iter().map(|s| json_string(s)).collect();
     let multi = r.current.map_or("null".to_string(), |c| c.multi.to_string());
-    format!("{{\"ready\":{},\"catalogue\":{},\"catalogue_age_days\":{},\"machine\":{{\"model\":{},\"chip\":{},\"ncpu\":{},\"mem_gb\":{:.0},\"chip_known\":{},\"multi\":{},\"fits\":{},\"short\":[{}]}},\"history\":{{\"first\":{},\"last\":{},\"days\":{},\"minutes\":{},\"awake_share\":{:.4}}},\"profile\":{{\"ram_p99_gb\":{:.2},\"ram_max_gb\":{:.2},\"days_over_ram\":{},\"pressure_share\":{},\"cpu_p95\":{:.1},\"saturated_share\":{:.4},\"sustained_runs\":{},\"single_share\":{:.4},\"gpu_p95\":{},\"disk_used_gb\":{:.1},\"disk_total_gb\":{:.1},\"disk_growth_gb_day\":{:.3},\"battery_share\":{},\"display_share\":{},\"thermal_share\":{},\"top_cpu_hours\":[{}],\"top_mem_gb\":[{}]}},\"tiers\":[{}],\"portable\":{},\"linux\":{}}}\n",
+    format!("{{\"ready\":{},\"catalogue\":{},\"catalogue_age_days\":{},\"machine\":{{\"model\":{},\"chip\":{},\"ncpu\":{},\"mem_gb\":{:.0},\"chip_known\":{},\"multi\":{},\"fits\":{},\"short\":[{}]}},\"history\":{{\"first\":{},\"last\":{},\"days\":{},\"minutes\":{},\"awake_share\":{:.4}}},\"profile\":{{\"ram_p99_gb\":{:.2},\"ram_max_gb\":{:.2},\"days_over_ram\":{},\"pressure_share\":{},\"cpu_p95\":{:.1},\"saturated_share\":{:.4},\"sustained_runs\":{},\"single_share\":{:.4},\"gpu_p95\":{},\"disk_used_gb\":{:.1},\"disk_total_gb\":{:.1},\"disk_growth_gb_day\":{:.3},\"battery_share\":{},\"display_share\":{},\"thermal_share\":{},\"top_cpu_hours\":[{}],\"top_mem_gb\":[{}]}},\"tiers\":[{}],\"linux\":{{\"laptop\":{},\"desktop\":{}}}}}\n",
             r.ready, json_string(r.catalogue), r.catalogue_age_days, json_string(&r.machine.model), json_string(&r.machine.chip), r.machine.ncpu, p.installed_gb, r.current.is_some(),
             multi, enough, short.join(","),
             p.first_ts, p.last_ts, p.span_days, p.minutes, p.awake_share, p.ram_p99_gb, p.ram_max_gb, p.days_over_ram, json_opt(p.pressure_share),
             p.cpu_p95, p.saturated_share, p.sustained_runs, p.single_share, json_opt(p.gpu_p95), p.disk_used_gb, p.disk_total_gb, p.disk_growth_gb_day,
             json_opt(p.battery_share), json_opt(p.display_share), json_opt(p.thermal_share), tops(&p.top_cpu), tops(&p.top_mem),
-            tiers.join(","), json_choice(&r.portable), json_choice(&r.linux))
+            tiers.join(","), json_choice(&r.linux[0]), json_choice(&r.linux[1]))
 }
 
 /// Days from an ISO date (YYYY-MM-DD) to now; 0 if it cannot be read.

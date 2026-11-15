@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file; the only state on disk is the optional history (0.10.0).
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.10.1**, 1547 pytest tests + 89 `cargo test` in `native/`.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.11.0**, 1547 pytest tests + 90 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -743,3 +743,16 @@ committed with real credentials filled in.
   only on the CI runner (`--version`, `--demo --once`, `--list-devices`).
 - The `recommend --json` fields the daily report's German text needs (`machine.fits`,
   `machine.short`, `machine.multi`, `catalogue_age_days`) are released with 0.10.1.
+
+## Recommendation: always a laptop and a desktop (0.11.0)
+
+`recommend` no longer lets time on battery choose the form (user decision 2026-11-15: the
+current job being done at the socket says nothing about the next one). `recommend::Form`
+(`Laptop` / `Desktop`, the latter = every form that is not `laptop`, so the iMac counts)
+is a parameter of `pick`; `Report` carries `laptops`, `desktops` (three tiers each) and
+`linux: [Option<Choice>; 2]` in the order of `FORMS`. `Need.portable` is gone - do not bring
+it back as a filter; battery and display shares are printed under "The two set-ups" only.
+A tier may have a laptop and no desktop (or the reverse): that is said as "nothing in the
+catalogue meets this", never filled with the other form. The JSON changed with it
+(`tiers[].laptop` / `.desktop`, `linux.laptop` / `.desktop`); the daily-report example
+reads exactly these and prints one table per set-up.

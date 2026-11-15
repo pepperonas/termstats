@@ -56,10 +56,11 @@ fn fortnight(shape: impl Fn(i64, i64, &mut Minute)) -> Vec<Minute> {
     minutes
 }
 
-fn report_for(minutes: &[Minute], machine: &Machine) -> (Profile, [Need; 3], [Option<Choice>; 3], Option<Choice>, Option<Choice>) {
+/// (profile, needs, the desk picks, the laptop picks, the Linux pair).
+fn report_for(minutes: &[Minute], machine: &Machine) -> (Profile, [Need; 3], [Option<Choice>; 3], [Option<Choice>; 3], [Option<Choice>; 2]) {
     let p = profile(minutes, machine);
     let r = build(&p, machine, CHIPS, DEVICES, "2026-11-15", 0, true);
-    (p.clone(), r.needs.clone(), r.picks.clone(), r.portable.clone(), r.linux.clone())
+    (p.clone(), r.needs.clone(), r.desktops.clone(), r.laptops.clone(), r.linux.clone())
 }
 
 // --- the profile ----------------------------------------------------------------------------
@@ -108,7 +109,7 @@ fn what_was_never_reported_is_unknown_not_zero() {
     let p = profile(&minutes, &machine());
     assert_eq!((p.gpu_p95, p.gpu_heavy_share, p.battery_share, p.display_share, p.thermal_share, p.pressure_share), (None, None, None, None, None, None));
     let need = need(&p, current_chip(CHIPS, &machine()), Tier::Fit);
-    assert_eq!((need.gpu, need.portable), (0.0, false));
+    assert_eq!(need.gpu, 0.0);
     assert!(text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true)).contains("graphics   not reported"));
 }
 
@@ -137,7 +138,7 @@ fn light_use_gets_the_smallest_machine_and_is_told_the_current_one_fits() {
     let minutes = fortnight(|_, _, _| {});
     let (p, needs, picks, _portable, _linux) = report_for(&minutes, &machine());
     let fit = picks[1].as_ref().unwrap();
-    assert_eq!((fit.device, fit.ram_gb, fit.ssd_gb), ("mini", 16, 256), "never on battery: the cheapest desktop");
+    assert_eq!((fit.device, fit.ram_gb, fit.ssd_gb), ("mini", 16, 256), "the cheapest desktop");
     assert_eq!(fit.price_eur, 700);
     assert!(current_meets(&p, &needs[1], current_chip(CHIPS, &machine())).0);
     let report = text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true));
@@ -161,7 +162,8 @@ fn a_machine_that_wants_28_gb_is_given_at_least_32() {
 #[test]
 fn heavy_graphics_asks_for_the_graphics_class() {
     let minutes = fortnight(|_, minute, m| if minute < 200 { m.gpu_avg = Some(95.0); m.gpu_max = Some(100.0); });
-    let (_p, needs, picks, _, _) = report_for(&minutes, &machine());
+    let (_p, needs, desktops, picks, _) = report_for(&minutes, &machine());
+    assert_eq!(desktops[2], None, "no desk machine in this catalogue has the Max: said, not replaced by a laptop");
     assert!(needs[1].gpu >= 40000.0 * 1.4, "saturated graphics: at least 1.4 times the current chip, got {}", needs[1].gpu);
     assert_eq!(picks[1].as_ref().unwrap().chip, "Pro", "the base chip's graphics are too small");
     assert_eq!(picks[2].as_ref().unwrap().chip, "Max");
@@ -176,28 +178,49 @@ fn a_saturated_processor_asks_for_more_than_the_measurement_shows() {
     let needs = TIERS.map(|t| need(&p, chip, t));
     assert!(needs[0].multi >= 11000.0 && needs[1].multi >= 14000.0 && needs[2].multi >= 20000.0, "{:?}", needs.iter().map(|n| n.multi).collect::<Vec<_>>());
     assert!(needs[1].no_fanless, "sustained load: no machine without a fan");
-    let picks = TIERS.map(|t| pick(DEVICES, CHIPS, &need(&p, chip, t), "macOS", false).unwrap());
-    assert!(picks.iter().all(|c| c.device != "air"));
+    let picks = TIERS.map(|t| pick(DEVICES, CHIPS, &need(&p, chip, t), "macOS", Form::Laptop).unwrap());
+    assert!(picks.iter().all(|c| c.device == "book"), "the fanless laptop is out");
     // 99 % at the busy times against a 40 % target is 2.5 times the current chip: beyond the Pro.
     assert_eq!((picks[1].chip, picks[2].chip), ("Pro", "Max"));
 }
 
 #[test]
-fn work_on_battery_means_laptops_only_and_a_desk_machine_gets_a_laptop_alternative() {
-    let mobile = fortnight(|_, minute, m| if minute < 60 { m.ac = Some(0.0); m.battery = Some(60); });
-    let (_p, needs, picks, portable, linux) = report_for(&mobile, &machine());
-    assert!(needs[1].portable);
-    assert!(picks.iter().all(|c| c.as_ref().unwrap().form == "laptop"));
-    assert_eq!(picks[1].as_ref().unwrap().device, "air");
-    assert_eq!(portable, None, "the pick already is a laptop");
-    assert_eq!(linux.unwrap().device, "tux", "the Linux alternative has to move as well");
-
+fn a_laptop_and_a_desktop_are_always_named_whatever_the_battery_says() {
+    // Where the next job is done is not in the history: a fortnight on battery still gets
+    // a desk machine, a fortnight at the socket still gets a laptop - and the same ones.
+    let mobile = fortnight(|_, minute, m| if minute < 240 { m.ac = Some(0.0); m.battery = Some(60); });
     let desk = fortnight(|_, _, _| {});
-    let (_p, needs, picks, portable, linux) = report_for(&desk, &machine());
-    assert!(!needs[1].portable);
-    assert_eq!(picks[1].as_ref().unwrap().form, "desktop");
-    assert_eq!(portable.unwrap().device, "air", "the same tier as a laptop, in case it has to move");
-    assert_eq!(linux.unwrap().device, "box");
+    let none = fortnight(|_, _, m| { m.ac = None; m.battery = None; });
+    let reports = [&mobile, &desk, &none].map(|minutes| report_for(minutes, &machine()));
+    for (_p, _needs, desktops, laptops, linux) in &reports {
+        assert!(laptops.iter().all(|c| c.as_ref().unwrap().form == "laptop"));
+        assert!(desktops.iter().all(|c| c.as_ref().unwrap().form == "desktop"));
+        assert_eq!((laptops[1].as_ref().unwrap().device, desktops[1].as_ref().unwrap().device), ("air", "mini"));
+        assert_eq!((linux[0].as_ref().unwrap().device, linux[1].as_ref().unwrap().device), ("tux", "box"));
+    }
+    assert_eq!((&reports[0].2, &reports[0].3), (&reports[1].2, &reports[1].3), "time on battery changes no pick");
+    assert!(reports[0].0.battery_share.unwrap() > 0.4 && reports[2].0.battery_share.is_none());
+}
+
+#[test]
+fn the_report_sets_the_two_set_ups_side_by_side() {
+    let mobile = fortnight(|_, minute, m| if minute < 240 { m.ac = Some(0.0); });
+    let p = profile(&mobile, &machine());
+    let report = text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true));
+    let at = |needle: &str| report.find(needle).unwrap_or_else(|| panic!("{needle} missing in\n{report}"));
+    assert!(at("To carry (laptop)") < at("For the desk (desktop)") && at("For the desk (desktop)") < at("What each level asks for"));
+    // Three levels under each heading, each with its own machine.
+    let block = |from: &str| report[at(from)..].lines().skip(1).take(3).map(str::to_string).collect::<Vec<_>>();
+    assert!(block("To carry (laptop)").iter().all(|l| l.contains("Apple Air") || l.contains("Apple Book Pro")), "{report}");
+    assert!(block("For the desk (desktop)").iter().all(|l| l.contains("Apple Mini")), "{report}");
+    assert!(report.contains("At the fitting level the laptop costs 500 EUR more than the desk machine."), "{report}");
+    assert!(report.contains("this history was on battery 50 % of the time and had an external display 100 % of the time"), "{report}");
+    assert!(report.contains("a display, keyboard and pointing device come on top"), "{report}");
+    assert!(!report.contains("laptops only") && !report.contains("desktops qualify"));
+    let none = fortnight(|_, _, m| { m.ac = None; m.battery = None; m.displays = None; });
+    let p = profile(&none, &machine());
+    let report = text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true));
+    assert!(report.contains("The laptop: this history is from a machine without a battery."), "{report}");
 }
 
 #[test]
@@ -231,22 +254,22 @@ fn the_three_levels_never_go_down() {
 #[test]
 fn the_cheapest_configuration_that_meets_the_need_wins() {
     let need = Need { ram_gb: 20.0, ssd_gb: 400.0, multi: 12000.0, ..Need::default() };
-    let choice = pick(DEVICES, CHIPS, &need, "macOS", false).unwrap();
+    let choice = pick(DEVICES, CHIPS, &need, "macOS", Form::Desktop).unwrap();
     assert_eq!((choice.device, choice.ram_gb, choice.ssd_gb, choice.price_eur), ("mini", 24, 512, 700 + 250 + 200));
-    let laptop = pick(DEVICES, CHIPS, &need, "macOS", true).unwrap();
+    let laptop = pick(DEVICES, CHIPS, &need, "macOS", Form::Laptop).unwrap();
     assert_eq!((laptop.device, laptop.price_eur), ("air", 1200 + 250 + 200));
-    let no_fan = pick(DEVICES, CHIPS, &Need { no_fanless: true, portable: true, ..need.clone() }, "macOS", false).unwrap();
+    let no_fan = pick(DEVICES, CHIPS, &Need { no_fanless: true, ..need.clone() }, "macOS", Form::Laptop).unwrap();
     assert_eq!(no_fan.device, "book");
 }
 
 #[test]
 fn nothing_is_made_up_when_nothing_fits() {
     let need = Need { ram_gb: 512.0, ..Need::default() };
-    assert_eq!(pick(DEVICES, CHIPS, &need, "macOS", false), None);
+    assert_eq!(FORMS.map(|form| pick(DEVICES, CHIPS, &need, "macOS", form)), [None, None]);
     let minutes = fortnight(|_, _, m| m.demand_mb = 400.0 * 1024.0);
     let p = profile(&minutes, &machine());
     let report = text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true));
-    assert!(report.matches("nothing in the catalogue meets this").count() >= 3, "{report}");
+    assert!(report.matches("nothing in the catalogue meets this").count() >= 8, "three levels each way and both Linux lines: {report}");
 }
 
 #[test]
@@ -306,11 +329,9 @@ fn every_pick_carries_its_reasons_and_an_unverified_price_is_marked() {
     assert!(report.contains("of the current Old Pro"));
     assert!(report.contains("just enough") && report.contains("fits") && report.contains("with reserve"));
     assert!(report.contains("Not measured: software that needs one particular system"));
-    let mobile = fortnight(|_, minute, m| if minute < 60 { m.ac = Some(0.0); });
-    let p = profile(&mobile, &machine());
-    let report = text(&build(&p, &machine(), CHIPS, DEVICES, "2026-11-15", 0, true));
-    let linux_line = report.lines().skip_while(|l| !l.contains("Running Linux")).nth(1).unwrap();
-    assert!(linux_line.contains("price not from the maker's own page"), "{linux_line}");
+    let linux: Vec<&str> = report.lines().skip_while(|l| !l.contains("Running Linux")).skip(1).take(2).collect();
+    assert!(linux[0].contains("to carry") && linux[0].contains("price not from the maker's own page"), "{linux:?}");
+    assert!(linux[1].contains("for the desk") && !linux[1].contains("price not"), "{linux:?}");
 }
 
 #[test]
@@ -322,7 +343,11 @@ fn the_json_names_the_same_picks() {
     let out = json(&r);
     assert!(out.starts_with('{') && out.trim_end().ends_with('}'));
     assert_eq!(out.matches('{').count(), out.matches('}').count());
-    assert!(out.contains("\"device\":\"mini\"") && out.contains("\"tier\":\"fits\"") && out.contains("\"ready\":true"));
+    assert!(out.contains("\"tier\":\"fits\"") && out.contains("\"ready\":true"));
+    // Each level names both set-ups, and so does the Linux alternative.
+    assert_eq!((out.matches("\"laptop\":{\"device\":\"air\"").count(), out.matches("\"desktop\":{\"device\":\"mini\"").count()), (3, 3), "{out}");
+    assert!(out.contains("\"linux\":{\"laptop\":{\"device\":\"tux\"") && out.contains("\"desktop\":{\"device\":\"box\""), "{out}");
+    assert!(!out.contains("\"portable\"") && !out.contains("\"pick\""));
     assert!(out.contains("say \\\"hi\\\"\\\\"), "quotes and backslashes are escaped");
     // What another program needs to say the same in its own words: does this machine do, and what is it short on.
     assert!(out.contains("\"fits\":true,\"short\":[]") && out.contains("\"catalogue_age_days\":0"), "{out}");

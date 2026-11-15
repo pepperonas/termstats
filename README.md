@@ -188,7 +188,7 @@ termstats-native
 
 The script downloads the binary for your machine from the latest release, checks it against
 the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
-`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.10.1` a
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.11.0` a
 particular release.
 
 Or by hand — pick your machine:
@@ -213,7 +213,7 @@ with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries
 ### The Python program — pipx (recommended)
 
 ```bash
-pipx install https://github.com/pepperonas/termstats/releases/download/v0.10.1/termstats-0.10.1-py3-none-any.whl
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.11.0/termstats-0.11.0-py3-none-any.whl
 ```
 
 That is the released version. The current state of the repository instead:
@@ -225,7 +225,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user https://github.com/pepperonas/termstats/releases/download/v0.10.1/termstats-0.10.1-py3-none-any.whl
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.11.0/termstats-0.11.0-py3-none-any.whl
 ```
 
 ### From source
@@ -273,8 +273,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version          # -> termstats 0.10.1
-termstats-native --version   # -> termstats-native 0.10.1
+termstats --version          # -> termstats 0.11.0
+termstats-native --version   # -> termstats-native 0.11.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -868,13 +868,22 @@ Measured on a MacBook Pro (M1 Pro, ~700 processes) over ten minutes: **0.024 % o
   M1 Pro and one from an M4 ask for different things at the same percentage.
 - **Graphics**: the 95th percentile and the share of time above 80 %.
 - **Storage**: what is in use, its growth over the period, plus reserve.
-- **Form**: time on battery decides whether desktops qualify; sustained thermal throttling
-  rules out fanless machines.
+- **Form**: never decided for you. Every level is answered twice - a laptop to carry and a
+  machine for the desk - because where the next job is done is not in the history: a
+  fortnight at the socket does not mean the machine never has to travel. Time on battery
+  and with an external display is reported next to the picks, and changes none of them.
+  Sustained load or thermal throttling rules out fanless machines in both.
 
 Three levels are named - *just enough*, *fits*, *with reserve* (10 %, 30 % and 80 % of
 memory headroom, with matching targets for the other parts) - each with model, chip, memory,
-storage, the list price in euro and the figures from your own history that led to it. If
-the current machine is enough, the report says so.
+storage and the list price in euro, once as a laptop and once as a desktop, followed by the
+figures from your own history that led to it, the price gap between the two set-ups, and a
+reminder that a desktop's price is the computer alone (display, keyboard and pointing device
+come on top). The Linux alternative to the fitting level is named both ways as well. If the
+current machine is enough, the report says so.
+
+`--json` carries the same: each entry of `tiers` has `need`, `laptop` and `desktop`, and
+`linux` has `laptop` and `desktop` (a pick is `null` when nothing in the catalogue meets it).
 
 The machines come from `catalog/hardware.json`: every Mac Apple currently sells, with each
 memory and storage step at its price in the German Apple store, and a selection of machines
