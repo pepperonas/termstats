@@ -1,0 +1,620 @@
+{
+ "$comment": "termstats project page - built with the product-page kit (~/claude/_templates/apps/product-page). Change texts here, then run build.py --force.",
+ "name": "termstats",
+ "slug": "termstats",
+ "aliases": [],
+ "repo": "pepperonas/termstats",
+ "branch": "main",
+ "tagline": "The machine, at a glance.",
+ "license": "MIT",
+ "tls": "wildcard",
+ "year": 2026,
+ "asset_version": 1,
+ "theme_source": "termstats/theme.py - the default theme: header blue, the cool-to-hot ramp (teal, amber, coral) on a dark terminal background",
+ "theme": {
+  "bg": "#0c0d14",
+  "bg-lowest": "#08090e",
+  "surface-low": "#12131c",
+  "surface": "#171823",
+  "surface-high": "#1f2130",
+  "surface-highest": "#292b3d",
+  "on-bg": "#eef0f7",
+  "on-variant": "#b4b9d0",
+  "outline": "#8388a3",
+  "outline-variant": "#2c2e3f",
+  "primary": "#8fb4ff",
+  "on-primary": "#0b214d",
+  "primary-container": "#1f4290",
+  "on-primary-container": "#dbe6ff",
+  "secondary-container": "#25304a",
+  "on-secondary-container": "#d9e2ff",
+  "tertiary": "#e0af68",
+  "accent": "#2d6cdf"
+ },
+ "hero": {
+  "bg": "#0c0d14",
+  "width": 2912,
+  "height": 1440
+ },
+ "screens": null,
+ "ld": {
+  "type": "SoftwareApplication",
+  "category": "UtilitiesApplication",
+  "subcategory": "Terminal system monitor",
+  "os": "macOS (Apple silicon and Intel), Linux (x86-64 and ARM64), Windows 10/11 (x64)"
+ },
+ "targets": [
+  {
+   "id": "macos",
+   "label": "Download for macOS",
+   "short": "macOS",
+   "asset": "^termstats-native-aarch64-apple-darwin\\.tar\\.gz$",
+   "requirement": "macOS · Apple silicon",
+   "ua": "macintosh|mac os x"
+  },
+  {
+   "id": "linux",
+   "label": "Download for Linux",
+   "short": "Linux",
+   "asset": "^termstats-native-x86_64-unknown-linux-musl\\.tar\\.gz$",
+   "requirement": "Linux · x86-64 · static binary",
+   "ua": "^(?!.*android).*linux"
+  },
+  {
+   "id": "windows",
+   "label": "Download for Windows",
+   "short": "Windows",
+   "asset": "^termstats-windows-x86_64\\.zip$",
+   "requirement": "Windows 10/11 · x64 · no Python needed",
+   "ua": "windows"
+  },
+  {
+   "id": "macos-intel",
+   "label": "Download for macOS (Intel)",
+   "short": "macOS Intel",
+   "asset": "^termstats-native-x86_64-apple-darwin\\.tar\\.gz$",
+   "requirement": "macOS · Intel",
+   "i18n": {
+    "en": "Download for macOS (Intel)",
+    "de": "Download für macOS (Intel)",
+    "es": "Descargar para macOS (Intel)",
+    "it": "Scarica per macOS (Intel)",
+    "fr": "Télécharger pour macOS (Intel)"
+   },
+   "i18n_short": {
+    "en": "macOS Intel",
+    "de": "macOS Intel",
+    "es": "macOS Intel",
+    "it": "macOS Intel",
+    "fr": "macOS Intel"
+   }
+  },
+  {
+   "id": "linux-arm64",
+   "label": "Download for Linux (ARM64)",
+   "short": "Linux ARM64",
+   "asset": "^termstats-native-aarch64-unknown-linux-musl\\.tar\\.gz$",
+   "requirement": "Linux · ARM64 (Raspberry Pi 4/5, ARM servers)",
+   "i18n": {
+    "en": "Download for Linux (ARM64)",
+    "de": "Download für Linux (ARM64)",
+    "es": "Descargar para Linux (ARM64)",
+    "it": "Scarica per Linux (ARM64)",
+    "fr": "Télécharger pour Linux (ARM64)"
+   },
+   "i18n_short": {
+    "en": "Linux ARM64",
+    "de": "Linux ARM64",
+    "es": "Linux ARM64",
+    "it": "Linux ARM64",
+    "fr": "Linux ARM64"
+   }
+  },
+  {
+   "id": "python",
+   "label": "Python package (.whl)",
+   "short": "Python wheel",
+   "asset": "^termstats-[0-9][0-9A-Za-z.]*-py3-none-any\\.whl$",
+   "requirement": "Python 3.9+ · every platform",
+   "i18n": {
+    "en": "Python package (.whl)",
+    "de": "Python-Paket (.whl)",
+    "es": "Paquete de Python (.whl)",
+    "it": "Pacchetto Python (.whl)",
+    "fr": "Paquet Python (.whl)"
+   },
+   "i18n_short": {
+    "en": "Python wheel",
+    "de": "Python-Paket",
+    "es": "Paquete Python",
+    "it": "Pacchetto Python",
+    "fr": "Paquet Python"
+   }
+  }
+ ],
+ "chips": [
+  {
+   "label": "macOS",
+   "color": "#e5e7eb"
+  },
+  {
+   "label": "Linux",
+   "color": "#e0af68"
+  },
+  {
+   "label": "Windows",
+   "color": "#8fb4ff"
+  },
+  {
+   "label": "Raspberry Pi",
+   "color": "#f7768e"
+  },
+  {
+   "label": "SSH",
+   "color": "#4fb3a5"
+  }
+ ],
+ "verify_rows": [],
+ "content": {
+  "meta": {
+   "title": "termstats — System Monitor for the Terminal, Free Download",
+   "description": "Free, open-source system dashboard for the terminal: CPU, memory, network, disks, processes, live charts. Downloads for macOS, Linux and Windows.",
+   "og_title": "termstats — the machine, at a glance.",
+   "og_description": "A free, open-source system dashboard for the terminal with live charts. One file for macOS, Linux or Windows, no account, no network access.",
+   "twitter_description": "A free, open-source system dashboard for the terminal. Downloads for macOS, Linux and Windows.",
+   "image_alt": "The termstats dashboard in a terminal: CPU bars per core, memory, network, disks, two live charts and the process list"
+  },
+  "summary": "termstats is a free, open-source (MIT) system dashboard for the terminal. It shows CPU load per core, memory and swap, network rates, disks, the busiest processes and live history charts, and adapts to the size and abilities of the terminal. On macOS and Linux a native binary written in Rust draws the live dashboard with about 0.3 % of one CPU core and 7 MB of memory; the Python program adds microphone screens (spectrum analyser, tempo, level), a scripted demo and snapshots, and runs on Windows too, where it ships as a single termstats.exe. On macOS and Linux termstats can record what the machine does in a local log and, after 14 days, recommend a computer that fits. It needs no account and no configuration file and never contacts the network.",
+  "meta_fallback": "Newest release · macOS, Linux, Windows · free, MIT licence",
+  "feature_list": [
+   "Live dashboard: CPU per core, memory and swap, network rates, disks, processes",
+   "History charts for CPU and network, drawn with braille characters",
+   "Native Rust binary for macOS and Linux: about 0.3 % of one CPU core, 7 MB of memory",
+   "Single termstats.exe for Windows, no Python needed",
+   "Microphone screens: 28-band spectrum analyser, tempo (BPM), level (dB), level and tempo side by side",
+   "Six colour themes; fallbacks from 24-bit colour to monochrome and from braille to ASCII; NO_COLOR honoured",
+   "History recorder as a background service (macOS, Linux): one line per minute in a local log",
+   "Computer recommendation after 14 days of history, in three tiers, with a Linux alternative",
+   "Snapshot output when piped; a scripted demo machine",
+   "No configuration file, no account, no network access"
+  ],
+  "limits": [
+   "The native binary, the history recorder and the recommendation run on macOS and Linux only; Windows gets the Python program as termstats.exe.",
+   "The native binary has no microphone screens, no demo and no ASCII or block fallbacks - those are in the Python program.",
+   "termstats is not on PyPI, Homebrew or winget; it is distributed through GitHub Releases and this page.",
+   "The files are not code-signed or notarised: macOS quarantines a browser download and Windows SmartScreen may ask once.",
+   "It watches one machine in one terminal; it is not a monitoring server and keeps no remote history.",
+   "The recommendation uses list prices and benchmark scores from a catalogue shipped with each release; it does not check special requirements such as particular software or ports."
+  ],
+  "agent_queries": [
+   "Download the latest termstats for macOS, Linux or Windows",
+   "Which version of termstats is current?",
+   "How do I verify a termstats download?",
+   "Lightweight open-source system monitor for the terminal",
+   "Terminal tool that recommends a computer based on recorded usage"
+  ],
+  "tags": [
+   "terminal",
+   "system-monitor",
+   "dashboard",
+   "cli",
+   "rust",
+   "python",
+   "open-source"
+  ],
+  "skill_description": "Download, verify and install the newest termstats - the free, open-source system dashboard for the terminal (macOS, Linux, Windows). Use when someone asks for the tool, its latest version, a download link for a platform, or how to check that a download is genuine.",
+  "hero.kicker": {
+   "en": "Terminal · Open source · Free",
+   "de": "Terminal · Open Source · Kostenlos",
+   "es": "Terminal · Código abierto · Gratis",
+   "it": "Terminale · Open source · Gratis",
+   "fr": "Terminal · Open source · Gratuit"
+  },
+  "hero.title": {
+   "en": "The machine, <br>at a glance.",
+   "de": "Der Rechner, <br>auf einen Blick.",
+   "es": "La máquina, <br>de un vistazo.",
+   "it": "La macchina, <br>a colpo d'occhio.",
+   "fr": "La machine, <br>en un coup d'œil."
+  },
+  "hero.lead": {
+   "en": "termstats is a system dashboard for the terminal: CPU, memory, network, disks and processes with live charts. One file for macOS, Linux or Windows — no account, no configuration, no network access.",
+   "de": "termstats ist ein System-Dashboard für das Terminal: CPU, Arbeitsspeicher, Netzwerk, Datenträger und Prozesse mit Live-Diagrammen. Eine Datei für macOS, Linux oder Windows – ohne Konto, ohne Konfiguration, ohne Netzwerkzugriff.",
+   "es": "termstats es un panel del sistema para la terminal: CPU, memoria, red, discos y procesos con gráficos en vivo. Un archivo para macOS, Linux o Windows: sin cuenta, sin configuración, sin acceso a la red.",
+   "it": "termstats è una dashboard di sistema per il terminale: CPU, memoria, rete, dischi e processi con grafici in tempo reale. Un file per macOS, Linux o Windows: senza account, senza configurazione, senza accesso alla rete.",
+   "fr": "termstats est un tableau de bord système pour le terminal : processeur, mémoire, réseau, disques et processus avec des graphiques en direct. Un fichier pour macOS, Linux ou Windows — sans compte, sans configuration, sans accès au réseau."
+  },
+  "pl.h": {
+   "en": "Runs where your terminal runs",
+   "de": "Läuft, wo dein Terminal läuft",
+   "es": "Funciona donde funciona tu terminal",
+   "it": "Funziona dove funziona il tuo terminale",
+   "fr": "Fonctionne là où votre terminal fonctionne"
+  },
+  "f.h": {
+   "en": "Everything about the machine. Almost nothing from it.",
+   "de": "Alles über den Rechner. Fast nichts von ihm.",
+   "es": "Todo sobre la máquina. Casi nada de ella.",
+   "it": "Tutto sulla macchina. Quasi niente da lei.",
+   "fr": "Tout sur la machine. Presque rien de ses ressources."
+  },
+  "features": [
+   {
+    "t": {
+     "en": "The whole machine on one screen",
+     "de": "Der ganze Rechner auf einem Bildschirm",
+     "es": "Toda la máquina en una pantalla",
+     "it": "Tutta la macchina in una schermata",
+     "fr": "Toute la machine sur un écran"
+    },
+    "p": {
+     "en": "CPU load per core, memory and swap, network rates, disks and the busiest processes, with history charts for CPU and network. One colour ramp from cool to hot runs through every bar and number.",
+     "de": "CPU-Last je Kern, Arbeitsspeicher und Swap, Netzwerkraten, Datenträger und die größten Prozesse, dazu Verlaufsdiagramme für CPU und Netzwerk. Eine Farbskala von kühl bis heiß zieht sich durch jeden Balken und jede Zahl.",
+     "es": "Carga de CPU por núcleo, memoria y swap, tasas de red, discos y los procesos más activos, con gráficos de historial de CPU y red. Una misma escala de color, de frío a caliente, recorre cada barra y cada número.",
+     "it": "Carico della CPU per core, memoria e swap, velocità di rete, dischi e i processi più attivi, con grafici storici di CPU e rete. Un'unica scala di colore, dal freddo al caldo, attraversa ogni barra e ogni numero.",
+     "fr": "Charge du processeur par cœur, mémoire et swap, débits réseau, disques et processus les plus actifs, avec l'historique du processeur et du réseau. Une même échelle de couleurs, du froid au chaud, parcourt chaque barre et chaque nombre."
+    }
+   },
+   {
+    "t": {
+     "en": "Light on the machine it watches",
+     "de": "Schont den Rechner, den es beobachtet",
+     "es": "Ligero con la máquina que observa",
+     "it": "Leggero sulla macchina che osserva",
+     "fr": "Léger pour la machine qu'il observe"
+    },
+    "p": {
+     "en": "On macOS and Linux the live dashboard is a native binary written in Rust: measured at about 0.3 % of one CPU core and 7 MB of memory. A monitor should not show up in its own process list.",
+     "de": "Unter macOS und Linux ist das Live-Dashboard ein natives Programm in Rust: gemessen rund 0,3 % eines CPU-Kerns und 7 MB Arbeitsspeicher. Ein Monitor sollte nicht in seiner eigenen Prozessliste auftauchen.",
+     "es": "En macOS y Linux el panel en vivo es un binario nativo escrito en Rust: medido en torno al 0,3 % de un núcleo y 7 MB de memoria. Un monitor no debería aparecer en su propia lista de procesos.",
+     "it": "Su macOS e Linux la dashboard in tempo reale è un binario nativo scritto in Rust: misurato a circa lo 0,3 % di un core e 7 MB di memoria. Un monitor non dovrebbe comparire nel proprio elenco dei processi.",
+     "fr": "Sous macOS et Linux, le tableau de bord en direct est un binaire natif écrit en Rust : environ 0,3 % d'un cœur et 7 Mo de mémoire, mesurés. Un moniteur ne devrait pas apparaître dans sa propre liste de processus."
+    }
+   },
+   {
+    "t": {
+     "en": "Fits the terminal you have",
+     "de": "Passt sich deinem Terminal an",
+     "es": "Se adapta a tu terminal",
+     "it": "Si adatta al tuo terminale",
+     "fr": "S'adapte à votre terminal"
+    },
+    "p": {
+     "en": "The layout follows the window and drops whole sections instead of cutting them. Six colour themes; where a terminal cannot draw braille or 24-bit colour, termstats falls back to blocks, ASCII, 256 or 16 colours, and it honours <code>NO_COLOR</code>.",
+     "de": "Das Layout folgt dem Fenster und lässt ganze Abschnitte weg, statt sie abzuschneiden. Sechs Farbthemen; kann ein Terminal keine Braille-Zeichen oder 24-Bit-Farben, weicht termstats auf Blöcke, ASCII, 256 oder 16 Farben aus und beachtet <code>NO_COLOR</code>.",
+     "es": "El diseño sigue a la ventana y omite secciones enteras en lugar de cortarlas. Seis temas de color; si una terminal no puede dibujar braille o color de 24 bits, termstats recurre a bloques, ASCII, 256 o 16 colores, y respeta <code>NO_COLOR</code>.",
+     "it": "Il layout segue la finestra e tralascia intere sezioni invece di tagliarle. Sei temi di colore; se un terminale non sa disegnare il braille o i colori a 24 bit, termstats ripiega su blocchi, ASCII, 256 o 16 colori, e rispetta <code>NO_COLOR</code>.",
+     "fr": "La mise en page suit la fenêtre et retire des sections entières plutôt que de les couper. Six thèmes de couleurs ; si un terminal ne sait pas afficher le braille ou la couleur 24 bits, termstats se rabat sur des blocs, l'ASCII, 256 ou 16 couleurs, et respecte <code>NO_COLOR</code>."
+    }
+   },
+   {
+    "t": {
+     "en": "Sound, measured in the terminal",
+     "de": "Schall, im Terminal gemessen",
+     "es": "El sonido, medido en la terminal",
+     "it": "Il suono, misurato nel terminale",
+     "fr": "Le son, mesuré dans le terminal"
+    },
+    "p": {
+     "en": "The Python program and the Windows build listen to the microphone on request: <code>-eq</code> is a 28-band spectrum analyser, <code>-bpm</code> finds the tempo, <code>-db</code> shows the level, <code>-x</code> shows level and tempo together. Nothing is recorded.",
+     "de": "Das Python-Programm und die Windows-Fassung hören auf Wunsch aufs Mikrofon: <code>-eq</code> ist ein Spektrum-Analysator mit 28 Bändern, <code>-bpm</code> findet das Tempo, <code>-db</code> zeigt den Pegel, <code>-x</code> zeigt Pegel und Tempo zusammen. Aufgezeichnet wird nichts.",
+     "es": "El programa en Python y la versión para Windows escuchan el micrófono si se lo pides: <code>-eq</code> es un analizador de espectro de 28 bandas, <code>-bpm</code> detecta el tempo, <code>-db</code> muestra el nivel y <code>-x</code> muestra nivel y tempo a la vez. No se graba nada.",
+     "it": "Il programma Python e la versione per Windows ascoltano il microfono su richiesta: <code>-eq</code> è un analizzatore di spettro a 28 bande, <code>-bpm</code> trova il tempo, <code>-db</code> mostra il livello, <code>-x</code> mostra livello e tempo insieme. Non viene registrato nulla.",
+     "fr": "Le programme Python et la version Windows écoutent le microphone à la demande : <code>-eq</code> est un analyseur de spectre à 28 bandes, <code>-bpm</code> trouve le tempo, <code>-db</code> affiche le niveau, <code>-x</code> affiche niveau et tempo ensemble. Rien n'est enregistré."
+    }
+   },
+   {
+    "t": {
+     "en": "Remembers what the machine does",
+     "de": "Merkt sich, was der Rechner tut",
+     "es": "Recuerda lo que hace la máquina",
+     "it": "Ricorda che cosa fa la macchina",
+     "fr": "Se souvient de ce que fait la machine"
+    },
+    "p": {
+     "en": "<code>termstats record install</code> starts a background service on macOS and Linux that writes one line per minute to a local log — measured at 0.024 % of one CPU core. The log stays on your disk and <code>record purge</code> deletes it.",
+     "de": "<code>termstats record install</code> startet unter macOS und Linux einen Hintergrunddienst, der eine Zeile je Minute in ein lokales Log schreibt – gemessen 0,024 % eines CPU-Kerns. Das Log bleibt auf deiner Platte, <code>record purge</code> löscht es.",
+     "es": "<code>termstats record install</code> inicia en macOS y Linux un servicio en segundo plano que escribe una línea por minuto en un registro local: medido en el 0,024 % de un núcleo. El registro se queda en tu disco y <code>record purge</code> lo borra.",
+     "it": "<code>termstats record install</code> avvia su macOS e Linux un servizio in background che scrive una riga al minuto in un registro locale: misurato allo 0,024 % di un core. Il registro resta sul tuo disco e <code>record purge</code> lo cancella.",
+     "fr": "<code>termstats record install</code> lance sous macOS et Linux un service en arrière-plan qui écrit une ligne par minute dans un journal local — 0,024 % d'un cœur, mesuré. Le journal reste sur votre disque et <code>record purge</code> le supprime."
+    }
+   },
+   {
+    "t": {
+     "en": "Tells you which computer fits",
+     "de": "Sagt dir, welcher Rechner passt",
+     "es": "Te dice qué ordenador encaja",
+     "it": "Ti dice quale computer fa per te",
+     "fr": "Vous dit quel ordinateur convient"
+    },
+    "p": {
+     "en": "After 14 days of history, <code>termstats recommend</code> names machines in three tiers — just enough, fits, with reserve — plus a Linux alternative, each with the reason in your own numbers. The catalogue of Macs and Linux hardware ships with every release.",
+     "de": "Nach 14 Tagen Verlauf nennt <code>termstats recommend</code> Rechner in drei Stufen – reicht knapp, passt, mit Reserve – und eine Linux-Alternative, jeweils begründet mit deinen eigenen Zahlen. Der Katalog mit Macs und Linux-Hardware kommt mit jedem Release.",
+     "es": "Tras 14 días de historial, <code>termstats recommend</code> propone equipos en tres niveles —justo, adecuado, con reserva— y una alternativa con Linux, cada uno justificado con tus propias cifras. El catálogo de Mac y hardware para Linux llega con cada versión.",
+     "it": "Dopo 14 giorni di cronologia, <code>termstats recommend</code> propone computer su tre livelli — appena sufficiente, adatto, con riserva — e un'alternativa Linux, ciascuno motivato con i tuoi numeri. Il catalogo di Mac e hardware per Linux arriva con ogni versione.",
+     "fr": "Après 14 jours d'historique, <code>termstats recommend</code> propose des machines sur trois niveaux — tout juste, adapté, avec réserve — et une alternative sous Linux, chacune justifiée par vos propres chiffres. Le catalogue de Mac et de matériel Linux est fourni avec chaque version."
+    }
+   }
+  ],
+  "s.h": {
+   "en": "What it looks like",
+   "de": "So sieht es aus",
+   "es": "Así se ve",
+   "it": "Ecco come appare",
+   "fr": "À quoi cela ressemble"
+  },
+  "s.alt": {
+   "en": "Screenshots of termstats",
+   "de": "Bildschirmfotos von termstats",
+   "es": "Capturas de termstats",
+   "it": "Schermate di termstats",
+   "fr": "Captures d'écran de termstats"
+  },
+  "gallery": [
+   {
+    "id": "dashboard",
+    "t": {
+     "en": "The dashboard",
+     "de": "Das Dashboard",
+     "es": "El panel",
+     "it": "La dashboard",
+     "fr": "Le tableau de bord"
+    },
+    "p": {
+     "en": "Every core, memory, network, disks, two history charts and the process list.",
+     "de": "Jeder Kern, Speicher, Netzwerk, Datenträger, zwei Verlaufsdiagramme und die Prozessliste.",
+     "es": "Cada núcleo, memoria, red, discos, dos gráficos de historial y la lista de procesos.",
+     "it": "Ogni core, memoria, rete, dischi, due grafici storici e l'elenco dei processi.",
+     "fr": "Chaque cœur, la mémoire, le réseau, les disques, deux historiques et la liste des processus."
+    }
+   },
+   {
+    "id": "themes",
+    "t": {
+     "en": "Six themes",
+     "de": "Sechs Themen",
+     "es": "Seis temas",
+     "it": "Sei temi",
+     "fr": "Six thèmes"
+    },
+    "p": {
+     "en": "The same dashboard in each colour theme.",
+     "de": "Dasselbe Dashboard in jedem Farbthema.",
+     "es": "El mismo panel en cada tema de color.",
+     "it": "La stessa dashboard in ogni tema di colore.",
+     "fr": "Le même tableau de bord dans chaque thème."
+    }
+   },
+   {
+    "id": "narrow",
+    "t": {
+     "en": "A small window",
+     "de": "Ein kleines Fenster",
+     "es": "Una ventana pequeña",
+     "it": "Una finestra piccola",
+     "fr": "Une petite fenêtre"
+    },
+    "p": {
+     "en": "In a laptop-sized terminal the layout drops a section whole instead of cutting it.",
+     "de": "In einem kleinen Terminal lässt das Layout einen Abschnitt ganz weg, statt ihn abzuschneiden.",
+     "es": "En una terminal pequeña el diseño omite una sección entera en lugar de cortarla.",
+     "it": "In un terminale piccolo il layout tralascia un'intera sezione invece di tagliarla.",
+     "fr": "Dans un petit terminal, la mise en page retire une section entière au lieu de la couper."
+    }
+   },
+   {
+    "id": "eq",
+    "t": {
+     "en": "Spectrum analyser",
+     "de": "Spektrum-Analysator",
+     "es": "Analizador de espectro",
+     "it": "Analizzatore di spettro",
+     "fr": "Analyseur de spectre"
+    },
+    "p": {
+     "en": "<code>-eq</code>: 28 bands from the microphone, with peak hold.",
+     "de": "<code>-eq</code>: 28 Bänder vom Mikrofon, mit Spitzenwert-Anzeige.",
+     "es": "<code>-eq</code>: 28 bandas del micrófono, con retención de picos.",
+     "it": "<code>-eq</code>: 28 bande dal microfono, con mantenimento dei picchi.",
+     "fr": "<code>-eq</code> : 28 bandes depuis le microphone, avec maintien des crêtes."
+    }
+   },
+   {
+    "id": "bpm",
+    "t": {
+     "en": "Tempo",
+     "de": "Tempo",
+     "es": "Tempo",
+     "it": "Tempo",
+     "fr": "Tempo"
+    },
+    "p": {
+     "en": "<code>-bpm</code>: the tempo of what is playing, five rows tall.",
+     "de": "<code>-bpm</code>: das Tempo der laufenden Musik, fünf Zeilen hoch.",
+     "es": "<code>-bpm</code>: el tempo de lo que suena, con cinco filas de alto.",
+     "it": "<code>-bpm</code>: il tempo di ciò che sta suonando, alto cinque righe.",
+     "fr": "<code>-bpm</code> : le tempo de ce qui joue, sur cinq lignes de haut."
+    }
+   },
+   {
+    "id": "mix",
+    "t": {
+     "en": "Level and tempo",
+     "de": "Pegel und Tempo",
+     "es": "Nivel y tempo",
+     "it": "Livello e tempo",
+     "fr": "Niveau et tempo"
+    },
+    "p": {
+     "en": "<code>-x</code>: how loud and how fast, side by side.",
+     "de": "<code>-x</code>: wie laut und wie schnell, nebeneinander.",
+     "es": "<code>-x</code>: cuánto volumen y qué tempo, lado a lado.",
+     "it": "<code>-x</code>: quanto forte e quanto veloce, fianco a fianco.",
+     "fr": "<code>-x</code> : le niveau et le tempo, côte à côte."
+    }
+   }
+  ],
+  "install": [
+   {
+    "t": {
+     "en": "Download the file for your system",
+     "de": "Datei für dein System laden",
+     "es": "Descarga el archivo para tu sistema",
+     "it": "Scarica il file per il tuo sistema",
+     "fr": "Téléchargez le fichier pour votre système"
+    },
+    "p": {
+     "en": "The button above picks it; the chips offer the other platforms. On macOS and Linux one line does everything: <code>curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh</code>",
+     "de": "Der Knopf oben wählt sie aus, die Chips bieten die anderen Plattformen. Unter macOS und Linux erledigt eine Zeile alles: <code>curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh</code>",
+     "es": "El botón de arriba lo elige; las etiquetas ofrecen las demás plataformas. En macOS y Linux una línea lo hace todo: <code>curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh</code>",
+     "it": "Il pulsante in alto lo sceglie; le etichette offrono le altre piattaforme. Su macOS e Linux una riga fa tutto: <code>curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh</code>",
+     "fr": "Le bouton ci-dessus le choisit ; les étiquettes proposent les autres plateformes. Sous macOS et Linux, une ligne suffit : <code>curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh</code>"
+    }
+   },
+   {
+    "t": {
+     "en": "Unpack it",
+     "de": "Entpacken",
+     "es": "Descomprímelo",
+     "it": "Estrailo",
+     "fr": "Décompressez-le"
+    },
+    "p": {
+     "en": "macOS and Linux: <code>tar -xzf termstats-native-*.tar.gz</code>, then move <code>termstats-native</code> into a folder on your <code>PATH</code>, for example <code>~/.local/bin</code>. Windows: unpack the zip anywhere.",
+     "de": "macOS und Linux: <code>tar -xzf termstats-native-*.tar.gz</code>, dann <code>termstats-native</code> in einen Ordner im <code>PATH</code> verschieben, etwa <code>~/.local/bin</code>. Windows: das Zip an beliebiger Stelle entpacken.",
+     "es": "macOS y Linux: <code>tar -xzf termstats-native-*.tar.gz</code> y mueve <code>termstats-native</code> a una carpeta de tu <code>PATH</code>, por ejemplo <code>~/.local/bin</code>. Windows: descomprime el zip donde quieras.",
+     "it": "macOS e Linux: <code>tar -xzf termstats-native-*.tar.gz</code>, poi sposta <code>termstats-native</code> in una cartella del tuo <code>PATH</code>, per esempio <code>~/.local/bin</code>. Windows: estrai lo zip dove vuoi.",
+     "fr": "macOS et Linux : <code>tar -xzf termstats-native-*.tar.gz</code>, puis déplacez <code>termstats-native</code> dans un dossier de votre <code>PATH</code>, par exemple <code>~/.local/bin</code>. Windows : décompressez le zip où vous voulez."
+    }
+   },
+   {
+    "t": {
+     "en": "Run it",
+     "de": "Starten",
+     "es": "Ejecútalo",
+     "it": "Avvialo",
+     "fr": "Lancez-le"
+    },
+    "p": {
+     "en": "<code>termstats-native</code> on macOS and Linux, <code>termstats.exe</code> in Windows Terminal. <code>Esc</code> or <code>q</code> leaves. A file downloaded with a browser on macOS needs <code>xattr -d com.apple.quarantine termstats-native</code> once.",
+     "de": "<code>termstats-native</code> unter macOS und Linux, <code>termstats.exe</code> im Windows Terminal. <code>Esc</code> oder <code>q</code> beendet. Eine mit dem Browser geladene Datei braucht unter macOS einmal <code>xattr -d com.apple.quarantine termstats-native</code>.",
+     "es": "<code>termstats-native</code> en macOS y Linux, <code>termstats.exe</code> en Windows Terminal. <code>Esc</code> o <code>q</code> para salir. En macOS, un archivo descargado con el navegador necesita una vez <code>xattr -d com.apple.quarantine termstats-native</code>.",
+     "it": "<code>termstats-native</code> su macOS e Linux, <code>termstats.exe</code> in Windows Terminal. <code>Esc</code> o <code>q</code> per uscire. Su macOS un file scaricato con il browser richiede una volta <code>xattr -d com.apple.quarantine termstats-native</code>.",
+     "fr": "<code>termstats-native</code> sous macOS et Linux, <code>termstats.exe</code> dans Windows Terminal. <code>Esc</code> ou <code>q</code> pour quitter. Sous macOS, un fichier téléchargé avec un navigateur demande une fois <code>xattr -d com.apple.quarantine termstats-native</code>."
+    }
+   }
+  ],
+  "v.p": {
+   "en": "Compare with <code>shasum -a 256 &lt;file&gt;</code> (Windows: <code>certutil -hashfile &lt;file&gt; SHA256</code>). Every release also carries a <code>SHA256SUMS</code> file, and the install script checks against it.",
+   "de": "Vergleiche mit <code>shasum -a 256 &lt;Datei&gt;</code> (Windows: <code>certutil -hashfile &lt;Datei&gt; SHA256</code>). Jedes Release enthält außerdem eine Datei <code>SHA256SUMS</code>, gegen die das Installationsskript prüft.",
+   "es": "Compáralo con <code>shasum -a 256 &lt;archivo&gt;</code> (Windows: <code>certutil -hashfile &lt;archivo&gt; SHA256</code>). Cada versión incluye además un archivo <code>SHA256SUMS</code>, y el script de instalación lo comprueba.",
+   "it": "Confronta con <code>shasum -a 256 &lt;file&gt;</code> (Windows: <code>certutil -hashfile &lt;file&gt; SHA256</code>). Ogni versione contiene inoltre un file <code>SHA256SUMS</code>, che lo script di installazione verifica.",
+   "fr": "Comparez avec <code>shasum -a 256 &lt;fichier&gt;</code> (Windows : <code>certutil -hashfile &lt;fichier&gt; SHA256</code>). Chaque version contient aussi un fichier <code>SHA256SUMS</code>, que le script d'installation vérifie."
+  },
+  "i.note": {
+   "en": "termstats is two programs: the native binary (macOS, Linux) and the Python program (every platform, as <code>termstats.exe</code> on Windows). Every release is built by GitHub Actions from the public source code. Older releases are on GitHub.",
+   "de": "termstats besteht aus zwei Programmen: dem nativen Programm (macOS, Linux) und dem Python-Programm (jede Plattform, unter Windows als <code>termstats.exe</code>). Jedes Release wird von GitHub Actions aus dem öffentlichen Quellcode gebaut. Ältere Releases liegen auf GitHub.",
+   "es": "termstats son dos programas: el binario nativo (macOS, Linux) y el programa en Python (todas las plataformas, como <code>termstats.exe</code> en Windows). Cada versión la compila GitHub Actions a partir del código fuente público. Las versiones anteriores están en GitHub.",
+   "it": "termstats è composto da due programmi: il binario nativo (macOS, Linux) e il programma Python (ogni piattaforma, come <code>termstats.exe</code> su Windows). Ogni versione è compilata da GitHub Actions dal codice sorgente pubblico. Le versioni precedenti sono su GitHub.",
+   "fr": "termstats, ce sont deux programmes : le binaire natif (macOS, Linux) et le programme Python (toutes les plateformes, sous la forme de <code>termstats.exe</code> sous Windows). Chaque version est compilée par GitHub Actions à partir du code source public. Les versions précédentes sont sur GitHub."
+  },
+  "faq": [
+   {
+    "q": {
+     "en": "Is termstats free?",
+     "de": "Ist termstats kostenlos?",
+     "es": "¿termstats es gratis?",
+     "it": "termstats è gratuito?",
+     "fr": "termstats est-il gratuit ?"
+    },
+    "a": {
+     "en": "Yes. It is free and open source under the MIT licence — no account, no tracking, and no paid version with more features.",
+     "de": "Ja. termstats ist kostenlos und Open Source unter der MIT-Lizenz – ohne Konto, ohne Tracking und ohne Bezahlversion mit mehr Funktionen.",
+     "es": "Sí. Es gratis y de código abierto bajo la licencia MIT: sin cuenta, sin rastreo y sin versión de pago con más funciones.",
+     "it": "Sì. È gratuito e open source con licenza MIT: senza account, senza tracciamento e senza versione a pagamento con più funzioni.",
+     "fr": "Oui. Il est gratuit et open source sous licence MIT — sans compte, sans pistage et sans version payante plus complète."
+    }
+   },
+   {
+    "q": {
+     "en": "Why is it not on PyPI or Homebrew?",
+     "de": "Warum gibt es termstats nicht bei PyPI oder Homebrew?",
+     "es": "¿Por qué no está en PyPI ni en Homebrew?",
+     "it": "Perché non è su PyPI o Homebrew?",
+     "fr": "Pourquoi n'est-il ni sur PyPI ni sur Homebrew ?"
+    },
+    "a": {
+     "en": "termstats is distributed through GitHub Releases and this page only. Each release has a ready file per platform, so no package manager is needed; with Python you can still run <code>pipx install</code> on the wheel.",
+     "de": "termstats wird nur über GitHub Releases und diese Seite verteilt. Jedes Release enthält je Plattform eine fertige Datei, ein Paketmanager ist also nicht nötig; mit Python geht weiterhin <code>pipx install</code> auf das Wheel.",
+     "es": "termstats se distribuye solo a través de GitHub Releases y de esta página. Cada versión trae un archivo listo por plataforma, así que no hace falta un gestor de paquetes; con Python puedes seguir usando <code>pipx install</code> con el wheel.",
+     "it": "termstats è distribuito solo tramite GitHub Releases e questa pagina. Ogni versione ha un file pronto per piattaforma, quindi non serve un gestore di pacchetti; con Python puoi comunque usare <code>pipx install</code> sul wheel.",
+     "fr": "termstats est distribué uniquement via GitHub Releases et cette page. Chaque version fournit un fichier prêt par plateforme, donc aucun gestionnaire de paquets n'est nécessaire ; avec Python, <code>pipx install</code> sur le wheel fonctionne toujours."
+    }
+   },
+   {
+    "q": {
+     "en": "What do I need?",
+     "de": "Was brauche ich?",
+     "es": "¿Qué necesito?",
+     "it": "Che cosa mi serve?",
+     "fr": "De quoi ai-je besoin ?"
+    },
+    "a": {
+     "en": "A terminal. The native binary runs on macOS (Apple silicon or Intel) and Linux (x86-64 or ARM64, any distribution) and needs nothing else. The Windows file needs 64-bit Windows 10 or 11; Windows Terminal draws it best. The Python wheel needs Python 3.9 or later.",
+     "de": "Ein Terminal. Das native Programm läuft unter macOS (Apple Silicon oder Intel) und Linux (x86-64 oder ARM64, jede Distribution) und braucht sonst nichts. Die Windows-Datei braucht Windows 10 oder 11 mit 64 Bit; am besten sieht es im Windows Terminal aus. Das Python-Wheel braucht Python 3.9 oder neuer.",
+     "es": "Una terminal. El binario nativo funciona en macOS (Apple silicon o Intel) y Linux (x86-64 o ARM64, cualquier distribución) y no necesita nada más. El archivo de Windows requiere Windows 10 u 11 de 64 bits; Windows Terminal lo muestra mejor. El wheel de Python requiere Python 3.9 o posterior.",
+     "it": "Un terminale. Il binario nativo funziona su macOS (Apple silicon o Intel) e Linux (x86-64 o ARM64, qualsiasi distribuzione) e non richiede altro. Il file per Windows richiede Windows 10 o 11 a 64 bit; Windows Terminal lo mostra al meglio. Il wheel Python richiede Python 3.9 o successivo.",
+     "fr": "Un terminal. Le binaire natif fonctionne sous macOS (Apple silicon ou Intel) et Linux (x86-64 ou ARM64, toute distribution) et n'a besoin de rien d'autre. Le fichier Windows demande Windows 10 ou 11 en 64 bits ; Windows Terminal l'affiche le mieux. Le wheel Python demande Python 3.9 ou plus récent."
+    }
+   },
+   {
+    "q": {
+     "en": "How do I update?",
+     "de": "Wie aktualisiere ich?",
+     "es": "¿Cómo lo actualizo?",
+     "it": "Come lo aggiorno?",
+     "fr": "Comment le mettre à jour ?"
+    },
+    "a": {
+     "en": "Download the new file and replace the old one, or run the install script again. termstats never contacts the network, so it does not check for updates itself; this page always shows the newest release.",
+     "de": "Lade die neue Datei und ersetze die alte, oder starte das Installationsskript noch einmal. termstats greift nie aufs Netzwerk zu und sucht deshalb nicht selbst nach Updates; diese Seite zeigt immer das neueste Release.",
+     "es": "Descarga el archivo nuevo y sustituye el anterior, o vuelve a ejecutar el script de instalación. termstats nunca se conecta a la red, así que no busca actualizaciones por sí mismo; esta página muestra siempre la versión más reciente.",
+     "it": "Scarica il nuovo file e sostituisci quello vecchio, oppure riesegui lo script di installazione. termstats non si collega mai alla rete, quindi non cerca aggiornamenti da solo; questa pagina mostra sempre la versione più recente.",
+     "fr": "Téléchargez le nouveau fichier et remplacez l'ancien, ou relancez le script d'installation. termstats ne contacte jamais le réseau et ne cherche donc pas lui-même les mises à jour ; cette page affiche toujours la dernière version."
+    }
+   },
+   {
+    "q": {
+     "en": "What is the difference between the downloads?",
+     "de": "Worin unterscheiden sich die Downloads?",
+     "es": "¿En qué se diferencian las descargas?",
+     "it": "In che cosa differiscono i download?",
+     "fr": "Quelle est la différence entre les téléchargements ?"
+    },
+    "a": {
+     "en": "The macOS and Linux files are the native binary: the live dashboard, the history recorder and the recommendation. The Windows file and the Python wheel are the Python program: the same dashboard plus the microphone screens, the demo and snapshots, but without recorder and recommendation on Windows. With both installed on macOS or Linux, <code>termstats</code> hands the live dashboard to the native binary by itself.",
+     "de": "Die Dateien für macOS und Linux sind das native Programm: Live-Dashboard, Aufzeichnung des Verlaufs und Empfehlung. Die Windows-Datei und das Python-Wheel sind das Python-Programm: dasselbe Dashboard plus Mikrofon-Ansichten, Demo und Momentaufnahmen, unter Windows aber ohne Aufzeichnung und Empfehlung. Ist unter macOS oder Linux beides installiert, übergibt <code>termstats</code> das Live-Dashboard von selbst an das native Programm.",
+     "es": "Los archivos para macOS y Linux son el binario nativo: el panel en vivo, el registro del historial y la recomendación. El archivo de Windows y el wheel de Python son el programa en Python: el mismo panel más las pantallas de micrófono, la demo y las capturas, pero sin registro ni recomendación en Windows. Con ambos instalados en macOS o Linux, <code>termstats</code> cede por sí solo el panel en vivo al binario nativo.",
+     "it": "I file per macOS e Linux sono il binario nativo: la dashboard in tempo reale, la registrazione della cronologia e la raccomandazione. Il file per Windows e il wheel Python sono il programma Python: la stessa dashboard più le schermate del microfono, la demo e le istantanee, ma senza registrazione e raccomandazione su Windows. Con entrambi installati su macOS o Linux, <code>termstats</code> passa da solo la dashboard al binario nativo.",
+     "fr": "Les fichiers pour macOS et Linux sont le binaire natif : le tableau de bord en direct, l'enregistrement de l'historique et la recommandation. Le fichier Windows et le wheel Python sont le programme Python : le même tableau de bord, plus les écrans du microphone, la démo et les instantanés, mais sans enregistrement ni recommandation sous Windows. Avec les deux installés sous macOS ou Linux, <code>termstats</code> confie de lui-même le tableau de bord au binaire natif."
+    }
+   },
+   {
+    "q": {
+     "en": "Is the file genuine?",
+     "de": "Ist die Datei echt?",
+     "es": "¿El archivo es auténtico?",
+     "it": "Il file è autentico?",
+     "fr": "Le fichier est-il authentique ?"
+    },
+    "a": {
+     "en": "Every release is built by GitHub Actions from the public source code, and this page lists the SHA-256 of each file. The files are not code-signed: macOS quarantines a browser download and Windows SmartScreen may ask once — compare the checksum first.",
+     "de": "Jedes Release wird von GitHub Actions aus dem öffentlichen Quellcode gebaut, und diese Seite nennt den SHA-256 jeder Datei. Die Dateien sind nicht signiert: macOS stellt einen Browser-Download unter Quarantäne, und Windows SmartScreen fragt womöglich einmal nach – vergleiche vorher die Prüfsumme.",
+     "es": "Cada versión la compila GitHub Actions a partir del código fuente público, y esta página muestra el SHA-256 de cada archivo. Los archivos no están firmados: macOS pone en cuarentena una descarga del navegador y Windows SmartScreen puede preguntar una vez; compara antes la suma de verificación.",
+     "it": "Ogni versione è compilata da GitHub Actions dal codice sorgente pubblico, e questa pagina riporta lo SHA-256 di ogni file. I file non sono firmati: macOS mette in quarantena un download del browser e Windows SmartScreen può chiedere conferma una volta; confronta prima il checksum.",
+     "fr": "Chaque version est compilée par GitHub Actions à partir du code source public, et cette page indique le SHA-256 de chaque fichier. Les fichiers ne sont pas signés : macOS met en quarantaine un téléchargement du navigateur et Windows SmartScreen peut demander confirmation une fois — comparez d'abord la somme de contrôle."
+    }
+   }
+  ]
+ }
+}

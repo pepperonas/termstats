@@ -723,3 +723,23 @@ None. It is a local CLI: "shipping" is `git push origin main --follow-tags`; use
 the git URL. The one server-side artefact is `examples/celox-health-report.example.py` — a
 template that needs SMTP credentials, is excluded from the package, and must **never** be
 committed with real credentials filled in.
+
+## Project page and Windows download (0.10.1)
+
+- **<https://termstats.celox.io>** is built with the product-page kit
+  (`~/claude/_templates/apps/product-page`) from `website/site.json` (five languages):
+  `python3 $K/build.py website/site.json website --hero docs/website/hero.png --icon docs/website/mark.svg --force`,
+  then `./website/deploy.sh` (`server` also installs the timer and the vhost; `"tls": "wildcard"`,
+  so no DNS or certbot step). `tools/website_art.py` renders `docs/website/hero.png` and `docs/website/mark.svg`;
+  the gallery pictures in `website/assets/gallery/` are the README screenshots framed to 1120x800.
+- A timer on the VPS mirrors the newest GitHub release every 15 minutes into `latest.json`,
+  `/files/` and `/download[/<target>]` - **a release updates the page by itself**. The six
+  targets match asset names by regex (`site.json` `targets`): renaming a release asset breaks
+  the page, not only the README (`tests/test_release.py` pins the names in the workflow).
+- **Windows** gets `termstats-windows-x86_64.zip`: the Python program frozen by PyInstaller
+  (`--onefile`, with the audio extra) in the `windows` job of `release.yml`, started on the
+  runner before publishing. The native core, `record` and `recommend` stay macOS/Linux only.
+  The exe is unsigned (SmartScreen may ask) and was never run on a real Windows desktop -
+  only on the CI runner (`--version`, `--demo --once`, `--list-devices`).
+- The `recommend --json` fields the daily report's German text needs (`machine.fits`,
+  `machine.short`, `machine.multi`, `catalogue_age_days`) are released with 0.10.1.

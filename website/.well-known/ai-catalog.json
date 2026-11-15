@@ -1,0 +1,33 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "termstats",
+    "identifier": "did:web:termstats.celox.io",
+    "documentationUrl": "https://termstats.celox.io/llms.txt"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:termstats.celox.io:skills:get-termstats",
+      "displayName": "Get termstats",
+      "type": "text/markdown; profile=\"urn:air:agent-skills\"",
+      "url": "https://termstats.celox.io/skills/get-termstats/SKILL.md",
+      "description": "termstats is a free, open-source (MIT) system dashboard for the terminal. It shows CPU load per core, memory and swap, network rates, disks, the busiest processes and live history charts, and adapts to the size and abilities of the terminal. On macOS and Linux a native binary written in Rust draws the live dashboard with about 0.3 % of one CPU core and 7 MB of memory; the Python program adds microphone screens (spectrum analyser, tempo, level), a scripted demo and snapshots, and runs on Windows too, where it ships as a single termstats.exe. On macOS and Linux termstats can record what the machine does in a local log and, after 14 days, recommend a computer that fits. It needs no account and no configuration file and never contacts the network.",
+      "tags": [
+        "terminal",
+        "system-monitor",
+        "dashboard",
+        "cli",
+        "rust",
+        "python",
+        "open-source"
+      ],
+      "representativeQueries": [
+        "Download the latest termstats for macOS, Linux or Windows",
+        "Which version of termstats is current?",
+        "How do I verify a termstats download?",
+        "Lightweight open-source system monitor for the terminal",
+        "Terminal tool that recommends a computer based on recorded usage"
+      ]
+    }
+  ]
+}

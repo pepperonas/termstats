@@ -1,0 +1,60 @@
+# termstats
+
+> termstats is a free, open-source (MIT) system dashboard for the terminal. It shows CPU load per core, memory and swap, network rates, disks, the busiest processes and live history charts, and adapts to the size and abilities of the terminal. On macOS and Linux a native binary written in Rust draws the live dashboard with about 0.3 % of one CPU core and 7 MB of memory; the Python program adds microphone screens (spectrum analyser, tempo, level), a scripted demo and snapshots, and runs on Windows too, where it ships as a single termstats.exe. On macOS and Linux termstats can record what the machine does in a local log and, after 14 days, recommend a computer that fits. It needs no account and no configuration file and never contacts the network.
+
+Everything below is also available without JavaScript: the page's HTML carries the current version and checksums, and `/` returns Markdown for `Accept: text/markdown`.
+
+## Get the app
+
+- [Newest release](https://termstats.celox.io/download): the file for your platform — 302 to the newest file, a verified copy served from this site (resumable)
+- [macOS](https://termstats.celox.io/download/macos): macOS · Apple silicon
+- [Linux](https://termstats.celox.io/download/linux): Linux · x86-64 · static binary
+- [Windows](https://termstats.celox.io/download/windows): Windows 10/11 · x64 · no Python needed
+- [macOS Intel](https://termstats.celox.io/download/macos-intel): macOS · Intel
+- [Linux ARM64](https://termstats.celox.io/download/linux-arm64): Linux · ARM64 (Raspberry Pi 4/5, ARM servers)
+- [Python wheel](https://termstats.celox.io/download/python): Python 3.9+ · every platform
+- [Newest release as JSON](https://termstats.celox.io/latest.json): `version`, `published`, `notes`, and `assets[]` with `target`, `name`, `url`, `size` (bytes), `sha256`; refreshed every 15 minutes
+- [All releases and notes](https://github.com/pepperonas/termstats/releases)
+
+## Docs
+
+- [Product page as Markdown](https://termstats.celox.io/index.md): features, install steps, verification, FAQ, with the current version and checksums filled in
+- [Agent skill: get termstats](https://termstats.celox.io/skills/get-termstats/SKILL.md): download, verify and install, step by step
+- [Changelog](https://termstats.celox.io/changelog.md): Markdown, mirrored from GitHub every 15 minutes
+- [README](https://github.com/pepperonas/termstats#readme)
+
+## Install
+
+1. The button above picks it; the chips offer the other platforms. On macOS and Linux one line does everything: `curl -fsSL https://github.com/pepperonas/termstats/releases/latest/download/install.sh | sh`
+2. macOS and Linux: `tar -xzf termstats-native-*.tar.gz`, then move `termstats-native` into a folder on your `PATH`, for example `~/.local/bin`. Windows: unpack the zip anywhere.
+3. `termstats-native` on macOS and Linux, `termstats.exe` in Windows Terminal. `Esc` or `q` leaves. A file downloaded with a browser on macOS needs `xattr -d com.apple.quarantine termstats-native` once.
+
+## Verify
+
+- SHA-256 of every file: `assets[].sha256` in [latest.json](https://termstats.celox.io/latest.json)
+
+
+## Features
+
+- The whole machine on one screen: CPU load per core, memory and swap, network rates, disks and the busiest processes, with history charts for CPU and network. One colour ramp from cool to hot runs through every bar and number.
+- Light on the machine it watches: On macOS and Linux the live dashboard is a native binary written in Rust: measured at about 0.3 % of one CPU core and 7 MB of memory. A monitor should not show up in its own process list.
+- Fits the terminal you have: The layout follows the window and drops whole sections instead of cutting them. Six colour themes; where a terminal cannot draw braille or 24-bit colour, termstats falls back to blocks, ASCII, 256 or 16 colours, and it honours `NO_COLOR`.
+- Sound, measured in the terminal: The Python program and the Windows build listen to the microphone on request: `-eq` is a 28-band spectrum analyser, `-bpm` finds the tempo, `-db` shows the level, `-x` shows level and tempo together. Nothing is recorded.
+- Remembers what the machine does: `termstats record install` starts a background service on macOS and Linux that writes one line per minute to a local log — measured at 0.024 % of one CPU core. The log stays on your disk and `record purge` deletes it.
+- Tells you which computer fits: After 14 days of history, `termstats recommend` names machines in three tiers — just enough, fits, with reserve — plus a Linux alternative, each with the reason in your own numbers. The catalogue of Macs and Linux hardware ships with every release.
+
+## Scope and limits
+
+- The native binary, the history recorder and the recommendation run on macOS and Linux only; Windows gets the Python program as termstats.exe.
+- The native binary has no microphone screens, no demo and no ASCII or block fallbacks - those are in the Python program.
+- termstats is not on PyPI, Homebrew or winget; it is distributed through GitHub Releases and this page.
+- The files are not code-signed or notarised: macOS quarantines a browser download and Windows SmartScreen may ask once.
+- It watches one machine in one terminal; it is not a monitoring server and keeps no remote history.
+- The recommendation uses list prices and benchmark scores from a catalogue shipped with each release; it does not check special requirements such as particular software or ports.
+
+## Optional
+
+- [Source code](https://github.com/pepperonas/termstats)
+- [Licence (MIT)](https://github.com/pepperonas/termstats/blob/main/LICENSE)
+- [Agent resource catalog](https://termstats.celox.io/.well-known/ai-catalog.json)
+- [Author: Martin Pfeffer, celox.io](https://celox.io)
