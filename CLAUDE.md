@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file; the only state on disk is the optional history (0.10.0).
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.10.0**, 1546 pytest tests + 89 `cargo test` in `native/`.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.10.1**, 1547 pytest tests + 89 `cargo test` in `native/`.
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first

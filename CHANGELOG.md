@@ -11,8 +11,16 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-15
+
 ### Added
 
+- **A download for Windows that needs no Python**: every release carries
+  `termstats-windows-x86_64.zip` with a `termstats.exe` - the Python program frozen with its
+  interpreter and the microphone modes. The release workflow builds it on a Windows runner
+  and starts it there before publishing.
+- A project page with the downloads for every platform: <https://termstats.celox.io>
+  (`website/`, built with the product-page kit; it follows new releases by itself).
 - `examples/daily-report.example.py`: a daily mail with yesterday's resource use from the
   history and the current recommendation, sent through msmtp on another host over ssh,
   with a PDF of the day in charts attached (HTML with inline SVG, printed by a headless

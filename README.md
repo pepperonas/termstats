@@ -170,8 +170,12 @@ termstats is two programs that work together. Install either, or both:
 | **`termstats`** | the Python program: the same dashboard plus the microphone modes, `--demo`, snapshots and every fallback | macOS, Linux, Windows | Python 3.9+ |
 
 With both installed, `termstats` hands the live dashboard to the native binary by itself
-(see [The native core](#the-native-core)). Every release carries both as downloads:
-**[github.com/pepperonas/termstats/releases/latest](https://github.com/pepperonas/termstats/releases/latest)**.
+(see [The native core](#the-native-core)). Every release carries both as downloads, plus
+a `termstats.exe` for Windows that needs no Python: pick your platform on
+**[termstats.celox.io](https://termstats.celox.io)**
+([termstats.celox.io/download](https://termstats.celox.io/download) sends the file for the
+machine you are on), or take the files from
+[github.com/pepperonas/termstats/releases/latest](https://github.com/pepperonas/termstats/releases/latest).
 
 > **Note:** termstats is not on PyPI — install it from the releases or from this repository.
 
@@ -184,7 +188,7 @@ termstats-native
 
 The script downloads the binary for your machine from the latest release, checks it against
 the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
-`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.10.0` a
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.10.1` a
 particular release.
 
 Or by hand — pick your machine:
@@ -209,7 +213,7 @@ with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries
 ### The Python program — pipx (recommended)
 
 ```bash
-pipx install https://github.com/pepperonas/termstats/releases/download/v0.10.0/termstats-0.10.0-py3-none-any.whl
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.10.1/termstats-0.10.1-py3-none-any.whl
 ```
 
 That is the released version. The current state of the repository instead:
@@ -221,7 +225,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user https://github.com/pepperonas/termstats/releases/download/v0.10.0/termstats-0.10.0-py3-none-any.whl
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.10.1/termstats-0.10.1-py3-none-any.whl
 ```
 
 ### From source
@@ -238,7 +242,14 @@ take effect immediately — no reinstall needed.
 
 ### Windows
 
-The same commands work in PowerShell; pipx puts `termstats.exe` into
+Without Python: download
+[`termstats-windows-x86_64.zip`](https://github.com/pepperonas/termstats/releases/latest/download/termstats-windows-x86_64.zip),
+unpack it and run `termstats.exe` — it is the Python program frozen together with its
+interpreter and the microphone modes (64-bit Windows 10/11). It is not code-signed, so
+SmartScreen may ask once (*More info → Run anyway*); check the file against the release's
+`SHA256SUMS` first. The native core, `record` and `recommend` do not run on Windows.
+
+With Python, the pipx and pip commands above work in PowerShell; pipx puts `termstats.exe` into
 `%USERPROFILE%\.local\bin` (run `pipx ensurepath` once). Use **Windows Terminal**: it draws
 the braille charts and 24-bit colour, and termstats recognises it through `WT_SESSION`. The
 classic console window works too, but its fonts have no braille — start it with
@@ -262,8 +273,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version          # -> termstats 0.10.0
-termstats-native --version   # -> termstats-native 0.10.0
+termstats --version          # -> termstats 0.10.1
+termstats-native --version   # -> termstats-native 0.10.1
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).

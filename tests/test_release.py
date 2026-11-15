@@ -45,6 +45,14 @@ def test_the_readme_links_every_download_and_nothing_else():
     assert linked == TARGETS
 
 
+def test_windows_gets_one_file_that_is_built_started_and_linked():
+    """The zip has no version in its name either, and the exe is run before it is published."""
+    assert "'out/termstats-windows-x86_64'" in WORKFLOW
+    assert "releases/latest/download/termstats-windows-x86_64.zip" in README
+    assert "needs: [native, windows, python]" in WORKFLOW, "publish must wait for the Windows build"
+    assert 'test "$(dist/termstats.exe --version' in WORKFLOW
+
+
 def test_the_assets_are_named_the_way_they_are_linked():
     """No version in the name: only then does releases/latest/download/<name> stay valid."""
     assert "dist/termstats-native-${{ matrix.target }}.tar.gz" in WORKFLOW

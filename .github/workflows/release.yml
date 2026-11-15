@@ -3,6 +3,8 @@ name: release
 # A pushed tag vX.Y.Z becomes a GitHub release with everything a user can download:
 #
 #   termstats-native-<target>.tar.gz   the native dashboard, four targets, no toolchain needed
+#   termstats-windows-x86_64.zip       termstats.exe: the Python program with its interpreter
+#                                      and the microphone modes, for Windows without Python
 #   termstats-X.Y.Z-py3-none-any.whl   the Python program (pipx install <url>)
 #   termstats-X.Y.Z.tar.gz             its source distribution
 #   install.sh                         picks the right binary, verifies it, installs it
@@ -85,6 +87,41 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  windows:
+    # The native core does not run on Windows; what Windows gets is the Python program
+    # frozen into one termstats.exe, so nobody has to install Python first.
+    name: windows / x86_64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build termstats.exe
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          python -m pip install ".[audio]"
+          printf 'from termstats.cli import main\n\nmain()\n' > termstats-exe.py
+          pyinstaller --onefile --console --name termstats --collect-all sounddevice termstats-exe.py
+      - name: It starts, draws a frame and finds the audio library
+        run: |
+          test "$(dist/termstats.exe --version | tr -d '\r')" = "termstats ${TAG#v}"
+          dist/termstats.exe --demo --once > frame.txt
+          grep -q TERMSTATS frame.txt
+          dist/termstats.exe --list-devices
+      - name: Package
+        run: |
+          mkdir -p package out
+          cp dist/termstats.exe LICENSE package/
+          python -c "import shutil; shutil.make_archive('out/termstats-windows-x86_64', 'zip', 'package')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+          if-no-files-found: error
+
   python:
     name: python package
     runs-on: ubuntu-latest
@@ -114,7 +151,7 @@ jobs:
 
   publish:
     name: publish
-    needs: [native, python]
+    needs: [native, windows, python]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,6 +176,8 @@ jobs:
             echo '```bash'
             echo "# the native dashboard (macOS, Linux) - no toolchain needed"
             echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/install.sh | TERMSTATS_VERSION=${TAG} sh"
+            echo
+            echo "# Windows: unpack termstats-windows-x86_64.zip and run termstats.exe - no Python needed"
             echo
             echo "# the Python program (all platforms; microphone modes, --demo)"
             echo "pipx install https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/termstats-${TAG#v}-py3-none-any.whl"
