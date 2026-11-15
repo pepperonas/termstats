@@ -324,6 +324,13 @@ fn the_json_names_the_same_picks() {
     assert_eq!(out.matches('{').count(), out.matches('}').count());
     assert!(out.contains("\"device\":\"mini\"") && out.contains("\"tier\":\"fits\"") && out.contains("\"ready\":true"));
     assert!(out.contains("say \\\"hi\\\"\\\\"), "quotes and backslashes are escaped");
+    // What another program needs to say the same in its own words: does this machine do, and what is it short on.
+    assert!(out.contains("\"fits\":true,\"short\":[]") && out.contains("\"catalogue_age_days\":0"), "{out}");
+    let chip = current_chip(CHIPS, &this).unwrap();
+    assert!(out.contains(&format!("\"multi\":{}", chip.multi)));
+    let heavy = fortnight(|_, _, m| m.demand_mb = 28.0 * 1024.0);
+    let p = profile(&heavy, &this);
+    assert!(json(&build(&p, &this, CHIPS, DEVICES, "2026-11-15", 0, true)).contains("\"fits\":false,\"short\":[\"memory\"]"));
 }
 
 #[test]

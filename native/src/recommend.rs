@@ -535,8 +535,12 @@ pub fn json(r: &Report) -> String {
                 json_string(tier.label()), n.ram_gb, n.ssd_gb, n.multi, n.gpu, n.portable, n.no_fanless, json_choice(&r.picks[i]))
     }).collect();
     let tops = |list: &[(String, f64)]| list.iter().map(|(name, v)| format!("[{},{:.2}]", json_string(name), v)).collect::<Vec<_>>().join(",");
-    format!("{{\"ready\":{},\"catalogue\":{},\"machine\":{{\"model\":{},\"chip\":{},\"ncpu\":{},\"mem_gb\":{:.0},\"chip_known\":{}}},\"history\":{{\"first\":{},\"last\":{},\"days\":{},\"minutes\":{},\"awake_share\":{:.4}}},\"profile\":{{\"ram_p99_gb\":{:.2},\"ram_max_gb\":{:.2},\"days_over_ram\":{},\"pressure_share\":{},\"cpu_p95\":{:.1},\"saturated_share\":{:.4},\"sustained_runs\":{},\"single_share\":{:.4},\"gpu_p95\":{},\"disk_used_gb\":{:.1},\"disk_total_gb\":{:.1},\"disk_growth_gb_day\":{:.3},\"battery_share\":{},\"display_share\":{},\"thermal_share\":{},\"top_cpu_hours\":[{}],\"top_mem_gb\":[{}]}},\"tiers\":[{}],\"portable\":{},\"linux\":{}}}\n",
-            r.ready, json_string(r.catalogue), json_string(&r.machine.model), json_string(&r.machine.chip), r.machine.ncpu, p.installed_gb, r.current.is_some(),
+    let (enough, short) = current_meets(p, &r.needs[1], r.current);
+    let short: Vec<String> = short.iter().map(|s| json_string(s)).collect();
+    let multi = r.current.map_or("null".to_string(), |c| c.multi.to_string());
+    format!("{{\"ready\":{},\"catalogue\":{},\"catalogue_age_days\":{},\"machine\":{{\"model\":{},\"chip\":{},\"ncpu\":{},\"mem_gb\":{:.0},\"chip_known\":{},\"multi\":{},\"fits\":{},\"short\":[{}]}},\"history\":{{\"first\":{},\"last\":{},\"days\":{},\"minutes\":{},\"awake_share\":{:.4}}},\"profile\":{{\"ram_p99_gb\":{:.2},\"ram_max_gb\":{:.2},\"days_over_ram\":{},\"pressure_share\":{},\"cpu_p95\":{:.1},\"saturated_share\":{:.4},\"sustained_runs\":{},\"single_share\":{:.4},\"gpu_p95\":{},\"disk_used_gb\":{:.1},\"disk_total_gb\":{:.1},\"disk_growth_gb_day\":{:.3},\"battery_share\":{},\"display_share\":{},\"thermal_share\":{},\"top_cpu_hours\":[{}],\"top_mem_gb\":[{}]}},\"tiers\":[{}],\"portable\":{},\"linux\":{}}}\n",
+            r.ready, json_string(r.catalogue), r.catalogue_age_days, json_string(&r.machine.model), json_string(&r.machine.chip), r.machine.ncpu, p.installed_gb, r.current.is_some(),
+            multi, enough, short.join(","),
             p.first_ts, p.last_ts, p.span_days, p.minutes, p.awake_share, p.ram_p99_gb, p.ram_max_gb, p.days_over_ram, json_opt(p.pressure_share),
             p.cpu_p95, p.saturated_share, p.sustained_runs, p.single_share, json_opt(p.gpu_p95), p.disk_used_gb, p.disk_total_gb, p.disk_growth_gb_day,
             json_opt(p.battery_share), json_opt(p.display_share), json_opt(p.thermal_share), tops(&p.top_cpu), tops(&p.top_mem),

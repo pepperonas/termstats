@@ -17,6 +17,10 @@ line will be 1.0.0.
   history and the current recommendation, sent through msmtp on another host over ssh,
   with a PDF of the day in charts attached (HTML with inline SVG, printed by a headless
   Chromium-family browser).
+  The mail and the PDF are in German throughout, written from the JSON report.
+- `recommend --json` says whether the current machine fits and what it is short on
+  (`machine.fits`, `machine.short`), its benchmark score (`machine.multi`) and
+  `catalogue_age_days`.
 
 ## [0.10.0] - 2026-11-15
 

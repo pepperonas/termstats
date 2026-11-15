@@ -378,6 +378,88 @@ def unfold(report, limit=118):
 
 
 TIER_DE = {"just enough": "reicht knapp", "fits": "passt", "with reserve": "mit Reserve"}
+SHORT_DE = {"memory": "Arbeitsspeicher", "storage": "Datenträger", "processor": "Prozessor", "graphics": "Grafik"}
+RAM_FACTOR, SSD_FACTOR = (1.10, 1.30, 1.80), (1.25, 1.5, 2.0)     # the tiers' headroom, as termstats applies it
+
+
+def euro(value):
+    return f"{value:,.0f} €".replace(",", ".")
+
+
+def pick_text(pick):
+    return (f'{pick["vendor"]} {pick["name"]} – {pick["chip"]}, {pick["ram_gb"]} GB Speicher, {size(pick["ssd_gb"])} SSD – {euro(pick["price_eur"])}'
+            + ("" if pick.get("verified", True) else " (Preis nicht beim Hersteller bestätigt)"))
+
+
+def german(data):
+    """The recommendation in German, from the JSON report: what the history says, whether this
+    machine does, and why each level asks for what it asks."""
+    pr, machine, hist = data["profile"], data["machine"], data["history"]
+
+    def pct(share):
+        return de(share * 100, 0, " %")
+
+    first, last = dt.date.fromtimestamp(hist["first"]), dt.date.fromtimestamp(hist["last"])
+    facts = [
+        ("Verlauf", f'{first:%d.%m.} bis {last:%d.%m.%Y}: {hist["days"]} Tage, {hist["minutes"]} Minuten erfasst '
+                    f'({pct(hist["awake_share"])} dieser Zeit war der Rechner wach)'),
+        ("Speicher", f'gebraucht {de(pr["ram_p99_gb"])} GB (99. Perzentil), Spitze {de(pr["ram_max_gb"])} GB, verbaut {machine["mem_gb"]} GB; '
+                     f'an {pr["days_over_ram"]} von {max(1, hist["days"])} Tagen über dem verbauten Speicher'
+                     + ("" if pr["pressure_share"] is None else f'; {pct(pr["pressure_share"])} der Zeit unter Speicherdruck')),
+        ("Prozessor", f'95 % der Zeit unter {de(pr["cpu_p95"], 0)} % Last auf {machine["ncpu"]} Kernen; {pct(pr["saturated_share"])} der Zeit bei 80 % und mehr; '
+                      f'{pr["sustained_runs"]} anhaltende Spitzen von zehn Minuten oder länger; {pct(pr["single_share"])} der Zeit an einen einzelnen Kern gebunden'),
+        ("Grafik", "von diesem Rechner nicht gemeldet, nicht bewertet" if pr["gpu_p95"] is None else f'95 % der Zeit unter {de(pr["gpu_p95"], 0)} %'),
+        ("Datenträger", f'{de(pr["disk_used_gb"], 0)} von {de(pr["disk_total_gb"], 0)} GB belegt'
+                        + (f' ({de(100 * pr["disk_used_gb"] / pr["disk_total_gb"], 0)} %)' if pr["disk_total_gb"] else "")
+                        + f', Zuwachs {de(pr["disk_growth_gb_day"], 2)} GB je Tag'),
+        ("Mobilität", ("kein Akku" if pr["battery_share"] is None else f'{pct(pr["battery_share"])} der Zeit im Akkubetrieb')
+                      + ("" if pr["display_share"] is None else f'; {pct(pr["display_share"])} mit externem Monitor')
+                      + ("" if pr["thermal_share"] is None else f'; {pct(pr["thermal_share"])} thermisch gedrosselt')),
+    ]
+    if "fits" not in machine:
+        verdict = ""
+    elif machine["fits"]:
+        verdict = "Dieser Rechner reicht für das Gemessene aus. Die Tabelle zeigt, was dieselbe Arbeit neu kosten würde."
+    else:
+        verdict = "Dieser Rechner ist zu knapp bei: " + ", ".join(SHORT_DE.get(name, name) for name in machine.get("short", [])) + "."
+    if not machine.get("chip_known", True):
+        verdict += (f' Sein Chip ({machine["chip"]}) steht nicht im Katalog; Prozessor und Grafik ließen sich deshalb nicht vergleichen, '
+                    "die Auswahl stützt sich nur auf Speicher, Datenträger und Mobilität.")
+    portable = bool(data["tiers"] and data["tiers"][0]["need"].get("portable"))
+    form = ("Im Akkubetrieb genutzt, deshalb kommen nur Laptops in Frage." if portable
+            else "Nie im Akkubetrieb genutzt, deshalb kommen auch Desktops in Frage.")
+    tiers = []
+    for i, tier in enumerate(data["tiers"]):
+        need = tier["need"]
+        why = [f'Speicher {de(need["ram_gb"], 0)} GB = {de(pr["ram_p99_gb"])} GB × {de(RAM_FACTOR[i], 2)}',
+               f'Datenträger {de(need["ssd_gb"], 0)} GB = {de(pr["disk_used_gb"], 0)} GB × {de(SSD_FACTOR[i], 2)} plus Zuwachs']
+        if machine.get("multi"):
+            why.append(f'Prozessor mindestens {de(need["multi"] * 100 / machine["multi"], 0)} % des jetzigen {machine["chip"]}')
+        tiers.append((TIER_DE.get(tier["tier"], tier["tier"]), tier["pick"], "; ".join(why)))
+    extras = [(label, pick) for label, pick in (("als Laptop", data.get("portable")), ("unter Linux", data.get("linux"))) if pick]
+    try:
+        stand = f'{dt.date.fromisoformat(data["catalogue"]):%d.%m.%Y}'
+    except ValueError:
+        stand = data["catalogue"]
+    notes = [f'Genannt ist je Stufe die günstigste Ausstattung, die den Bedarf deckt. Listenpreise in Euro laut Katalog vom {stand}.',
+             "Prozessor und Grafik werden über veröffentlichte Benchmark-Werte verglichen: eine Näherung, gut für Klassen, nicht für Prozente.",
+             "Nicht gemessen: Software, die ein bestimmtes System braucht, Anschlüsse, Bildschirmgröße, Geschmack."]
+    if data.get("catalogue_age_days", 0) > 120:
+        notes.insert(0, f'Der Katalog ist {data["catalogue_age_days"]} Tage alt: Modelle und Preise können sich geändert haben, termstats aktualisieren.')
+    provisional = "" if data.get("ready", True) else (f'Vorläufig: erst {hist["days"]} von 14 Tagen sind aufgezeichnet. '
+                                                      "Die Empfehlung kann sich noch deutlich ändern.")
+    return {"facts": facts, "verdict": verdict, "form": form, "tiers": tiers, "extras": extras, "notes": notes, "provisional": provisional}
+
+
+def german_plain(g):
+    width = max(len(label) for label, _ in g["facts"]) + 2
+    out = ([g["provisional"], ""] if g["provisional"] else []) + ["Was der Verlauf sagt"]
+    out += [f"  {label + ':':<{width}}{text}" for label, text in g["facts"]]
+    out += ["", g["verdict"], g["form"], ""]
+    for label, pick, why in g["tiers"]:
+        out += [f"{label}:  " + (pick_text(pick) if pick else "nichts im Katalog erfüllt das"), f"    {why}"]
+    out += [f"{label}:  {pick_text(pick)}" for label, pick in g["extras"]]
+    return "\n".join(out + [""] + g["notes"])
 
 CSS = """
 @page { size: A4; margin: 14mm 14mm 15mm; }
@@ -403,6 +485,9 @@ th { text-align: left; color: #52514e; font-weight: 600; border-bottom: 1px soli
 td { border-bottom: 1px solid #e4e3dd; padding: 6px 8px 6px 0; vertical-align: top; }
 td.r, th.r { text-align: right; padding: 6px 0 6px 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 td.n { white-space: nowrap; }
+tr.has td { border-bottom: 0; padding-bottom: 1px; }
+td.why { color: #52514e; font-size: 8.5pt; padding-top: 0; }
+.lead { margin: 6px 0 8px; }
 .facts td:first-child { color: #52514e; white-space: nowrap; width: 1%; padding-right: 16px; }
 .warn { border: 1px solid #e4e3dd; border-left: 4px solid #eda100; border-radius: 6px; padding: 7px 10px; font-size: 9.5pt; margin: 6px 0 8px; }
 pre { font-family: Menlo, Consolas, monospace; font-size: 7pt; line-height: 1.45; white-space: pre-wrap; background: #f6f6f3; border-radius: 6px; padding: 9px 10px; margin: 6px 0 0; }
@@ -411,7 +496,7 @@ footer { color: #8a897f; font-size: 8pt; margin-top: 16px; }
 """
 
 
-def report_html(day, machine, rows, summary, pairs, report, data):
+def report_html(day, machine, rows, summary, pairs, report, g):
     gb = 1024.0
     esc = html.escape
     installed_gb = (summary["installed"] or 0) / gb
@@ -458,20 +543,28 @@ def report_html(day, machine, rows, summary, pairs, report, data):
     out.append('<section><h2>Der Tag in Zahlen</h2><table class="facts">'
                + "".join(f"<tr><td>{esc(label)}</td><td>{esc(text)}</td></tr>" for label, text in pairs[1:]) + "</table></section>")
 
-    out.append('<section><h2>Empfehlung</h2><p class="note">Aus dem gesamten Verlauf (höchstens vier Wochen), nicht nur aus diesem Tag. Listenpreise'
-               + (f' laut Katalog vom {esc(str(data.get("catalogue")))}' if data.get("catalogue") else "") + ".</p>")
-    if data and not data.get("ready", True):
-        out.append(f'<div class="warn"><b>Vorläufig.</b> Erst {esc(str(data.get("history", {}).get("days", 0)))} von 14 Tagen sind aufgezeichnet. '
-                   'Die Empfehlung kann sich noch deutlich ändern.</div>')
-    picks = [(TIER_DE.get(t.get("tier"), t.get("tier", "")), t.get("pick")) for t in data.get("tiers", [])]
-    picks += [("als Laptop", data.get("portable")), ("unter Linux", data.get("linux"))]
-    picks = [(label, pick) for label, pick in picks if pick]
-    if picks:
-        out.append('<table><tr><th>Stufe</th><th>Gerät</th><th>Chip</th><th class="r">Speicher</th><th class="r">SSD</th><th class="r">Preis</th></tr>'
-                   + "".join(f'<tr><td class="n"><b>{esc(label)}</b></td><td>{esc(pick["vendor"] + " " + pick["name"])}</td><td>{esc(pick["chip"])}</td>'
-                             f'<td class="r">{pick["ram_gb"]} GB</td><td class="r">{size(pick["ssd_gb"])}</td>'
-                             f'<td class="r">{pick["price_eur"]:,} €</td></tr>'.replace(",", ".") for label, pick in picks) + "</table>")
-    out.append(f'</section><section class="flow"><h2>Begründung im Einzelnen</h2><pre>{esc(unfold(report))}</pre></section>')
+    out.append('<section><h2>Empfehlung</h2><p class="note">Aus dem gesamten Verlauf (höchstens vier Wochen), nicht nur aus diesem Tag.</p>')
+    if not g:
+        out.append(f'<pre>{esc(unfold(report))}</pre></section>')
+    else:
+        if g["provisional"]:
+            out.append(f'<div class="warn"><b>Vorläufig.</b> {esc(g["provisional"].split(": ", 1)[1].capitalize())}</div>')
+        out.append(f'<p class="lead">{esc(g["verdict"])} {esc(g["form"])}</p>')
+        rows_ = [(label, pick, why) for label, pick, why in g["tiers"]] + [(label, pick, "") for label, pick in g["extras"]]
+        out.append('<table><tr><th>Stufe</th><th>Gerät</th><th>Chip</th><th class="r">Speicher</th><th class="r">SSD</th><th class="r">Preis</th></tr>')
+        for label, pick, why in rows_:
+            has = ' class="has"' if why else ""
+            if pick:
+                out.append(f'<tr{has}><td class="n"><b>{esc(label)}</b></td><td>{esc(pick["vendor"] + " " + pick["name"])}</td><td>{esc(pick["chip"])}</td>'
+                           f'<td class="r">{pick["ram_gb"]} GB</td><td class="r">{size(pick["ssd_gb"])}</td><td class="r">{esc(euro(pick["price_eur"]))}</td></tr>')
+            else:
+                out.append(f'<tr{has}><td class="n"><b>{esc(label)}</b></td><td colspan="5">nichts im Katalog erfüllt das</td></tr>')
+            if why:
+                out.append(f'<tr><td></td><td colspan="5" class="why">{esc(why)}</td></tr>')
+        out.append("</table></section>")
+        out.append('<section><h2>Was der Verlauf sagt</h2><table class="facts">'
+                   + "".join(f"<tr><td>{esc(label)}</td><td>{esc(text)}</td></tr>" for label, text in g["facts"]) + "</table>"
+                   + "".join(f'<p class="note">{esc(note)}</p>' for note in g["notes"]) + "</section>")
     out.append(f'<footer>Erzeugt von termstats am {dt.datetime.now():%d.%m.%Y %H:%M} auf diesem Rechner aus dem lokalen Verlauf.</footer></body></html>')
     return "".join(out)
 
@@ -516,6 +609,12 @@ def build(day):
     summary = summarise(machine, rows)
     pairs = lines_of(summary, machine)
     report, short, data = recommendation()
+    try:
+        g = german(data) if data else None
+    except (KeyError, TypeError, IndexError, ValueError):
+        g = None                        # an older termstats-native: its own (English) text is used
+    if g:
+        report = german_plain(g)
     title = f"Ressourcenverbrauch am {day:%d.%m.%Y}"
     width = max(len(label) for label, _ in pairs)
     plain = "\n".join([title, "=" * len(title), ""] + [f"{label + ':':<{width + 2}}{text}" for label, text in pairs]
@@ -531,7 +630,7 @@ def build(day):
     subject = (f'termstats {day:%d.%m.}: CPU Ø {de(summary["cpu_avg"], 0)} %, '
                f'RAM-Bedarf bis {de(summary["demand_max"] / 1024 if summary["demand_max"] else None)} GB'
                + (f' - passt: {short}' if short else ""))
-    pdf = to_pdf(report_html(day, machine, rows, summary, pairs, report, data))
+    pdf = to_pdf(report_html(day, machine, rows, summary, pairs, report, g))
     attached = ("Der Bericht mit Diagrammen hängt als PDF an." if pdf
                 else "Ohne PDF: auf diesem Rechner wurde kein Browser gefunden, der es drucken kann.")
     plain = plain.replace("\n\n", f"\n\n{attached}\n\n", 1)
