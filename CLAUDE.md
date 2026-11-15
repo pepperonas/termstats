@@ -529,6 +529,10 @@ service with autostart; program NAMES may be logged; three tiers from the data.
   recipient and the ssh target, which do not belong in this public repo) mails YESTERDAY via
   `ssh root@VPS msmtp -t`; marker `~/.local/state/termstats/daily-report.sent`, log
   `~/Library/Logs/termstats-daily-report.log`. No history for a day = no mail.
+  The mail carries a PDF (charts as inline SVG, printed by headless Chrome with its own
+  `--user-data-dir`; `--pdf out.pdf` writes it without sending). Look at it after changes:
+  `gs -sDEVICE=png16m -r85 -sOutputFile=pg-%d.png` - the Read tool calls Chrome's PDF
+  password-protected, and this Mac's `pdftoppm` is xpdf's (no `-png`).
 - The recorder runs on this Mac since 2026-11-15 (`termstats record status`); the first real
   recommendation is due 2026-11-29.
 

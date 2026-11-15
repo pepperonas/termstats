@@ -875,7 +875,7 @@ with the release and is never fetched.
 
 [`examples/daily-report.example.py`](examples/daily-report.example.py) (standard library
 only, not part of the package) sums up yesterday from the history, adds the current
-`recommend --now` report and mails both through `msmtp` on a host reached over ssh. Its
+`recommend --now` report and mails both through `msmtp` on a host reached over ssh. Attached is a PDF of the day in charts (processor, memory, graphics, disk and network over the day, the largest consumers, the days so far, the recommendation as a table): the report is built as HTML with inline SVG and printed by a headless Chrome, Chromium, Edge or Brave; without one the mail goes out without it. Its
 docstring lists the environment variables; run it once a day from cron, a launchd agent or
 a systemd timer. It sends each day once and nothing for a day without history. Mind what
 it sends: the names of your busiest programs leave the machine with that mail.

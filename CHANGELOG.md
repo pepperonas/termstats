@@ -14,7 +14,9 @@ line will be 1.0.0.
 ### Added
 
 - `examples/daily-report.example.py`: a daily mail with yesterday's resource use from the
-  history and the current recommendation, sent through msmtp on another host over ssh.
+  history and the current recommendation, sent through msmtp on another host over ssh,
+  with a PDF of the day in charts attached (HTML with inline SVG, printed by a headless
+  Chromium-family browser).
 
 ## [0.10.0] - 2026-11-15
 

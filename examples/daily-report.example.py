@@ -2,8 +2,10 @@
 """A daily mail: what the machine did yesterday, and which computer fits.
 
 Reads the history `termstats record` keeps, sums up one day, adds the current
-`termstats recommend --now` report and sends both as one mail. Standard library only
-(Python 3.9+); a template, not part of the package.
+`termstats recommend --now` report and sends both as one mail - with a PDF attached that
+shows the day in charts (the report is built as HTML with inline SVG and printed to PDF by
+a headless Chrome/Chromium/Edge/Brave; without one the mail goes out without the PDF).
+Standard library only (Python 3.9+); a template, not part of the package.
 
 The mail goes out through msmtp on another host, reached over ssh - handy when a server
 already has SMTP set up and the laptop has not:
@@ -13,10 +15,12 @@ already has SMTP set up and the laptop has not:
     TERMSTATS_REPORT_SSH_KEY=~/.ssh/id_ed25519     optional: the key to use
     TERMSTATS_REPORT_FROM=reports@example.org      optional: From header (default: msmtp's)
     TERMSTATS_NATIVE_BIN=/path/termstats-native    optional: where the native core is
+    TERMSTATS_REPORT_BROWSER=/path/to/chrome       optional: the browser that prints the PDF
 
     daily-report.example.py              yesterday, once (a marker remembers what was sent)
     daily-report.example.py --date 2026-11-15      that day, sent regardless of the marker
     daily-report.example.py --print      print the text, send nothing
+    daily-report.example.py --pdf out.pdf          write the PDF there, send nothing
 
 Run it once a day (cron, a launchd agent with StartCalendarInterval, a systemd timer).
 Note what it sends: the names of your busiest programs leave the machine with this mail.
@@ -30,6 +34,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 from email.message import EmailMessage
 
 COLUMNS = ["ts", "n", "gap_s", "cpu_avg", "cpu_p95", "cpu_max", "busy_avg", "busy_max", "single", "mem_avg_mb",
@@ -177,21 +182,331 @@ def lines_of(s, machine):
 
 
 def recommendation():
-    """(text report, the middle tier's pick as a short string or None)."""
+    """(text report, the middle tier's pick as a short string or None, the JSON report or {})."""
     binary = native_bin()
     if not binary:
-        return "termstats-native ist nicht installiert - keine Empfehlung.", None
+        return "termstats-native ist nicht installiert - keine Empfehlung.", None, {}
     text = subprocess.run([binary, "recommend", "--now"], capture_output=True, text=True, timeout=60)
-    short = None
+    short, data = None, {}
     try:
         data = json.loads(subprocess.run([binary, "recommend", "--now", "--json"], capture_output=True, text=True, timeout=60).stdout)
-        tiers = next(v for v in data.values() if isinstance(v, list) and v and isinstance(v[0], dict) and "tier" in v[0])
-        pick = tiers[1]["pick"] if len(tiers) > 1 else None
+        pick = data["tiers"][1]["pick"]
         if pick:
             short = f'{pick["name"]}, {pick["ram_gb"]} GB, {pick["price_eur"]} EUR'
-    except (ValueError, StopIteration, KeyError, IndexError, subprocess.SubprocessError):
+    except (ValueError, KeyError, IndexError, TypeError, subprocess.SubprocessError):
         pass
-    return (text.stdout or text.stderr).rstrip() or "Keine Empfehlung erhalten.", short
+    return (text.stdout or text.stderr).rstrip() or "Keine Empfehlung erhalten.", short, data
+
+
+# --- the PDF: HTML with inline SVG, printed by a headless browser ---------------------------
+
+INK, SOFT, MUTED, GRID = "#0b0b0b", "#52514e", "#8a897f", "#e4e3dd"
+BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"     # categorical slots 1-3, fixed order
+CHART_W, HALF_W, PAD_L, PAD_R, PAD_T, PAD_B = 720, 352, 46, 14, 10, 24
+GAP_S = 150                                              # more than this between two lines: the line breaks
+
+
+def nice_max(value):
+    """The next round axis end at or above a value."""
+    if not value or value <= 0:
+        return 1.0
+    power = 10.0 ** (len(str(int(value))) - 1) if value >= 1 else 0.1
+    for step in (1.2, 2, 4, 6, 8, 10):          # each a quarter of which reads well on an axis
+        if step * power >= value:
+            return step * power
+    return 10 * power
+
+
+def num(value):
+    if float(value).is_integer() or value >= 100:
+        return f"{value:.0f}"
+    return (f"{value:.1f}" if value >= 1 else f"{value:.2f}".rstrip("0")).replace(".", ",")
+
+
+def time_ticks(t0, t1, most=9):
+    span = t1 - t0
+    step = next((s for s in (900, 1800, 3600, 7200, 10800, 14400, 21600) if span / s <= most), 43200)
+    first = (int(t0) // step + (1 if t0 % step else 0)) * step
+    # Whole steps of LOCAL time: an hour grid must sit on local hours.
+    offset = dt.datetime.fromtimestamp(first).utcoffset() or dt.timedelta(0)
+    return [t for t in range(first, int(t1) + 1, step)], offset
+
+
+def runs(rows, key, scale):
+    """The series as unbroken runs of (ts, value): sleep and missing values break the line."""
+    out, current, last_ts = [], [], None
+    for row in rows:
+        value = row[key]
+        if value is None or (last_ts is not None and row["ts"] - last_ts > GAP_S):
+            if current:
+                out.append(current)
+            current = []
+        if value is not None:
+            current.append((row["ts"], value * scale))
+        last_ts = row["ts"]
+    if current:
+        out.append(current)
+    return out
+
+
+def line_chart(rows, series, unit, y_max=None, reference=None, height=150, width=CHART_W):
+    """One y axis, time on x. series = [(column, label, colour, scale, filled)]."""
+    t0 = (int(rows[0]["ts"]) // 3600) * 3600
+    t1 = max(t0 + 3600, -(-int(rows[-1]["ts"]) // 3600) * 3600)
+    drawn = [(label, colour, filled, runs(rows, key, scale)) for key, label, colour, scale, filled in series]
+    top = max([v for _, _, _, rr in drawn for r in rr for _, v in r] + ([reference[1]] if reference else []) + [0])
+    y_max = y_max or nice_max(top * 1.05)
+    plot_w, plot_h = width - PAD_L - PAD_R, height - PAD_T - PAD_B
+
+    def x(ts):
+        return PAD_L + (ts - t0) / (t1 - t0) * plot_w
+
+    def y(value):
+        return PAD_T + plot_h - min(value, y_max) / y_max * plot_h
+
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" role="img">']
+    for i in range(5):
+        value = y_max * i / 4
+        parts.append(f'<line x1="{PAD_L}" x2="{width - PAD_R}" y1="{y(value):.1f}" y2="{y(value):.1f}" stroke="{GRID}" stroke-width="1"/>'
+                     f'<text x="{PAD_L - 6}" y="{y(value) + 3.5:.1f}" text-anchor="end" font-size="10" fill="{MUTED}">{num(value)}{" " + unit if i == 4 else ""}</text>')
+    ticks, _ = time_ticks(t0, t1, 9 if width > 500 else 5)
+    for tick in ticks:
+        parts.append(f'<text x="{x(tick):.1f}" y="{height - 7}" text-anchor="middle" font-size="10" fill="{MUTED}">{dt.datetime.fromtimestamp(tick):%H:%M}</text>')
+    base = y(0)
+    for _label, colour, filled, series_runs in drawn:
+        for run in series_runs:
+            points = " ".join(f"{x(ts):.1f},{y(v):.1f}" for ts, v in run)
+            if filled and len(run) > 1:
+                parts.append(f'<polygon points="{x(run[0][0]):.1f},{base:.1f} {points} {x(run[-1][0]):.1f},{base:.1f}" fill="{colour}" fill-opacity="0.16"/>')
+            if len(run) > 1:
+                parts.append(f'<polyline points="{points}" fill="none" stroke="{colour}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>')
+            else:
+                parts.append(f'<circle cx="{x(run[0][0]):.1f}" cy="{y(run[0][1]):.1f}" r="2" fill="{colour}"/>')
+    if reference:
+        label, value = reference
+        parts.append(f'<line x1="{PAD_L}" x2="{width - PAD_R}" y1="{y(value):.1f}" y2="{y(value):.1f}" stroke="{INK}" stroke-width="1" stroke-dasharray="5 4"/>'
+                     f'<text x="{width - PAD_R - 4}" y="{y(value) - 5:.1f}" text-anchor="end" font-size="10" fill="{SOFT}">{html.escape(label)}</text>')
+    parts.append("</svg>")
+    legend = ""
+    if len(series) > 1:
+        legend = '<div class="legend">' + "".join(
+            f'<span><i style="background:{colour}"></i>{html.escape(label)}</span>' for _key, label, colour, _scale, _filled in series) + "</div>"
+    return legend + "".join(parts)
+
+
+def bar_chart(items, unit, colour=BLUE, value_text=num, width=HALF_W):
+    """Horizontal bars, largest first; the name and the value are text, the bar carries the size."""
+    if not items:
+        return '<p class="none">nichts erfasst</p>'
+    row_h, label_w, value_w = 24, 138, 58
+    height = row_h * len(items) + 4
+    top = max(value for _name, value in items) or 1
+    plot_w = width - label_w - value_w
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" role="img">']
+    for i, (name, value) in enumerate(items):
+        yy = 2 + i * row_h
+        shown = name if len(name) <= 24 else name[:23] + "…"
+        bar = max(2.0, value / top * plot_w)
+        parts.append(f'<text x="{label_w - 8}" y="{yy + 15}" text-anchor="end" font-size="11" fill="{INK}">{html.escape(shown)}</text>'
+                     f'<rect x="{label_w}" y="{yy + 4}" width="{bar:.1f}" height="14" rx="3" fill="{colour}"/>'
+                     f'<text x="{label_w + bar + 6:.1f}" y="{yy + 15}" font-size="11" fill="{SOFT}">{value_text(value)} {unit}</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def day_columns(days, key, unit, colour, reference=None, width=HALF_W):
+    """One column per day (date, value): the days side by side."""
+    height, pad_b = 150, 24
+    values = [v for _d, v in days if v is not None]
+    y_max = nice_max(max(values + ([reference[1]] if reference else []) + [0]) * 1.05)
+    plot_w, plot_h = width - PAD_L - PAD_R, height - PAD_T - pad_b
+    slot = plot_w / len(days)
+    bar_w = max(2.0, min(30.0, slot - 4))
+    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" role="img">']
+    for i in range(5):
+        value = y_max * i / 4
+        yy = PAD_T + plot_h - i / 4 * plot_h
+        parts.append(f'<line x1="{PAD_L}" x2="{width - PAD_R}" y1="{yy:.1f}" y2="{yy:.1f}" stroke="{GRID}" stroke-width="1"/>'
+                     f'<text x="{PAD_L - 6}" y="{yy + 3.5:.1f}" text-anchor="end" font-size="10" fill="{MUTED}">{num(value)}{" " + unit if i == 4 else ""}</text>')
+    every = max(1, -(-len(days) // 7))
+    for i, (day, value) in enumerate(days):
+        cx = PAD_L + slot * (i + 0.5)
+        if value is not None:
+            h = value / y_max * plot_h
+            parts.append(f'<rect x="{cx - bar_w / 2:.1f}" y="{PAD_T + plot_h - h:.1f}" width="{bar_w:.1f}" height="{h:.1f}" rx="3" fill="{colour}"/>')
+            if len(days) <= 8:
+                parts.append(f'<text x="{cx:.1f}" y="{PAD_T + plot_h - h - 4:.1f}" text-anchor="middle" font-size="10" fill="{SOFT}">{num(value)}</text>')
+        if i % every == 0:
+            parts.append(f'<text x="{cx:.1f}" y="{height - 7}" text-anchor="middle" font-size="10" fill="{MUTED}">{day:%d.%m.}</text>')
+    if reference:
+        label, value = reference
+        yy = PAD_T + plot_h - value / y_max * plot_h
+        parts.append(f'<line x1="{PAD_L}" x2="{width - PAD_R}" y1="{yy:.1f}" y2="{yy:.1f}" stroke="{INK}" stroke-width="1" stroke-dasharray="5 4"/>'
+                     f'<text x="{width - PAD_R - 4}" y="{yy - 5:.1f}" text-anchor="end" font-size="10" fill="{SOFT}">{html.escape(label)}</text>')
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def earlier_days(day, limit=14):
+    """(date, demand p99 in GB, mean CPU %) for the days on file up to `day`."""
+    out = []
+    for back in range(limit - 1, -1, -1):
+        date = day - dt.timedelta(days=back)
+        _machine, rows = read_day(date)
+        if rows:
+            demand = percentile([r["demand_mb"] for r in rows if r["demand_mb"] is not None], 0.99)
+            cpu = [r["cpu_avg"] for r in rows if r["cpu_avg"] is not None]
+            out.append((date, demand / 1024 if demand else None, sum(cpu) / len(cpu) if cpu else None))
+    return out
+
+
+def size(gb):
+    return f"{gb // 1000} TB" if gb >= 1000 and gb % 1000 in (0, 24, 48, 96) else f"{gb} GB"
+
+
+def unfold(report, limit=118):
+    """Long lines of the text report broken at their semicolons, so a page does not wrap them blindly."""
+    out = []
+    for line in report.splitlines():
+        if len(line) <= limit or "; " not in line:
+            out.append(line)
+            continue
+        first, *rest = line.split("; ")
+        out.append(first + ";")
+        out += [" " * 16 + part + (";" if i < len(rest) - 1 else "") for i, part in enumerate(rest)]
+    return "\n".join(out)
+
+
+TIER_DE = {"just enough": "reicht knapp", "fits": "passt", "with reserve": "mit Reserve"}
+
+CSS = """
+@page { size: A4; margin: 14mm 14mm 15mm; }
+* { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif; font-size: 10.5pt; color: #0b0b0b; background: #fff; }
+h1 { font-size: 19pt; margin: 0 0 2px; letter-spacing: -0.01em; }
+.sub { color: #52514e; margin: 0 0 14px; }
+h2 { font-size: 12pt; margin: 15px 0 2px; }
+.note { color: #52514e; font-size: 9pt; margin: 0 0 6px; }
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 6px; }
+.tile { border: 1px solid #e4e3dd; border-radius: 8px; padding: 9px 11px; }
+.tile b { display: block; font-size: 17pt; font-weight: 650; letter-spacing: -0.02em; }
+.tile span { color: #52514e; font-size: 8.5pt; }
+.tile small { display: block; color: #52514e; font-size: 8.5pt; margin-top: 2px; }
+section { break-inside: avoid; }
+section.flow { break-inside: auto; }
+.legend { font-size: 9pt; color: #52514e; margin: 2px 0 2px 0; }
+.legend span { margin-right: 16px; white-space: nowrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
+th { text-align: left; color: #52514e; font-weight: 600; border-bottom: 1px solid #c9c8c0; padding: 5px 8px 5px 0; }
+td { border-bottom: 1px solid #e4e3dd; padding: 6px 8px 6px 0; vertical-align: top; }
+td.r, th.r { text-align: right; padding: 6px 0 6px 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td.n { white-space: nowrap; }
+.facts td:first-child { color: #52514e; white-space: nowrap; width: 1%; padding-right: 16px; }
+.warn { border: 1px solid #e4e3dd; border-left: 4px solid #eda100; border-radius: 6px; padding: 7px 10px; font-size: 9.5pt; margin: 6px 0 8px; }
+pre { font-family: Menlo, Consolas, monospace; font-size: 7pt; line-height: 1.45; white-space: pre-wrap; background: #f6f6f3; border-radius: 6px; padding: 9px 10px; margin: 6px 0 0; }
+.none { color: #52514e; font-size: 9.5pt; }
+footer { color: #8a897f; font-size: 8pt; margin-top: 16px; }
+"""
+
+
+def report_html(day, machine, rows, summary, pairs, report, data):
+    gb = 1024.0
+    esc = html.escape
+    installed_gb = (summary["installed"] or 0) / gb
+    hours, minutes = divmod(summary["minutes"], 60)
+    disk_pct = 100 * summary["disk_used"] / summary["disk_total"] if summary["disk_used"] and summary["disk_total"] else None
+    tiles = [
+        (de(summary["cpu_avg"], 0, " %"), "Prozessor im Mittel", f'Spitze {de(summary["cpu_max"], 0)} %'),
+        (de(summary["demand_max"] / gb if summary["demand_max"] else None, 1, " GB"), "Speicherbedarf, Spitze", f'verbaut {de(installed_gb, 0)} GB'),
+        (de(disk_pct, 0, " %"), "Datenträger belegt", f'{de(summary["disk_used"], 0)} von {de(summary["disk_total"], 0)} GB'),
+        (f"{hours} h {minutes:02d}", "erfasste Zeit", f'{summary["first"]:%H:%M} bis {summary["last"]:%H:%M} Uhr'),
+    ]
+    out = [f'<!doctype html><html lang="de"><head><meta charset="utf-8"><title>termstats {day.isoformat()}</title><style>{CSS}</style></head><body>',
+           f'<h1>Ressourcenverbrauch am {day:%d.%m.%Y}</h1>',
+           f'<p class="sub">{esc(machine.get("host", ""))} · {esc(machine.get("model", "?"))} · {esc(machine.get("chip", "?"))} · {esc(str(machine.get("ncpu", "?")))} Kerne · {de(installed_gb, 0)} GB</p>',
+           '<div class="tiles">' + "".join(f'<div class="tile"><span>{esc(label)}</span><b>{esc(value)}</b><small>{esc(extra)}</small></div>' for value, label, extra in tiles) + "</div>"]
+
+    out.append('<section><h2>Prozessor</h2><p class="note">Auslastung aller Kerne in Prozent, je Minute. Lücken sind Ruhezustand.</p>'
+               + line_chart(rows, [("cpu_avg", "Mittel der Minute", BLUE, 1, True), ("cpu_max", "Spitze der Minute", ORANGE, 1, False)], "%", y_max=100) + "</section>")
+    out.append('<section><h2>Arbeitsspeicher</h2><p class="note">Belegt ist, was im Speicher lag. Gebraucht ist, was der Rechner ohne Komprimieren und Auslagern belegt hätte.</p>'
+               + line_chart(rows, [("mem_avg_mb", "belegt", BLUE, 1 / gb, True), ("demand_mb", "gebraucht", ORANGE, 1 / gb, False)], "GB",
+                            reference=(f"verbaut {de(installed_gb, 0)} GB", installed_gb) if installed_gb else None) + "</section>")
+    if summary["gpu_avg"] is not None:
+        out.append('<section><h2>Grafik</h2><p class="note">Auslastung in Prozent, Spitze je Minute.</p>'
+                   + line_chart(rows, [("gpu_max", "Spitze der Minute", AQUA, 1, True)], "%", y_max=100, height=112) + "</section>")
+    out.append('<section><h2>Datenträger und Netz</h2><div class="two"><div><p class="note">Datenträger, Megabyte je Minute</p>'
+               + line_chart(rows, [("read_mb", "gelesen", BLUE, 1, False), ("write_mb", "geschrieben", ORANGE, 1, False)], "MB", height=136, width=HALF_W)
+               + '</div><div><p class="note">Netz, Megabyte je Minute</p>'
+               + line_chart(rows, [("rx_mb", "empfangen", BLUE, 1, False), ("tx_mb", "gesendet", ORANGE, 1, False)], "MB", height=136, width=HALF_W)
+               + "</div></div></section>")
+    out.append('<section><h2>Größte Verbraucher</h2><div class="two"><div><p class="note">CPU-Zeit an diesem Tag, in Minuten</p>'
+               + bar_chart([(name, sec / 60) for name, sec in summary["top_cpu"]], "min")
+               + '</div><div><p class="note">Speicher, höchster Stand in GB</p>'
+               + bar_chart([(name, mb / gb) for name, mb in summary["top_mem"]], "GB", value_text=lambda v: de(v))
+               + "</div></div></section>")
+
+    days = earlier_days(day)
+    if len(days) >= 2:
+        out.append(f'<section><h2>Die letzten {len(days)} Tage</h2><div class="two"><div><p class="note">Speicherbedarf (99. Perzentil) in GB</p>'
+                   + day_columns([(d, ram) for d, ram, _cpu in days], "ram", "GB", ORANGE,
+                                 reference=(f"verbaut {de(installed_gb, 0)} GB", installed_gb) if installed_gb else None)
+                   + '</div><div><p class="note">Prozessor im Tagesmittel in Prozent</p>'
+                   + day_columns([(d, cpu) for d, _ram, cpu in days], "cpu", "%", BLUE) + "</div></div></section>")
+
+    out.append('<section><h2>Der Tag in Zahlen</h2><table class="facts">'
+               + "".join(f"<tr><td>{esc(label)}</td><td>{esc(text)}</td></tr>" for label, text in pairs[1:]) + "</table></section>")
+
+    out.append('<section><h2>Empfehlung</h2><p class="note">Aus dem gesamten Verlauf (höchstens vier Wochen), nicht nur aus diesem Tag. Listenpreise'
+               + (f' laut Katalog vom {esc(str(data.get("catalogue")))}' if data.get("catalogue") else "") + ".</p>")
+    if data and not data.get("ready", True):
+        out.append(f'<div class="warn"><b>Vorläufig.</b> Erst {esc(str(data.get("history", {}).get("days", 0)))} von 14 Tagen sind aufgezeichnet. '
+                   'Die Empfehlung kann sich noch deutlich ändern.</div>')
+    picks = [(TIER_DE.get(t.get("tier"), t.get("tier", "")), t.get("pick")) for t in data.get("tiers", [])]
+    picks += [("als Laptop", data.get("portable")), ("unter Linux", data.get("linux"))]
+    picks = [(label, pick) for label, pick in picks if pick]
+    if picks:
+        out.append('<table><tr><th>Stufe</th><th>Gerät</th><th>Chip</th><th class="r">Speicher</th><th class="r">SSD</th><th class="r">Preis</th></tr>'
+                   + "".join(f'<tr><td class="n"><b>{esc(label)}</b></td><td>{esc(pick["vendor"] + " " + pick["name"])}</td><td>{esc(pick["chip"])}</td>'
+                             f'<td class="r">{pick["ram_gb"]} GB</td><td class="r">{size(pick["ssd_gb"])}</td>'
+                             f'<td class="r">{pick["price_eur"]:,} €</td></tr>'.replace(",", ".") for label, pick in picks) + "</table>")
+    out.append(f'</section><section class="flow"><h2>Begründung im Einzelnen</h2><pre>{esc(unfold(report))}</pre></section>')
+    out.append(f'<footer>Erzeugt von termstats am {dt.datetime.now():%d.%m.%Y %H:%M} auf diesem Rechner aus dem lokalen Verlauf.</footer></body></html>')
+    return "".join(out)
+
+
+BROWSERS = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+            "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"]
+
+
+def browser():
+    choice = os.environ.get("TERMSTATS_REPORT_BROWSER")
+    for candidate in ([choice] if choice else BROWSERS):
+        path = candidate if os.path.isabs(candidate) else shutil.which(candidate)
+        if path and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def to_pdf(page):
+    """The page printed to PDF by a headless browser; None when there is none or it fails."""
+    binary = browser()
+    if not binary:
+        return None
+    with tempfile.TemporaryDirectory(prefix="termstats-report-") as work:
+        source, target = os.path.join(work, "report.html"), os.path.join(work, "report.pdf")
+        pathlib.Path(source).write_text(page, encoding="utf-8")
+        try:
+            subprocess.run([binary, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                            f"--user-data-dir={os.path.join(work, 'profile')}", "--no-pdf-header-footer",
+                            f"--print-to-pdf={target}", pathlib.Path(source).as_uri()],
+                           capture_output=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        data = pathlib.Path(target).read_bytes() if os.path.exists(target) else b""
+        return data if data.startswith(b"%PDF") else None
 
 
 def build(day):
@@ -200,7 +515,7 @@ def build(day):
         return None
     summary = summarise(machine, rows)
     pairs = lines_of(summary, machine)
-    report, short = recommendation()
+    report, short, data = recommendation()
     title = f"Ressourcenverbrauch am {day:%d.%m.%Y}"
     width = max(len(label) for label, _ in pairs)
     plain = "\n".join([title, "=" * len(title), ""] + [f"{label + ':':<{width + 2}}{text}" for label, text in pairs]
@@ -216,10 +531,15 @@ def build(day):
     subject = (f'termstats {day:%d.%m.}: CPU Ø {de(summary["cpu_avg"], 0)} %, '
                f'RAM-Bedarf bis {de(summary["demand_max"] / 1024 if summary["demand_max"] else None)} GB'
                + (f' - passt: {short}' if short else ""))
-    return subject, plain, rich
+    pdf = to_pdf(report_html(day, machine, rows, summary, pairs, report, data))
+    attached = ("Der Bericht mit Diagrammen hängt als PDF an." if pdf
+                else "Ohne PDF: auf diesem Rechner wurde kein Browser gefunden, der es drucken kann.")
+    plain = plain.replace("\n\n", f"\n\n{attached}\n\n", 1)
+    rich = rich.replace("</h2>", f'</h2><p style="margin:0 0 12px;color:#555">{html.escape(attached)}</p>', 1)
+    return subject, plain, rich, pdf, f"termstats-{day.isoformat()}.pdf"
 
 
-def send(subject, plain, rich):
+def send(subject, plain, rich, pdf=None, pdf_name="termstats.pdf"):
     to, host = os.environ.get("TERMSTATS_REPORT_TO"), os.environ.get("TERMSTATS_REPORT_SSH")
     if not to or not host:
         sys.exit("daily-report: set TERMSTATS_REPORT_TO and TERMSTATS_REPORT_SSH (or use --print)")
@@ -229,6 +549,8 @@ def send(subject, plain, rich):
         message["From"] = os.environ["TERMSTATS_REPORT_FROM"]
     message.set_content(plain)
     message.add_alternative(rich, subtype="html")
+    if pdf:
+        message.add_attachment(pdf, maintype="application", subtype="pdf", filename=pdf_name)
     command = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20"]
     if os.environ.get("TERMSTATS_REPORT_SSH_KEY"):
         command += ["-o", "IdentitiesOnly=yes", "-i", os.path.expanduser(os.environ["TERMSTATS_REPORT_SSH_KEY"])]
@@ -239,28 +561,36 @@ def send(subject, plain, rich):
 
 
 def main(argv):
-    day, explicit, just_print = dt.date.today() - dt.timedelta(days=1), False, False
+    day, explicit, just_print, pdf_path = dt.date.today() - dt.timedelta(days=1), False, False, None
     args = iter(argv)
     for arg in args:
         if arg == "--date":
             day, explicit = dt.date.fromisoformat(next(args, "")), True
         elif arg == "--print":
             just_print = True
+        elif arg == "--pdf":
+            pdf_path = next(args, None) or sys.exit(__doc__)
         else:
             sys.exit(__doc__)
     marker = state_dir() / "daily-report.sent"
-    if not explicit and not just_print and marker.exists() and marker.read_text().strip() >= day.isoformat():
+    if not explicit and not just_print and not pdf_path and marker.exists() and marker.read_text().strip() >= day.isoformat():
         print(f"daily-report: {day} was already sent")
         return
     built = build(day)
     if built is None:
         print(f"daily-report: no history for {day} - nothing to send")
         return
-    subject, plain, rich = built
+    subject, plain, rich, pdf, pdf_name = built
+    if pdf_path:
+        if not pdf:
+            sys.exit("daily-report: no PDF - no Chrome, Chromium, Edge or Brave found (TERMSTATS_REPORT_BROWSER)")
+        pathlib.Path(pdf_path).write_bytes(pdf)
+        print(f"daily-report: wrote {pdf_path} ({len(pdf) // 1024} KB)")
+        return
     if just_print:
         print(subject + "\n\n" + plain)
         return
-    send(subject, plain, rich)
+    send(subject, plain, rich, pdf, pdf_name)
     if not explicit:
         marker.write_text(day.isoformat() + "\n")
     print(f"daily-report: sent {day} to {os.environ['TERMSTATS_REPORT_TO']}")
