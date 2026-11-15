@@ -11,6 +11,11 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- `examples/daily-report.example.py`: a daily mail with yesterday's resource use from the
+  history and the current recommendation, sent through msmtp on another host over ssh.
+
 ## [0.10.0] - 2026-11-15
 
 ### Added

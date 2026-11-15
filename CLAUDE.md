@@ -523,6 +523,12 @@ service with autostart; program NAMES may be logged; three tiers from the data.
   middle tier), an EQUIVALENT exact-brand branch (removed), "demand is the minute's highest"
   (never fed a falling value), and the gap check, which sat in the I/O loop (moved into
   `Aggregate::watched`). The loop's own call site has no unit test; the live run covers it.
+- **Daily mail (2026-11-15, user request):** `examples/daily-report.example.py` (stdlib, Python
+  3.9 - it runs under `/usr/bin/python3`). On this Mac the launchd agent
+  `io.celox.termstats.daily-report` (08:00 + RunAtLoad, plist only local - it holds the
+  recipient and the ssh target, which do not belong in this public repo) mails YESTERDAY via
+  `ssh root@VPS msmtp -t`; marker `~/.local/state/termstats/daily-report.sent`, log
+  `~/Library/Logs/termstats-daily-report.log`. No history for a day = no mail.
 - The recorder runs on this Mac since 2026-11-15 (`termstats record status`); the first real
   recommendation is due 2026-11-29.
 

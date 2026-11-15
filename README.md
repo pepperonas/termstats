@@ -871,6 +871,15 @@ that run Linux (Framework, TUXEDO, ThinkPad, mini PCs). Each entry carries its s
 the catalogue its date; a catalogue older than 120 days says so in the report. It ships
 with the release and is never fetched.
 
+### A daily mail
+
+[`examples/daily-report.example.py`](examples/daily-report.example.py) (standard library
+only, not part of the package) sums up yesterday from the history, adds the current
+`recommend --now` report and mails both through `msmtp` on a host reached over ssh. Its
+docstring lists the environment variables; run it once a day from cron, a launchd agent or
+a systemd timer. It sends each day once and nothing for a day without history. Mind what
+it sends: the names of your busiest programs leave the machine with that mail.
+
 ### What it cannot know
 
 - Benchmark scores compare classes of chips, not percent. Graphics scores for Macs (Metal)
