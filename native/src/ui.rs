@@ -43,6 +43,48 @@ const SPARK: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'
 const BRAILLE_BITS: [[u32; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
 const NET_UNITS: [(f64, &str); 3] = [(1024.0, "KB/s"), (1048576.0, "MB/s"), (1073741824.0, "GB/s")];
 
+/// Which sections of the dashboard are drawn. A section that is off is not read either.
+/// The microphone bits are names for the screens the Python program draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Views(pub u32);
+
+impl Views {
+    pub const CPU: u32 = 1;
+    pub const MEMORY: u32 = 2;
+    pub const NETWORK: u32 = 4;
+    pub const DISK: u32 = 8;
+    pub const CHARTS: u32 = 16;
+    pub const PROCESSES: u32 = 32;
+    pub const EQ: u32 = 64;
+    pub const BPM: u32 = 128;
+    pub const LEVEL: u32 = 256;
+    pub const DASHBOARD: u32 = 63;
+    pub const AUDIO: u32 = 448;
+
+    pub fn has(self, bit: u32) -> bool {
+        self.0 & bit != 0
+    }
+}
+
+/// Which parts around the sections are drawn: the header line and what its tail carries,
+/// the footer line and its two halves.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Chrome(pub u32);
+
+impl Chrome {
+    pub const HEADER: u32 = 1;
+    pub const CLOCK: u32 = 2;
+    pub const VERSION: u32 = 4;
+    pub const FOOTER: u32 = 8;
+    pub const HINT: u32 = 16;
+    pub const BRAND: u32 = 32;
+    pub const ALL: u32 = 63;
+
+    pub fn has(self, bit: u32) -> bool {
+        self.0 & bit != 0
+    }
+}
+
 pub struct Options {
     pub interval: f64,
     pub theme: &'static Theme,
@@ -51,6 +93,16 @@ pub struct Options {
     pub live: bool,
     /// The microphone screens are one key away (the Python program is there to show them).
     pub switch_keys: bool,
+    pub views: Views,
+    pub chrome: Chrome,
+}
+
+impl Options {
+    /// What the terminal program draws: the whole dashboard with its header and footer.
+    pub fn terminal(interval: f64, theme: &'static Theme) -> Options {
+        Options { interval, theme, compact: false, no_border: false, live: true, switch_keys: false,
+                  views: Views(Views::DASHBOARD), chrome: Chrome(Chrome::ALL) }
+    }
 }
 
 struct ProcRow {
@@ -339,7 +391,8 @@ impl State {
         self.prev_steal = steal;
 
         self.mem = sys::memory();
-        if mono - self.disks_at >= DISK_SCAN_S || !self.opts.live {
+        let views = self.opts.views;
+        if views.has(Views::DISK) && (mono - self.disks_at >= DISK_SCAN_S || !self.opts.live) {
             self.disks = sys::disks();
             self.disks_at = mono;
         }
@@ -355,7 +408,7 @@ impl State {
         self.net_prev = Some((net, mono));
         self.net = net;
 
-        let io = sys::disk_io();
+        let io = if views.has(Views::DISK) { sys::disk_io() } else { None };
         self.has_io = io.is_some();
         if let Some(now) = io {
             if let Some((before, at)) = self.io_prev {
@@ -369,7 +422,7 @@ impl State {
 
         // One system call per process: the one collector whose cost grows with the machine.
         // The 50 ms of slack keeps a 1 s interval scanning on every frame despite jitter.
-        if mono - self.proc_prev_at >= PROC_SCAN_S - 0.05 || !self.opts.live {
+        if views.has(Views::PROCESSES) && (mono - self.proc_prev_at >= PROC_SCAN_S - 0.05 || !self.opts.live) {
             self.scan_processes(mono);
         }
 
@@ -879,9 +932,10 @@ impl State {
         col = scr.put(col, 0, width, &format!("{:5}", self.nproc.min(99999)), th.text, false);
 
         // The tail degrades in steps decided by the WIDTH alone: sparkline + clock, clock, none.
-        let clock = format!("{}  ", local_time());
+        let chrome = self.opts.chrome;
+        let clock = if chrome.has(Chrome::CLOCK) { format!("{}  ", local_time()) } else { String::new() };
         let interval = format!("{:>4}s  ", fmt_g(self.opts.interval));
-        let version = format!("v{} ", env!("CARGO_PKG_VERSION"));
+        let version = if chrome.has(Chrome::VERSION) { format!("v{} ", env!("CARGO_PKG_VERSION")) } else { String::new() };
         let tail_w = clock.len() + interval.len() + version.len();
         let free = width as i64 - col as i64 - tail_w as i64;
         let mut at = col;
@@ -912,12 +966,13 @@ impl State {
 
     fn footer(&self, scr: &mut Screen, y: usize, width: usize) {
         let th = self.opts.theme;
-        let brand = format!("© {} Martin Pfeffer | celox.io ", local_year());
+        let chrome = self.opts.chrome;
+        let brand = if chrome.has(Chrome::BRAND) { format!("© {} Martin Pfeffer | celox.io ", local_year()) } else { String::new() };
         let brand_w = brand.chars().count();
         // Both fixed-width; the hint goes first when the line cannot hold everything.
         let exit_hint = " Esc or Ctrl+C to exit";
         let full = format!("{exit_hint}  s stats  b BPM  d dB  x both");
-        let hint = if !self.opts.live { "" }
+        let hint = if !self.opts.live || !chrome.has(Chrome::HINT) { "" }
                    else if self.opts.switch_keys && full.len() + brand_w + 2 <= width { full.as_str() }
                    else { exit_hint };
         if hint.len() + brand_w + 2 <= width {
@@ -927,15 +982,21 @@ impl State {
     }
 
     /// Compose the whole dashboard for a terminal of this size - the height budget first,
-    /// because the layout has to know the height to decide what fits.
+    /// because the layout has to know the height to decide what fits. Only the sections
+    /// whose view is on take part; with every view on this is the terminal program's picture.
     pub fn draw(&mut self, scr: &mut Screen) {
         let (tw, th) = (scr.w, scr.h);
         if tw < 40 || th < 8 {
             scr.put(0, 0, tw, "termstats needs 40x8", NONE, false);
             return;
         }
+        let (views, chrome) = (self.opts.views, self.opts.chrome);
+        let (cpu_on, disk_on) = (views.has(Views::CPU), views.has(Views::DISK));
+        let (charts_on, proc_on) = (views.has(Views::CHARTS), views.has(Views::PROCESSES));
+        let header_rows = usize::from(chrome.has(Chrome::HEADER));
+        let body_end = th - usize::from(chrome.has(Chrome::FOOTER));
         let (ch, cw) = self.chrome();
-        let (chi, body_h) = (ch as i64, th as i64 - 2);
+        let (chi, body_h) = (ch as i64, (body_end - header_rows) as i64);
         let narrow = tw < NARROW_BELOW;
         let right_w = if narrow { 0 } else { ((tw as f64 * RIGHT_COL_SHARE) as usize).min(RIGHT_COL_MAX).max(RIGHT_COL_MIN) };
         let left_w = tw - right_w;
@@ -949,14 +1010,25 @@ impl State {
         let extra_rows = 1 + i64::from(sys::HAS_STEAL);
         let cap = (body_h / 2).max(8);
         let cpu_body_w = (if narrow { tw } else { left_w }).saturating_sub(cw);
-        let cpu_wanted = cpu_section_rows(ncores, (cap - chi - extra_rows).max(1) as usize, cpu_body_w) as i64 + chi;
+        let cpu_wanted = if cpu_on {
+            cpu_section_rows(ncores, (cap - chi - extra_rows).max(1) as usize, cpu_body_w) as i64 + chi
+        } else {
+            0
+        };
+        let mut stack: Vec<(u8, i64)> = Vec::new();
+        if views.has(Views::MEMORY) {
+            stack.push((b'm', mem_h));
+        }
+        if views.has(Views::NETWORK) {
+            stack.push((b'n', net_h));
+        }
         // A short CPU panel next to a tall stack leaves a hole: then the disk panel leaves
-        // the stack and takes the full width.
-        let disk_in_stack = cpu_wanted + chi >= mem_h + net_h + disk_h;
-        let mut stack: Vec<(u8, i64)> = vec![(b'm', mem_h), (b'n', net_h)];
+        // the stack and takes the full width. Without a CPU panel there is no hole to fill.
+        let disk_in_stack = disk_on && (!cpu_on || cpu_wanted + chi >= stack.iter().map(|s| s.1).sum::<i64>() + disk_h);
         if disk_in_stack {
             stack.push((b'd', disk_h));
         }
+        let had_stack = !stack.is_empty();
         let top_h;
         if narrow {
             let room = body_h - cpu_wanted;
@@ -970,62 +1042,89 @@ impl State {
             }
             stack.truncate(kept);
             top_h = cpu_wanted + stack_h;
-        } else {
+        } else if cpu_on {
             top_h = cpu_wanted.max(stack.iter().map(|s| s.1).sum());
+        } else {
+            // No CPU panel: the stack becomes one row of equal columns, as tall as the tallest.
+            top_h = stack.iter().map(|s| s.1).max().unwrap_or(0);
         }
-        let remaining = body_h - top_h - if disk_in_stack { 0 } else { disk_h };
+        // A narrow terminal that could not keep even the first stack panel drops the disk too.
+        let separate_disk = disk_on && !disk_in_stack && !(had_stack && stack.is_empty());
+        let remaining = body_h - top_h - if disk_on && !disk_in_stack { disk_h } else { 0 };
         let proc_min = chi + 3;
-        let charts_h = if remaining >= CHART_MIN_H { CHART_MAX_H.min(remaining - proc_min) } else { 0 };
+        let charts_h = if !charts_on {
+            0
+        } else if proc_on {
+            if remaining >= CHART_MIN_H { CHART_MAX_H.min(remaining - proc_min) } else { 0 }
+        } else if remaining >= chi + 4 {
+            remaining                                    // alone: a three-row plot and its time axis at least
+        } else {
+            0
+        };
         let proc_h = remaining - charts_h;
         let cpu_h = if narrow { cpu_wanted } else { top_h };
         let core_rows = (cpu_h - chi - extra_rows).max(1) as usize;
 
         // The plan is not a guarantee: drop sections from the bottom until it fits, then let
         // the last one take what is left instead of leaving a blank strip.
-        let mut sections: Vec<(u8, i64)> = vec![(b't', top_h)];
-        if !disk_in_stack && !stack.is_empty() {
+        let mut sections: Vec<(u8, i64)> = Vec::new();
+        if cpu_on || !stack.is_empty() {
+            sections.push((b't', top_h));
+        }
+        if separate_disk {
             sections.push((b'd', disk_h));
         }
         if charts_h > 0 {
             sections.push((b'c', charts_h));
         }
-        if proc_h >= proc_min {
+        if proc_on && proc_h >= proc_min {
             sections.push((b'p', 0));
         }
-        while sections.len() > 1 && 1 + sections.iter().map(|s| s.1).sum::<i64>() > th as i64 - 1 {
+        while sections.len() > 1 && sections.iter().map(|s| s.1).sum::<i64>() > body_h {
             sections.pop();
         }
-        let last = sections.len() - 1;
-        let fixed: i64 = sections[..last].iter().map(|s| s.1).sum();
-        sections[last].1 = (body_h - fixed).max(0);
+        // Only the charts and the process list grow; without either the rest stays blank.
+        if !sections.is_empty() && (charts_on || proc_on) {
+            let last = sections.len() - 1;
+            let fixed: i64 = sections[..last].iter().map(|s| s.1).sum();
+            sections[last].1 = (body_h - fixed).max(0);
+        }
 
-        self.header(scr, tw);
-        let mut y = 1usize;
+        if chrome.has(Chrome::HEADER) {
+            self.header(scr, tw);
+        }
+        let mut y = header_rows;
         for &(kind, height) in &sections {
-            let h = (height.max(0) as usize).min(th - 1 - y);
+            let h = (height.max(0) as usize).min(body_end.saturating_sub(y));
             match kind {
                 b't' => {
-                    let cpu_rect = if stack.is_empty() { Rect { x: 0, y, w: tw, h } }
-                                   else if narrow { Rect { x: 0, y, w: tw, h: (cpu_wanted as usize).min(h) } }
-                                   else { Rect { x: 0, y, w: left_w, h } };
-                    let body = self.panel(scr, cpu_rect, "cpu", &[]);
-                    // Never more rows of cores than the panel really got: on a terminal too
-                    // short for the plan the cores pack tighter (or become a heat strip) and
-                    // TOTAL stays on screen instead of being cropped.
-                    let fits = (body.h as i64 - extra_rows).max(1) as usize;
-                    self.cpu_section(scr, body, core_rows.min(fits));
-                    let (sx, sw) = if narrow { (0, tw) } else { (left_w, right_w) };
-                    let mut sy = if narrow { y + cpu_rect.h } else { y };
-                    for (i, &(which, sh)) in stack.iter().enumerate() {
-                        let rest = (y + h).saturating_sub(sy);
-                        let ph = if i + 1 == stack.len() { rest } else { (sh as usize).min(rest) };
-                        let rect = Rect { x: sx, y: sy, w: sw, h: ph };
-                        match which {
-                            b'm' => { let b = self.panel(scr, rect, "memory", &[]); self.memory_section(scr, b) }
-                            b'n' => { let b = self.panel(scr, rect, "network", &[]); self.network_section(scr, b) }
-                            _ => { let b = self.panel(scr, rect, "disk", &[]); self.disk_section(scr, b) }
+                    let (sx, sw, mut sy) = if cpu_on {
+                        let cpu_rect = if stack.is_empty() { Rect { x: 0, y, w: tw, h } }
+                                       else if narrow { Rect { x: 0, y, w: tw, h: (cpu_wanted as usize).min(h) } }
+                                       else { Rect { x: 0, y, w: left_w, h } };
+                        let body = self.panel(scr, cpu_rect, "cpu", &[]);
+                        // Never more rows of cores than the panel really got: on a terminal too
+                        // short for the plan the cores pack tighter (or become a heat strip) and
+                        // TOTAL stays on screen instead of being cropped.
+                        let fits = (body.h as i64 - extra_rows).max(1) as usize;
+                        self.cpu_section(scr, body, core_rows.min(fits));
+                        if narrow { (0, tw, y + cpu_rect.h) } else { (left_w, right_w, y) }
+                    } else {
+                        (0, tw, y)
+                    };
+                    if !cpu_on && !narrow {
+                        let n = stack.len();
+                        for (i, &(which, _)) in stack.iter().enumerate() {
+                            let (x0, x1) = (i * tw / n, (i + 1) * tw / n);
+                            self.stack_panel(scr, which, Rect { x: x0, y, w: x1 - x0, h });
                         }
-                        sy += ph;
+                    } else {
+                        for (i, &(which, sh)) in stack.iter().enumerate() {
+                            let rest = (y + h).saturating_sub(sy);
+                            let ph = if i + 1 == stack.len() { rest } else { (sh as usize).min(rest) };
+                            self.stack_panel(scr, which, Rect { x: sx, y: sy, w: sw, h: ph });
+                            sy += ph;
+                        }
                     }
                 }
                 b'd' => {
@@ -1041,8 +1140,19 @@ impl State {
             }
             y += h;
         }
-        self.footer(scr, th - 1, tw);
+        if chrome.has(Chrome::FOOTER) {
+            self.footer(scr, th - 1, tw);
+        }
         self.end_frame();
+    }
+
+    /// One panel of the stack beside (or under) the CPU panel.
+    fn stack_panel(&mut self, scr: &mut Screen, which: u8, rect: Rect) {
+        match which {
+            b'm' => { let b = self.panel(scr, rect, "memory", &[]); self.memory_section(scr, b) }
+            b'n' => { let b = self.panel(scr, rect, "network", &[]); self.network_section(scr, b) }
+            _ => { let b = self.panel(scr, rect, "disk", &[]); self.disk_section(scr, b) }
+        }
     }
 
     fn charts(&mut self, scr: &mut Screen, r: Rect, cw: usize, chart_h: usize) {

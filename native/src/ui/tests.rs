@@ -5,7 +5,7 @@ use crate::screen::{ColorLevel, Painter, BLANK};
 use crate::themes::THEMES;
 
 fn opts(live: bool) -> Options {
-    Options { interval: 0.5, theme: &THEMES[0], compact: false, no_border: false, live, switch_keys: false }
+    Options { live, ..Options::terminal(0.5, &THEMES[0]) }
 }
 
 /// A machine with `ncores` cores, `ndisks` partitions and a full history.
@@ -605,4 +605,135 @@ fn a_program_installed_under_its_version_number_is_named_after_its_directory() {
     assert_eq!(name_from_path("/Applications/Foo.app/Contents/MacOS/12").as_deref(), Some("Foo.app"));
     assert_eq!(name_from_path("/1/2/3").as_deref(), Some("3"), "nothing better to offer: the file name stays");
     assert_eq!(name_from_path(""), None);
+}
+
+// --- views and chrome: a dashboard of any subset ------------------------------------------------
+
+/// The real machine, read twice, with these views.
+fn sampled(views: u32, live: bool) -> State {
+    let mut s = State::new(Options { views: Views(views), live, ..Options::terminal(0.5, &THEMES[0]) });
+    s.sample(1.0);
+    s.sample(1.5);
+    s
+}
+
+/// Which of the six dashboard views have a panel on screen, in bit order.
+fn panels_on(all: &str) -> [bool; 6] {
+    ["╭─ cpu ─", "╭─ memory ─", "╭─ network ─", "╭─ disk ─", "· last", "╭─ processes"].map(|t| all.contains(t))
+}
+
+const VIEW_BITS: [u32; 6] = [Views::CPU, Views::MEMORY, Views::NETWORK, Views::DISK, Views::CHARTS, Views::PROCESSES];
+
+#[test]
+fn the_terminal_options_are_the_whole_dashboard_with_all_its_chrome() {
+    let o = Options::terminal(0.5, &THEMES[0]);
+    assert_eq!((o.views, o.chrome), (Views(Views::DASHBOARD), Chrome(Chrome::ALL)));
+    assert_eq!(Views::DASHBOARD, VIEW_BITS.iter().sum::<u32>());
+    assert_eq!(Views::AUDIO, Views::EQ | Views::BPM | Views::LEVEL);
+    assert_eq!(Chrome::ALL, Chrome::HEADER | Chrome::CLOCK | Chrome::VERSION | Chrome::FOOTER | Chrome::HINT | Chrome::BRAND);
+}
+
+#[test]
+fn default_options_draw_what_they_drew_before() {
+    // The panels the terminal program showed before the views existed (a --size snapshot).
+    let mut s = sampled(Views::DASHBOARD, false);
+    for (w, h, wanted) in [(140, 42, [true; 6]), (80, 24, [true, true, true, false, false, false]),
+                           (60, 20, [true, true, true, false, false, false])] {
+        let all = text(&drawn(&mut s, w, h));
+        assert_eq!(panels_on(&all), wanted, "{w}x{h}\n{all}");
+        assert!(row(&drawn(&mut s, w, h), 0).contains("TERMSTATS") && all.contains("celox.io"));
+    }
+}
+
+#[test]
+fn every_view_subset_draws_inside_the_screen() {
+    for views in 0..=Views::DASHBOARD {
+        let mut s = sampled(views, true);
+        for (w, h) in [(60, 20), (80, 24), (100, 30), (140, 42), (200, 60)] {
+            let all = text(&drawn(&mut s, w, h));
+            let on = panels_on(&all);
+            for (i, &bit) in VIEW_BITS.iter().enumerate() {
+                assert!(!on[i] || views & bit != 0, "views {views:#b} {w}x{h}: panel {i} drawn while off\n{all}");
+                assert!(on[i] || views & bit == 0 || dropped_for_room(bit, w),
+                        "views {views:#b} {w}x{h}: panel {i} missing while on\n{all}");
+            }
+        }
+    }
+}
+
+/// The one way a view that is on may still be missing: on a terminal narrower than
+/// NARROW_BELOW everything stacks, and the disk, the charts and the processes go when the
+/// rows run out (as they did before the views). From 100x30 on, every view that is on shows.
+fn dropped_for_room(bit: u32, w: usize) -> bool {
+    w < NARROW_BELOW && bit & (Views::DISK | Views::CHARTS | Views::PROCESSES) != 0
+}
+
+#[test]
+fn no_views_leaves_only_header_and_footer() {
+    let mut s = sampled(0, true);
+    let scr = drawn(&mut s, 100, 30);
+    assert!(row(&scr, 0).contains("TERMSTATS") && row(&scr, 29).contains("celox.io"));
+    for y in 1..29 {
+        assert!(row(&scr, y).trim().is_empty(), "row {y}\n{}", text(&scr));
+    }
+}
+
+fn has_clock(line: &str) -> bool {
+    let c: Vec<char> = line.chars().collect();
+    c.windows(8).any(|w| w.iter().enumerate().all(|(i, ch)| if i == 2 || i == 5 { *ch == ':' } else { ch.is_ascii_digit() }))
+}
+
+#[test]
+fn chrome_bits_hide_their_parts() {
+    let with = |chrome: u32| {
+        let mut s = machine(10, 2, true);
+        s.opts.chrome = Chrome(chrome);
+        drawn(&mut s, 140, 42)
+    };
+    let all = with(Chrome::ALL);
+    assert!(has_clock(&row(&all, 0)) && row(&all, 0).contains("v0.") && text(&all).contains("Ctrl+C") && text(&all).contains("celox.io"),
+            "the controls: with everything on, every part is there");
+
+    let no_header = with(Chrome::ALL & !Chrome::HEADER);
+    assert!(!text(&no_header).contains("TERMSTATS"));
+    assert!(row(&no_header, 0).starts_with("╭─ cpu "), "the body starts at row 0\n{}", text(&no_header));
+    assert!(row(&no_header, 40).starts_with('╰'), "... and gains the header's row at the bottom\n{}", text(&no_header));
+    let mut empty = machine(10, 2, true);
+    empty.opts.views = Views(0);
+    empty.opts.chrome = Chrome(Chrome::ALL & !Chrome::HEADER);
+    let bare = drawn(&mut empty, 140, 42);
+    assert!(row(&bare, 0).trim().is_empty(), "with nothing to cover it, row 0 shows the header is gone\n{}", text(&bare));
+
+    let no_footer = with(Chrome::ALL & !Chrome::FOOTER);
+    assert!(!text(&no_footer).contains("celox.io") && !text(&no_footer).contains("Ctrl+C"));
+    assert!(row(&no_footer, 41).starts_with('╰'), "the last row belongs to the body\n{}", text(&no_footer));
+
+    let no_hint = text(&with(Chrome::ALL & !Chrome::HINT));
+    assert!(!no_hint.contains("Ctrl+C") && no_hint.contains("celox.io"));
+    let no_brand = text(&with(Chrome::ALL & !Chrome::BRAND));
+    assert!(!no_brand.contains("celox.io") && no_brand.contains("Ctrl+C"));
+    let no_clock = with(Chrome::ALL & !Chrome::CLOCK);
+    assert!(!has_clock(&row(&no_clock, 0)) && row(&no_clock, 0).contains("v0."));
+    let no_version = with(Chrome::ALL & !Chrome::VERSION);
+    assert!(!row(&no_version, 0).contains("v0.") && has_clock(&row(&no_version, 0)));
+}
+
+#[test]
+fn views_off_skip_their_scans() {
+    let all = sampled(Views::DASHBOARD, true);
+    assert!(all.nproc > 0 && !all.disks.is_empty(), "the control: with every view on, both are read");
+    assert_eq!(sampled(Views::DASHBOARD & !Views::PROCESSES, true).nproc, 0);
+    assert!(sampled(Views::DASHBOARD & !Views::DISK, true).disks.is_empty());
+}
+
+#[test]
+fn without_cpu_the_stack_is_one_row_and_without_charts_or_processes_the_rest_stays_blank() {
+    let mut s = machine(10, 2, true);
+    s.opts.views = Views(Views::MEMORY | Views::NETWORK | Views::DISK);
+    let scr = drawn(&mut s, 140, 42);
+    let top = row(&scr, 1);
+    assert!(top.starts_with("╭─ memory ─") && top.contains("╭─ network ─") && top.contains("╭─ disk ─"), "{}", text(&scr));
+    for y in 8..41 {
+        assert!(row(&scr, y).trim().is_empty(), "row {y}\n{}", text(&scr));
+    }
 }

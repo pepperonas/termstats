@@ -11,19 +11,11 @@
 //!
 //! The microphone modes, `--demo` and Windows stay with the Python program.
 
-mod catalog;
-mod color;
-mod recommend;
-mod record;
-mod screen;
-mod sys;
-mod themes;
-mod ui;
-
-use screen::{ColorLevel, Painter, Screen};
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
-use ui::{Options, State};
+use termstats_native::screen::{ColorLevel, Painter, Screen};
+use termstats_native::ui::{Options, State};
+use termstats_native::{catalog, recommend, record, sys, themes};
 
 static QUIT: AtomicBool = AtomicBool::new(false);
 static RESIZED: AtomicBool = AtomicBool::new(false);
@@ -241,7 +233,7 @@ fn bench() {
     time("process table (scan)", &mut || { sys::proc_scan(&mut pids, &mut procs); });
     println!("{:<34}{:>9} processes, {} readable", "", pids.len(), procs.len());
 
-    let mut state = State::new(Options { interval: 0.5, theme, compact: false, no_border: false, live: true, switch_keys: false });
+    let mut state = State::new(Options::terminal(0.5, theme));
     let mut clock = 0.0;
     for _ in 0..70 {
         clock += 0.5;
@@ -428,7 +420,7 @@ fn main() {
     let theme = find_theme(theme_name.as_deref().unwrap_or(themes::DEFAULT_THEME));
     let switch_keys = live && python.is_some();
     SWITCH_KEYS.store(switch_keys, Ordering::SeqCst);
-    let mut state = State::new(Options { interval, theme, compact, no_border, live, switch_keys });
+    let mut state = State::new(Options { compact, no_border, live, switch_keys, ..Options::terminal(interval, theme) });
     let mut painter = Painter::new(color_level());
 
     if !live {

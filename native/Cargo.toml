@@ -6,6 +6,10 @@ description = "The native core of termstats: the system dashboard at a fraction 
 license = "MIT"
 repository = "https://github.com/pepperonas/termstats"
 
+[lib]
+name = "termstats_native"
+path = "src/lib.rs"
+
 [[bin]]
 name = "termstats-native"
 path = "src/main.rs"
