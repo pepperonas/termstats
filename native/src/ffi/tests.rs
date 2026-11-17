@@ -421,3 +421,18 @@ fn a_region_not_asked_for_keeps_its_cells() {
     assert!(screen_text(&frame).contains("equalizer"), "a resize redraws the audio too");
     ts_free(core);
 }
+
+#[test]
+fn the_fft_runs_only_while_the_equalizer_is_drawn() {
+    for (views, fft) in [(Views::LEVEL | Views::BPM, false), (Views::EQ, true)] {
+        let core = audio_core(views);
+        let mut demo = DemoAudio::new(126.0, 44100.0);
+        assert_eq!(ts_feed_audio(core, &demo.read(44100), 44100.0), 0);
+        draw(core, 120, 36);
+        let an = &inner_of(core).audio.analyzer;
+        assert_eq!(an.spectrum_on, fft);
+        assert_eq!(an.bands.iter().any(|&b| b > 0.0), fft, "views {views}");
+        assert!(an.bass > 0.0, "the kick band is measured either way");
+        ts_free(core);
+    }
+}

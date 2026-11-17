@@ -146,17 +146,29 @@ impl Spectrum {
     /// drawn. Goertzel on the bass bins gives the same magnitudes the FFT would.
     pub fn push_bass_only(&mut self, block: &[f32]) {
         self.roll(block);
-        for &b in &self.bass_bins {
-            let w = 2.0 * std::f64::consts::PI * b as f64 / FFT as f64;
-            let coeff = 2.0 * w.cos();
-            let (mut s1, mut s2) = (0.0f64, 0.0f64);
-            for &x in &self.windowed {
-                let s = x as f64 + coeff * s1 - s2;
-                s2 = s1;
-                s1 = s;
+        // The bins in passes of up to 16 over the window: their recurrences are independent,
+        // so the processor runs them side by side instead of one long dependency chain each.
+        const LANES: usize = 16;
+        let windowed = &self.windowed;
+        for bins in self.bass_bins.chunks(LANES) {
+            let n = bins.len();
+            let mut coeff = [0.0f64; LANES];
+            for (c, &b) in coeff.iter_mut().zip(bins) {
+                *c = 2.0 * (2.0 * std::f64::consts::PI * b as f64 / FFT as f64).cos();
             }
-            let power = (s1 * s1 + s2 * s2 - coeff * s1 * s2).max(0.0);
-            self.magnitude[b] = power.sqrt() as f32;
+            let (mut s1, mut s2) = ([0.0f64; LANES], [0.0f64; LANES]);
+            for &x in windowed {
+                let x = x as f64;
+                for i in 0..n {
+                    let s = x + coeff[i] * s1[i] - s2[i];
+                    s2[i] = s1[i];
+                    s1[i] = s;
+                }
+            }
+            for (i, &b) in bins.iter().enumerate() {
+                let power = (s1[i] * s1[i] + s2[i] * s2[i] - coeff[i] * s1[i] * s2[i]).max(0.0);
+                self.magnitude[b] = power.sqrt() as f32;
+            }
         }
     }
 

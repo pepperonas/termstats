@@ -241,6 +241,48 @@ def test_the_layout_constants_agree_in_both_programs():
         assert const(name) == float(value), name
 
 
+def test_the_audio_constants_agree_in_both_programs():
+    """The microphone screens in the core are a port of audio.py, motion.py and the audio
+    bodies of cli.py; a constant changed on one side only would make the two drift apart."""
+    audio = pytest.importorskip("termstats.audio")
+    from termstats import motion
+    rust = "\n".join((NATIVE / "src" / name).read_text(encoding="utf-8") for name in
+                     ("audio/mod.rs", "audio/spectrum.rs", "audio/bpm.rs", "motion.rs", "audio_ui.rs"))
+
+    def const(name):
+        found = re.findall(rf"const {name}: \w+ = (-?[\d.]+);", rust)
+        assert len(found) == 1, f"{name}: {found}"
+        return float(found[0])
+
+    pairs = {
+        # audio.py
+        "DB_FLOOR": audio.DB_FLOOR, "SPL_OFFSET": audio.SPL_OFFSET, "LOUD_DB": audio.LOUD_DB, "BANDS": audio.BANDS,
+        "F_LO": audio.F_LO, "F_HI": audio.F_HI, "BLOCK": audio.BLOCK, "SAMPLE_RATE": audio.SAMPLE_RATE,
+        "FFT": audio.FFT, "BASS_LO": audio.BASS_LO, "BASS_HI": audio.BASS_HI, "DB_HISTORY_S": audio.DB_HISTORY_S,
+        "ATTACK": audio.ATTACK, "RELEASE": audio.RELEASE, "RANGE_DB": audio.RANGE_DB, "CEIL_ATTACK": audio.CEIL_ATTACK,
+        "CEIL_DECAY": audio.CEIL_DECAY, "CEIL_HEADROOM_DB": audio.CEIL_HEADROOM_DB,
+        "PEAK_HOLD_BLOCKS": audio.PEAK_HOLD_BLOCKS, "PEAK_FALL": audio.PEAK_FALL,
+        "THRESHOLD": audio.THRESHOLD, "AVG_WINDOW_S": audio.AVG_WINDOW_S, "ONSET_REFRACTORY_S": audio.ONSET_REFRACTORY_S,
+        "IOI_WINDOW_S": audio.IOI_WINDOW_S, "BPM_MIN": audio.BPM_MIN, "BPM_MAX": audio.BPM_MAX,
+        "MIN_ONSETS": audio.MIN_ONSETS, "STALE_RESET_S": audio.STALE_RESET_S, "OCTAVE_SNAP": audio.OCTAVE_SNAP,
+        "DISPLAY_AVG_S": audio.DISPLAY_AVG_S, "SF_LAG": audio.SF_LAG, "SF_WIN": audio.SF_WIN,
+        "SF_MARGIN": audio.SF_MARGIN,
+        # motion.py
+        "MAX_DT": motion.MAX_DT, "BEAT_TAU": motion.BEAT_TAU, "ATTACK_TAU": motion.ATTACK_TAU,
+        "RELEASE_TAU": motion.RELEASE_TAU, "PUNCH": motion.PUNCH, "TRAIL_G": motion.TRAIL_G,
+        "PEAK_HOLD_S": motion.PEAK_HOLD_S, "PEAK_G": motion.PEAK_G, "METER_ATTACK_TAU": motion.METER_ATTACK_TAU,
+        "METER_RELEASE_TAU": motion.METER_RELEASE_TAU, "ENV_FLOOR": motion.ENV_FLOOR,
+        # cli.py
+        "MIX_MIN_COLUMN_W": cli.MIX_MIN_COLUMN_W, "MIX_GAP": cli.MIX_GAP, "BEAT_DOT_ON": cli.BEAT_DOT_ON,
+        "AUDIO_READOUT_S": cli.AUDIO_READOUT_S, "EQ_BAR_W": cli.EQ_BAR_W, "EQ_GAP": cli.EQ_GAP,
+        "EQ_MIN_COLUMNS": cli.EQ_MIN_COLUMNS, "AUDIO_CHART_MIN_H": cli.AUDIO_CHART_MIN_H,
+    }
+    for name, value in pairs.items():
+        assert const(name) == float(value), name
+    labels = re.search(r"const EQ_LABELS: [^=]+= \[(.*?)\];", rust).group(1)
+    assert re.findall(r'\(([\d.]+), "(\w+)"\)', labels) == [(f"{f:.1f}", t) for f, t in cli.EQ_LABELS]
+
+
 # --- record / recommend: commands only the native core has ----------------------------------
 
 @pytest.mark.parametrize("command", ["record", "recommend"])

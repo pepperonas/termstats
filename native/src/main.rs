@@ -252,6 +252,22 @@ fn bench() {
         bytes = painter.diff(&scr).len();
     });
     println!("{:<34}{:>9} bytes in the last frame", "", bytes);
+
+    // The microphone screens of the C interface: one block through the analysis, with the
+    // equalizer's FFT (the costlier case) - 43 of these a second at 44.1 kHz.
+    let mut demo = termstats_native::audio::DemoAudio::new(126.0, 44100.0);
+    let mut analyzer = termstats_native::audio::Analyzer::new();
+    let block = demo.read(termstats_native::audio::BLOCK);
+    let mut at = 0.0;
+    time("audio block (1024, equalizer on)", &mut || {
+        at += 0.0232;
+        analyzer.feed(&block, 44100.0, at);
+    });
+    analyzer.spectrum_on = false;
+    time("audio block (1024, equalizer off)", &mut || {
+        at += 0.0232;
+        analyzer.feed(&block, 44100.0, at);
+    });
 }
 
 const RECORD_HELP: &str = "\

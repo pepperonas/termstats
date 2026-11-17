@@ -295,3 +295,22 @@ fn at_44_1_khz_the_numbers_are_pythons() {
         close(got as f64, want, &format!("band {k}"));
     }
 }
+
+#[test]
+fn at_a_low_rate_every_kick_bin_is_measured_without_the_fft() {
+    // 8 kHz: 2 Hz bins, about forty of them in the kick band - more than one pass holds.
+    let sr = 8000.0;
+    let (mut a, mut b) = (Analyzer::with_rate(sr), Analyzer::with_rate(sr));
+    b.spectrum_on = false;
+    assert!(a.spectrum.bass_bins.len() > 32, "{}", a.spectrum.bass_bins.len());
+    let mut clicks = Clicks { bpm: 126.0, sr, n: 0, until: 1e9 };
+    for _ in 0..40 {
+        let block = clicks.block(BLOCK);
+        a.feed(&block, sr as f32, clicks.now());
+        b.feed(&block, sr as f32, clicks.now());
+    }
+    for &bin in &a.spectrum.bass_bins {
+        let (x, y) = (a.spectrum.magnitude[bin], b.spectrum.magnitude[bin]);
+        assert!((x - y).abs() <= 1e-3 * x.max(1.0), "bin {bin}: {x} vs {y}");
+    }
+}
