@@ -64,6 +64,20 @@ impl Screen {
         col
     }
 
+    /// The rows that differ from `prev`, a grid drawn earlier; every row when `prev` has
+    /// another shape (120x36 and 108x40 hold the same number of cells, and must not be
+    /// compared). Written into `out` (cleared first), ascending.
+    pub fn changed_rows(&self, prev: &Screen, out: &mut Vec<u32>) {
+        out.clear();
+        let whole = prev.w != self.w || prev.h != self.h;
+        for y in 0..self.h {
+            let span = y * self.w..(y + 1) * self.w;
+            if whole || self.cells[span.clone()] != prev.cells[span] {
+                out.push(y as u32);
+            }
+        }
+    }
+
     pub fn put_bg(&mut self, x: usize, y: usize, limit: usize, text: &str, fg: u32, bg: u32, bold: bool) -> usize {
         let end = self.put(x, y, limit, text, fg, bold);
         if y < self.h {

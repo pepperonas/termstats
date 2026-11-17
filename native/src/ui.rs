@@ -448,6 +448,29 @@ impl State {
         self.names.clear();
     }
 
+    /// For the tests: pretend up to `bytes` more went over the network since the last
+    /// sample. Returns what was really taken off each baseline (a counter cannot go below 0).
+    #[cfg(test)]
+    pub(crate) fn offset_net_baseline(&mut self, bytes: u64) -> (u64, u64) {
+        let Some((before, _)) = &mut self.net_prev else {
+            return (0, 0);
+        };
+        let taken = (before.sent.min(bytes), before.recv.min(bytes));
+        before.sent -= taken.0;
+        before.recv -= taken.1;
+        taken
+    }
+
+    #[cfg(test)]
+    pub(crate) fn net_rates(&self) -> (f64, f64) {
+        (self.sent_s, self.recv_s)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn cpu_percentages(&self) -> (f64, &[f64]) {
+        (self.total_pct, &self.core_pct)
+    }
+
     // --- what a meter remembers ----------------------------------------------------------
 
     /// The fill to draw: eased in a live session, raw in a snapshot. Numbers are never eased.
