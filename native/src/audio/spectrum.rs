@@ -32,7 +32,7 @@ pub struct Spectrum {
     sample_rate: f64,
     fft: Fft,
     buf: Vec<f32>,
-    window: Vec<f32>,
+    pub(crate) window: Vec<f32>,
     windowed: Vec<f32>,
     pub magnitude: Vec<f32>,
     pub edges: Vec<f64>,

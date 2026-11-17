@@ -436,3 +436,18 @@ fn the_fft_runs_only_while_the_equalizer_is_drawn() {
         ts_free(core);
     }
 }
+
+#[test]
+fn a_rate_that_changes_and_changes_back_still_starts_afresh() {
+    let core = audio_core(Views::AUDIO);
+    let mut frame = empty_frame();
+    assert_eq!(ts_feed_audio(core, &[0.25; 44100], 44100.0), 0);
+    assert_eq!(ts_draw(core, 120, 36, 1.0, &mut frame), 0);
+    assert!(inner_of(core).audio.analyzer.blocks > 40);
+    // between two draws: 48 kHz for a moment, then back - the old analysis is gone all the same
+    assert_eq!(ts_feed_audio(core, &[0.25; 100], 48000.0), 0);
+    assert_eq!(ts_feed_audio(core, &[0.25; 2048], 44100.0), 0);
+    assert_eq!(ts_draw(core, 120, 36, 2.0, &mut frame), 0);
+    assert_eq!(inner_of(core).audio.analyzer.blocks, 2);
+    ts_free(core);
+}

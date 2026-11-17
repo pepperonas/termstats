@@ -168,3 +168,43 @@ fn history_series_buckets_means() {
     assert!(v.windows(2).all(|p| p[1] >= p[0]));
     assert!(history_series(&h[..1], 9.0, 60.0, 5).is_none());
 }
+
+#[test]
+fn a_falling_bar_leaves_an_afterglow() {
+    let mut audio = heard(6.0);
+    let mut s = state(Views::EQ);
+    let mut scr = Screen::new(120, 36);
+    let r = Rect { x: 0, y: 0, w: 120, h: 36 };
+    let mut now = 6.0;
+    draw(&mut s, &mut audio, &mut scr, r, now);
+    let mut seen = false;
+    for _ in 0..8 {
+        // silence: the bars fall, their trails follow more slowly
+        audio.analyzer.feed(&[0.0; 1470], 44100.0, now);
+        now += 1.0 / 30.0;
+        scr.reset(120, 36);
+        draw(&mut s, &mut audio, &mut scr, r, now);
+        seen |= text(&scr, r).contains(BAR_SECONDARY);
+    }
+    assert!(seen, "{}", text(&scr, r));
+}
+
+#[test]
+fn tiny_rects_neither_panic_nor_spill() {
+    let mut audio = heard(5.0);
+    for views in SUBSETS {
+        for w in [12, 30, 45, 90] {
+            for h in 4..=30 {
+                let mut s = state(views);
+                let mut scr = Screen::new(w + 4, h + 4);
+                let r = Rect { x: 2, y: 2, w, h };
+                draw(&mut s, &mut audio, &mut scr, r, 5.0);
+                for y in 0..h + 4 {
+                    for x in 0..w + 4 {
+                        assert!(scr.cells[y * (w + 4) + x] == BLANK || r.contains(x, y), "views {views} {w}x{h} at ({x},{y})");
+                    }
+                }
+            }
+        }
+    }
+}

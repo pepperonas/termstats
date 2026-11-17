@@ -3,7 +3,7 @@
 //! boundary, and the click's broadband energy lights every band (termstats CLAUDE.md).
 
 use super::fft::Fft;
-use super::spectrum::band_edges;
+use super::spectrum::{band_edges, Spectrum};
 use super::*;
 
 /// A sine that keeps its phase from block to block.
@@ -294,7 +294,82 @@ fn at_44_1_khz_the_numbers_are_pythons() {
     for (k, (&got, want)) in an.bands.iter().zip(python).enumerate() {
         close(got as f64, want, &format!("band {k}"));
     }
+    let peaks = [0.813, 0.917, 0.85, 0.561, 0.51, 0.441, 0.366, 0.307, 0.245, 0.193, 0.143, 0.09, 0.042, 0.006,
+                 0.775, 0.85, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+    for (k, (&got, want)) in an.peaks.iter().zip(peaks).enumerate() {
+        close(got as f64, want, &format!("peak {k}"));
+    }
 }
+
+#[test]
+fn the_window_is_numpys_symmetric_hann() {
+    let w = Spectrum::new(44100.0, Scale::for_rate(44100.0)).window;
+    assert_eq!((w[0], w[spectrum::FFT - 1]), (0.0, 0.0), "np.hanning ends at zero on BOTH sides");
+    assert!((w[2048] - 0.9999999).abs() < 1e-6);
+}
+
+/// Kick bursts at the given times over a quiet 1 kHz bed that keeps the music gate open.
+fn kicks_at(times: &[f64], sr: f64, until: f64) -> Vec<(f64, Vec<f32>)> {
+    let mut out = Vec::new();
+    let mut n = 0u64;
+    while (n as f64) / sr < until {
+        let block = (n..n + BLOCK as u64)
+            .map(|i| {
+                let t = i as f64 / sr;
+                let kick = times.iter().rev().find(|&&k| k <= t).map_or(0.0, |&k| {
+                    let s = t - k;
+                    0.85 * (-s * 14.0).exp() * (2.0 * std::f64::consts::PI * 55.0 * s).sin()
+                });
+                (kick + 0.1 * (2.0 * std::f64::consts::PI * 1000.0 * t).sin()) as f32
+            })
+            .collect();
+        n += BLOCK as u64;
+        out.push((n as f64 / sr, block));
+    }
+    out
+}
+
+#[test]
+fn the_tempo_is_held_while_beats_still_come_even_too_few_to_measure() {
+    // 126 BPM for 12 s, then a kick every 2.5 s: too few onsets in the 6 s window for a new
+    // estimate, but never 4 s without one - so the tempo is not stale and stays.
+    let beat = 60.0 / 126.0;
+    let mut times: Vec<f64> = (0..25).map(|i| 0.5 + i as f64 * beat).collect();
+    let last_fast = *times.last().unwrap();
+    times.extend((1..8).map(|i| last_fast + i as f64 * 2.5));
+    let mut an = Analyzer::new();
+    for (now, block) in kicks_at(&times, 44100.0, last_fast + 19.0) {
+        an.feed(&block, 44100.0, now);
+        if now > last_fast + 6.5 && now < last_fast + 17.5 {
+            assert!(an.bpm.is_some(), "dropped at {now} though a beat came {:.2} s ago",
+                    now - an.last_onset.unwrap_or(f64::NAN));
+        }
+    }
+}
+
+#[test]
+fn a_slow_crescendo_in_the_kick_band_is_not_a_beat() {
+    // Energy rising 0.6 % a block clears the 1.4x average, but never the lagged peak by 4 %:
+    // the SuperFlux gate says sustain, not a new attack.
+    let sr = 44100.0;
+    let mut an = Analyzer::new();
+    let mut n = 0u64;
+    let mut amp = 0.002f64;
+    while (n as f64) / sr < 9.0 {
+        let block: Vec<f32> = (n..n + BLOCK as u64)
+            .map(|i| {
+                let t = i as f64 / sr;
+                (amp * (2.0 * std::f64::consts::PI * 55.0 * t).sin() + 0.1 * (2.0 * std::f64::consts::PI * 1000.0 * t).sin()) as f32
+            })
+            .collect();
+        n += BLOCK as u64;
+        amp *= 1.006;
+        an.feed(&block, sr as f32, n as f64 / sr);
+    }
+    assert!(an.music);
+    assert_eq!(an.beats, 0);
+}
+
 
 #[test]
 fn at_a_low_rate_every_kick_bin_is_measured_without_the_fft() {
