@@ -10,7 +10,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "termstats-native"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "libc",
 ]

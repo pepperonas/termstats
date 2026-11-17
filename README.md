@@ -125,6 +125,7 @@ snapshot instead, so `termstats > report.txt` still terminates.
 - [Microphone modes](#microphone-modes) — `-eq` spectrum analyser, `-bpm` tempo, `-db` level, `-x` both at once; the audio extra
 - [Resource use](#resource-use) — what a frame costs, measured, and the levers that are yours
 - [The native core](#the-native-core) — the same dashboard in Rust: 0.3 % of a core, 7 MB
+- [Using the core as a library](#using-the-core-as-a-library) — the dashboard and the microphone screens as a cell grid, through a C interface
 - [History and recommendation](#history-and-recommendation) — record what the machine does, get a computer recommended after 14 days
 - [Platform Support](#platform-support)
 - [Requirements](#requirements)
@@ -188,7 +189,7 @@ termstats-native
 
 The script downloads the binary for your machine from the latest release, checks it against
 the release's `SHA256SUMS` and puts it into `~/.local/bin` — no toolchain, no root.
-`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.11.0` a
+`TERMSTATS_BIN_DIR=/usr/local/bin` installs elsewhere, `TERMSTATS_VERSION=v0.12.0` a
 particular release.
 
 Or by hand — pick your machine:
@@ -213,7 +214,7 @@ with `xattr -d com.apple.quarantine termstats-native` (a `curl` download carries
 ### The Python program — pipx (recommended)
 
 ```bash
-pipx install https://github.com/pepperonas/termstats/releases/download/v0.11.0/termstats-0.11.0-py3-none-any.whl
+pipx install https://github.com/pepperonas/termstats/releases/download/v0.12.0/termstats-0.12.0-py3-none-any.whl
 ```
 
 That is the released version. The current state of the repository instead:
@@ -225,7 +226,7 @@ pipx install git+https://github.com/pepperonas/termstats.git
 ### pip (user install)
 
 ```bash
-pip install --user https://github.com/pepperonas/termstats/releases/download/v0.11.0/termstats-0.11.0-py3-none-any.whl
+pip install --user https://github.com/pepperonas/termstats/releases/download/v0.12.0/termstats-0.12.0-py3-none-any.whl
 ```
 
 ### From source
@@ -273,8 +274,8 @@ Set-Alias ts termstats      # PowerShell: put it in $PROFILE
 ### Verify
 
 ```bash
-termstats --version          # -> termstats 0.11.0
-termstats-native --version   # -> termstats-native 0.11.0
+termstats --version          # -> termstats 0.12.0
+termstats-native --version   # -> termstats-native 0.12.0
 ```
 
 If your shell says `command not found`, see [Troubleshooting](#troubleshooting).
@@ -810,6 +811,36 @@ What the native core does not do, on purpose: it has no connection count (root-o
 macOS, and a walk over every socket elsewhere), and on a terminal too small for the plan it
 packs the cores tighter instead of cropping the panel — the one place its picture is better
 than the one it copies.
+
+## Using the core as a library
+
+The native core is also a Rust library (`termstats_native`) with a C interface, for programs
+that are not a terminal: it samples the machine and draws the dashboard into a grid of cells
+(character, foreground, background, bold) that the caller paints however it likes. A macOS
+desktop-background app is built on exactly this. The contract is one hand-written header,
+[`native/include/termstats_core.h`](native/include/termstats_core.h) (`TS_ABI 2`):
+
+- `ts_create` / `ts_free` / `ts_set_options` — a core with a theme, a sample interval and
+  switches for which **views** are drawn (cpu, memory, network, disk, charts, processes,
+  and the microphone screens: equalizer, level, tempo) and which **chrome** (header, clock,
+  version, footer, hints, brand line).
+- `ts_sample(core, mono)` reads the machine; `ts_draw(core, w, h, mono, regions, out)`
+  returns the cells plus the rows that changed since the last frame. With dashboard and
+  audio views both on, the audio panels are a column on the right from 190 columns and rows
+  at the bottom below that; `regions` lets the caller redraw only the dashboard or only the
+  audio.
+- `ts_feed_audio(core, samples, n, rate)` hands over microphone samples (mono, any block
+  size, any rate from 4 to 768 kHz); `ts_audio_state` says when there is no permission or no
+  device, and the audio panels show it. The analysis — FFT, 28 bands, tempo, level — is the
+  Python program's, ported; the core captures nothing itself.
+
+**Threading:** a core is used from one thread, with one exception — `ts_feed_audio` may be
+called from the audio thread while another thread draws (it only copies the samples into a
+guarded two-second ring). Stop and join that feed **before** `ts_free`.
+
+To link it, depend on the crate by git revision and re-export the interface from a crate of
+type `staticlib` (`pub use termstats_native::ffi::*;`); copy the header verbatim. The
+terminal program does not use any of this and behaves exactly as before.
 
 ## History and recommendation
 

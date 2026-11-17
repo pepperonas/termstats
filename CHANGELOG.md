@@ -11,6 +11,30 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-17
+
+The terminal program behaves exactly as before; `termstats -eq/-bpm/-db/-x` still run in
+Python. Everything new is in the native core, for programs that link it.
+
+### Added
+- **The native core as a library with a C interface:** `native/include/termstats_core.h`
+  (`TS_ABI 2`) - create a core, sample the machine, draw the dashboard into a grid of cells
+  with the rows that changed. See "Using the core as a library" in the README.
+- **View and chrome switches:** which sections are drawn (cpu, memory, network, disk,
+  charts, processes) and which parts of the header and footer.
+- **The microphone screens in the native core** - equalizer, level and tempo - ported from
+  `audio.py`, `motion.py` and the audio bodies of `cli.py`, with an own FFT (no numpy). The
+  caller feeds samples from any thread (`ts_feed_audio`); per-block constants are scaled to
+  the real sample rate (identical to Python at 44.1 kHz); `ts_audio_state` shows a missing
+  permission or device in the panels.
+- **Composing dashboard and audio:** the audio panels are a column on the right from 190
+  columns, rows at the bottom below that, or the whole body without dashboard views; a
+  frame can redraw one region and keep the other.
+
+### Changed
+- The header leaves out the process count when the process view is off (only reachable
+  through the library: the terminal program always draws every view).
+
 ## [0.11.0] - 2026-11-15
 
 ### Changed

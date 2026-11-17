@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file; the only state on disk is the optional history (0.10.0).
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.11.0**, 1547 pytest tests + 90 `cargo test` in `native/`.
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.12.0**, 1548 pytest tests + 171 `cargo test` in `native/` (one ignored: the frame dumper).
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -52,8 +52,10 @@ termstats/
 │   ├── audio.py      # -eq/-bpm/-db DSP: dBFS, log bands, peak hold, tempo, demo synth (numpy)
 │   ├── capture.py    # the microphone via sounddevice, lazy import, actionable errors
 │   └── motion.py     # time-based easing, trails, peaks, beat envelope, metronome phase (no numpy)
-├── tests/            # 1375 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
+├── tests/            # 1548 pytest tests, pure unit tests, ~3 s (three real-process DoD checks)
 ├── native/           # termstats-native: the dashboard in Rust (Cargo.toml, src/{main,ui,screen,color,themes}.rs, src/sys/{macos,linux}.rs)
+│                     #   also a library: src/lib.rs, src/ffi.rs + include/termstats_core.h (C interface, ABI 2),
+│                     #   src/audio/{mod,fft,spectrum,bpm}.rs, src/motion.rs, src/audio_ui.rs, src/compose.rs
 ├── tools/badges.py   # writes .github/badges/{version,loc,tests}.json (shields endpoint)
 ├── tools/gen_native_themes.py  # theme.py -> native/src/themes.rs (GENERATED, a test checks it is current)
 ├── tools/screenshots.py  # renders every README picture from --demo (importable, tested)
