@@ -18,7 +18,19 @@ fn ts_sample(core: *mut TsCore, mono: f64) -> i32 {
     unsafe { super::ts_sample(core, mono) }
 }
 fn ts_draw(core: *mut TsCore, w: u32, h: u32, mono: f64, out: *mut TsFrame) -> i32 {
-    unsafe { super::ts_draw(core, w, h, mono, out) }
+    unsafe { super::ts_draw(core, w, h, mono, 3, out) }
+}
+fn ts_draw_regions(core: *mut TsCore, w: u32, h: u32, mono: f64, regions: u32, out: *mut TsFrame) -> i32 {
+    unsafe { super::ts_draw(core, w, h, mono, regions, out) }
+}
+fn ts_feed_audio(core: *mut TsCore, mono: &[f32], rate: f64) -> i32 {
+    unsafe { super::ts_feed_audio(core, mono.as_ptr(), mono.len(), rate) }
+}
+fn ts_audio_state(core: *mut TsCore, state: i32) -> i32 {
+    unsafe { super::ts_audio_state(core, state) }
+}
+fn inner_of<'a>(core: *mut TsCore) -> &'a mut Inner {
+    unsafe { inner(core) }.unwrap()
 }
 
 fn options(theme: &str) -> TsOptions {
@@ -197,11 +209,11 @@ fn a_gap_of_an_hour_gives_no_rate_spike() {
     assert_eq!(ts_sample(core, t), 0);
     assert_eq!(ts_sample(core, t + 1.0), 0);
     // The machine slept for an hour and sent 3.6 MB meanwhile: one KB a second, not 3.6 MB.
-    let state = unsafe { &mut (*core).state };
+    let state = &mut inner_of(core).state;
     let (sent_taken, recv_taken) = state.offset_net_baseline(3_600_000);
     assert!(sent_taken > 0 && recv_taken > 0, "a machine that never used its network");
     assert_eq!(ts_sample(core, t + 3601.0), 0);
-    let state = unsafe { &(*core).state };
+    let state = &inner_of(core).state;
     let (sent, recv) = state.net_rates();
     assert!(sent.is_finite() && recv.is_finite());
     // Spread over the hour, plus whatever really went over the wire in these milliseconds.
@@ -217,7 +229,7 @@ fn a_gap_of_an_hour_gives_no_rate_spike() {
 
 #[test]
 fn version_and_themes() {
-    assert_eq!(ts_abi_version(), 1);
+    assert_eq!(ts_abi_version(), 2);
     let version = unsafe { CStr::from_ptr(ts_version()) }.to_str().unwrap();
     assert_eq!(version, env!("CARGO_PKG_VERSION"));
     assert_eq!(ts_theme_count() as usize, THEMES.len());
@@ -243,7 +255,8 @@ fn header_matches_the_rust_side() {
     assert_eq!(define("TS_COLOR_DEFAULT"), crate::screen::NONE);
     for (name, bit) in [("CPU", Views::CPU), ("MEMORY", Views::MEMORY), ("NETWORK", Views::NETWORK),
                         ("DISK", Views::DISK), ("CHARTS", Views::CHARTS), ("PROCESSES", Views::PROCESSES),
-                        ("DASHBOARD", Views::DASHBOARD)] {
+                        ("DASHBOARD", Views::DASHBOARD), ("EQ", Views::EQ), ("BPM", Views::BPM),
+                        ("LEVEL", Views::LEVEL), ("AUDIO", Views::AUDIO)] {
         assert_eq!(define(&format!("TS_VIEW_{name}")), bit, "TS_VIEW_{name}");
     }
     for (name, bit) in [("HEADER", Chrome::HEADER), ("CLOCK", Chrome::CLOCK), ("VERSION", Chrome::VERSION),
@@ -251,8 +264,160 @@ fn header_matches_the_rust_side() {
                         ("ALL", Chrome::ALL)] {
         assert_eq!(define(&format!("TS_CHROME_{name}")), bit, "TS_CHROME_{name}");
     }
+    assert_eq!(define("TS_REGION_DASHBOARD"), REGION_DASHBOARD);
+    assert_eq!(define("TS_REGION_AUDIO"), REGION_AUDIO);
+    for (name, value) in [("RUNNING", 0), ("NO_PERMISSION", 1), ("NO_DEVICE", 2)] {
+        assert_eq!(define(&format!("TS_AUDIO_{name}")), value, "TS_AUDIO_{name}");
+    }
+    assert!(header.contains("int32_t ts_draw(TsCore *core, uint32_t w, uint32_t h, double mono, uint32_t regions, TsFrame *out);"));
+    assert!(header.contains("int32_t ts_feed_audio(TsCore *core, const float *mono, size_t n, double sample_rate);"));
+    assert!(header.contains("#include <stddef.h>"), "size_t needs stddef.h");
     for function in ["ts_abi_version", "ts_version", "ts_theme_count", "ts_theme_name", "ts_create", "ts_free",
-                     "ts_set_options", "ts_sample", "ts_draw"] {
+                     "ts_set_options", "ts_sample", "ts_draw", "ts_feed_audio", "ts_audio_state"] {
         assert!(header.contains(&format!("{function}(")), "{function} missing from the header");
     }
+}
+
+// --- audio ---------------------------------------------------------------------------------
+
+use crate::audio::{DemoAudio, BLOCK};
+
+fn audio_core(views: u32) -> *mut TsCore {
+    let mut opts = options("default");
+    opts.views = views;
+    let core = ts_create(&opts);
+    assert_eq!(ts_sample(core, 100.0), 0);
+    assert_eq!(ts_sample(core, 100.5), 0);
+    core
+}
+
+fn screen_text(frame: &TsFrame) -> String {
+    (0..frame.h).map(|y| row_text(frame, y) + "\n").collect()
+}
+
+#[test]
+fn audio_fed_through_the_ring_reaches_the_screens() {
+    let core = audio_core(Views::DASHBOARD | Views::AUDIO);
+    let mut demo = DemoAudio::new(126.0, 48000.0);
+    let mut frame = empty_frame();
+    let mut t = 0.0;
+    while demo.now() < 8.0 {
+        assert_eq!(ts_feed_audio(core, &demo.read(1600), 48000.0), 0); // not a multiple of the block
+        t += 1600.0 / 48000.0;
+        assert_eq!(ts_draw_regions(core, 200, 60, 100.0 + t, 3, &mut frame), 0);
+    }
+    let an = &inner_of(core).audio.analyzer;
+    assert_eq!(an.sample_rate(), 48000.0);
+    let bpm = an.bpm.unwrap_or(0.0);
+    assert!((124.0..=128.0).contains(&bpm), "{bpm}");
+    let text = screen_text(&frame);
+    for title in ["cpu", "equalizer", "level", "tempo", "processes"] {
+        assert!(text.contains(title), "{title}\n{text}");
+    }
+    ts_free(core);
+}
+
+#[test]
+fn feeding_from_a_second_thread_while_the_first_draws() {
+    struct Shared(*mut TsCore);
+    unsafe impl Send for Shared {}
+    let core = audio_core(Views::AUDIO);
+    let shared = Shared(core);
+    let feeder = std::thread::spawn(move || {
+        let shared = shared;
+        let mut demo = DemoAudio::new(126.0, 44100.0);
+        for i in 0..1000 {
+            let rate = if i % 250 == 249 { 48000.0 } else { 44100.0 }; // rate changes on the way
+            assert_eq!(ts_feed_audio(shared.0, &demo.read(512), rate), 0);
+        }
+    });
+    let mut frame = empty_frame();
+    for i in 0..1000 {
+        assert_eq!(ts_draw_regions(core, 120, 36, 1.0 + i as f64 * 0.01, 3, &mut frame), 0);
+    }
+    feeder.join().unwrap();
+    assert_eq!(ts_draw(core, 120, 36, 20.0, &mut frame), 0);
+    assert!(inner_of(core).audio.analyzer.db.is_finite());
+    ts_free(core);
+}
+
+#[test]
+fn the_ring_keeps_two_seconds_and_a_new_rate_starts_afresh() {
+    let core = audio_core(Views::AUDIO);
+    assert_eq!(ts_feed_audio(core, &vec![0.25; 44100 * 3], 44100.0), 0);
+    let ring = unsafe { &(*core).feed }.lock().unwrap().ring.len();
+    assert_eq!(ring, 88200);
+    assert_eq!(ts_feed_audio(core, &[0.25; 100], 44100.0), 0);
+    assert_eq!(unsafe { &(*core).feed }.lock().unwrap().ring.len(), 88200, "the oldest are dropped");
+    let mut frame = empty_frame();
+    assert_eq!(ts_draw(core, 120, 36, 5.0, &mut frame), 0);
+    assert_eq!(inner_of(core).audio.analyzer.blocks, 88200 / BLOCK as u64);
+    assert_eq!(ts_feed_audio(core, &[0.25; 100], 48000.0), 0);
+    assert_eq!(unsafe { &(*core).feed }.lock().unwrap().ring.len(), 100, "a new rate drops the old samples");
+    assert_eq!(ts_draw(core, 120, 36, 6.0, &mut frame), 0);
+    assert_eq!((inner_of(core).audio.analyzer.sample_rate(), inner_of(core).audio.analyzer.blocks), (48000.0, 0));
+    ts_free(core);
+}
+
+#[test]
+fn feed_arguments_are_checked() {
+    let core = audio_core(Views::AUDIO);
+    for rate in [0.0, -1.0, f64::NAN, f64::INFINITY, 1e9] {
+        assert_eq!(ts_feed_audio(core, &[0.0; 4], rate), -2, "{rate}");
+    }
+    assert_eq!(unsafe { super::ts_feed_audio(core, std::ptr::null(), 4, 44100.0) }, -1);
+    assert_eq!(unsafe { super::ts_feed_audio(core, std::ptr::null(), 0, 44100.0) }, 0);
+    assert_eq!(unsafe { super::ts_feed_audio(std::ptr::null_mut(), [0.0f32].as_ptr(), 1, 44100.0) }, -1);
+    assert_eq!(ts_audio_state(core, 3), -2);
+    assert_eq!(ts_audio_state(core, -1), -2);
+    assert_eq!(ts_audio_state(std::ptr::null_mut(), 0), -1);
+    ts_free(core);
+}
+
+#[test]
+fn without_microphone_access_each_audio_panel_says_so() {
+    let core = audio_core(Views::AUDIO);
+    assert_eq!(ts_audio_state(core, 1), 0);
+    let frame = draw(core, 120, 36);
+    let text = screen_text(&frame);
+    assert_eq!(text.matches("microphone access is off").count(), 3, "{text}");
+    assert!(!text.contains('▁') && !text.contains('▔'), "no bars\n{text}");
+    assert_eq!(ts_audio_state(core, 2), 0);
+    let text = screen_text(&draw(core, 120, 36));
+    assert_eq!(text.matches("no input device").count(), 3, "{text}");
+    assert_eq!(ts_audio_state(core, 0), 0);
+    assert!(!screen_text(&draw(core, 120, 36)).contains("no input device"));
+    ts_free(core);
+}
+
+#[test]
+fn a_region_not_asked_for_keeps_its_cells() {
+    let core = audio_core(Views::DASHBOARD | Views::AUDIO);
+    let mut demo = DemoAudio::new(126.0, 44100.0);
+    let mut frame = empty_frame();
+    assert_eq!(ts_feed_audio(core, &demo.read(44100 * 2), 44100.0), 0);
+    assert_eq!(ts_draw_regions(core, 200, 60, 102.0, 3, &mut frame), 0);
+    let audio = compose::layout(&inner_of(core).state, 200, 60).audio.unwrap();
+    let before: Vec<TsCell> = cells(&frame).to_vec();
+    let split = |cells: &[TsCell], inside: bool| -> Vec<TsCell> {
+        cells.iter().enumerate().filter(|(i, _)| audio.contains(i % 200, i / 200) == inside).map(|p| *p.1).collect()
+    };
+    // more music, a new sample of the machine - then only the audio is drawn
+    assert_eq!(ts_feed_audio(core, &demo.read(44100), 44100.0), 0);
+    assert_eq!(ts_sample(core, 103.0), 0);
+    assert_eq!(ts_draw_regions(core, 200, 60, 103.0, REGION_AUDIO, &mut frame), 0);
+    let after = cells(&frame).to_vec();
+    assert_eq!(split(&before, false), split(&after, false), "the dashboard kept its cells");
+    assert_ne!(split(&before, true), split(&after, true), "the audio moved on");
+    // and the other way round
+    let before = after;
+    assert_eq!(ts_feed_audio(core, &demo.read(44100), 44100.0), 0);
+    assert_eq!(ts_draw_regions(core, 200, 60, 104.0, REGION_DASHBOARD, &mut frame), 0);
+    assert_eq!(split(&before, true), split(cells(&frame), true), "the audio kept its cells");
+    // regions 0 is both; a new size draws both whatever is asked for
+    assert_eq!(ts_draw_regions(core, 200, 60, 105.0, 0, &mut frame), 0);
+    assert_ne!(split(&before, true), split(cells(&frame), true));
+    assert_eq!(ts_draw_regions(core, 190, 60, 105.5, REGION_DASHBOARD, &mut frame), 0);
+    assert!(screen_text(&frame).contains("equalizer"), "a resize redraws the audio too");
+    ts_free(core);
 }

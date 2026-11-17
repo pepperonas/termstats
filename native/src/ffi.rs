@@ -5,17 +5,32 @@
 //! numbers the header defines). Every `extern "C"` body runs inside `catch_unwind`: a
 //! library built with `panic = "unwind"` turns a panic into -1 or NULL instead of
 //! unwinding into C, which is undefined behaviour.
+//!
+//! One function may be called from another thread: `ts_feed_audio`, from the audio thread
+//! of the caller. It only locks the feed ring, copies the samples in and returns; it never
+//! touches what the drawing thread owns. Everything else of a core lives in an `UnsafeCell`
+//! that only the one drawing thread reaches - so the two never alias.
 
+use crate::audio::Analyzer;
+use crate::audio_ui::{AudioState, Mic};
+use crate::compose::{self, REGION_AUDIO, REGION_DASHBOARD};
 use crate::screen::{Cell, Screen, BLANK};
 use crate::themes::{Theme, THEMES};
 use crate::ui::{Chrome, Options, State, Views};
+use std::cell::UnsafeCell;
+use std::collections::VecDeque;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// Raised whenever a layout or a meaning in the header changes.
-const ABI: u32 = 1;
+const ABI: u32 = 2;
+
+/// Seconds of samples the feed ring holds; on overflow the oldest are dropped.
+const FEED_SECONDS: f64 = 2.0;
+const RATE_MIN: f64 = 4000.0;
+const RATE_MAX: f64 = 768_000.0;
 
 const OK: i32 = 0;
 const FAILED: i32 = -1;
@@ -60,13 +75,41 @@ pub struct TsFrame {
 }
 
 /// One dashboard: the sampled state, the grid it is drawn into, and the previous grid the
-/// dirty rows are measured against. Opaque to C.
+/// dirty rows are measured against, plus the ring the audio thread feeds. Opaque to C.
 pub struct TsCore {
+    feed: Mutex<Feed>,
+    inner: UnsafeCell<Inner>,
+}
+
+/// What only the drawing thread touches.
+pub(crate) struct Inner {
     pub(crate) state: State,
+    pub(crate) audio: AudioState,
     screen: Screen,
+    /// The last composed frame: the dirty rows are measured against it, and a region not
+    /// asked for keeps its cells from it.
     prev: Screen,
     out: Vec<TsCell>,
     dirty: Vec<u32>,
+    drained: Vec<f32>,
+}
+
+/// Samples handed over by the audio thread, not yet analysed.
+struct Feed {
+    ring: VecDeque<f32>,
+    rate: f64,
+    /// The rate changed since the last draw: the analysis starts afresh.
+    reset: bool,
+}
+
+/// The drawing thread's part of a core. Null-safe.
+///
+/// # Safety
+/// `core` is NULL or a live pointer from `ts_create`; only one thread calls this at a time.
+unsafe fn inner<'a>(core: *mut TsCore) -> Option<&'a mut Inner> {
+    // SAFETY: a shared reference to the core; `inner` is only reached from the one thread
+    // that draws, `feed` is behind its mutex.
+    unsafe { core.as_ref().map(|c| &mut *c.inner.get()) }
 }
 
 fn to_c(cell: &Cell) -> TsCell {
@@ -133,8 +176,10 @@ pub unsafe extern "C" fn ts_create(opts: *const TsOptions) -> *mut TsCore {
         let Some(opts) = (unsafe { opts.as_ref() }).and_then(options) else {
             return std::ptr::null_mut();
         };
-        let core = TsCore { state: State::new(opts), screen: Screen::new(0, 0), prev: Screen::new(0, 0), out: Vec::new(),
-                            dirty: Vec::new() };
+        let inner = Inner { state: State::new(opts), audio: AudioState::new(), screen: Screen::new(0, 0),
+                            prev: Screen::new(0, 0), out: Vec::new(), dirty: Vec::new(), drained: Vec::new() };
+        let feed = Feed { ring: VecDeque::new(), rate: 0.0, reset: false };
+        let core = TsCore { feed: Mutex::new(feed), inner: UnsafeCell::new(inner) };
         Box::into_raw(Box::new(core))
     })
 }
@@ -158,7 +203,7 @@ pub unsafe extern "C" fn ts_free(core: *mut TsCore) {
 pub unsafe extern "C" fn ts_set_options(core: *mut TsCore, opts: *const TsOptions) -> i32 {
     guarded(FAILED, || {
         // SAFETY: NULL or a core from ts_create, used from one thread at a time.
-        let (Some(core), Some(opts)) = (unsafe { core.as_mut() }, unsafe { opts.as_ref() }) else {
+        let (Some(core), Some(opts)) = (unsafe { inner(core) }, unsafe { opts.as_ref() }) else {
             return FAILED;
         };
         let Some(opts) = options(opts) else {
@@ -177,7 +222,7 @@ pub unsafe extern "C" fn ts_set_options(core: *mut TsCore, opts: *const TsOption
 pub unsafe extern "C" fn ts_sample(core: *mut TsCore, mono: f64) -> i32 {
     guarded(FAILED, || {
         // SAFETY: as in ts_set_options.
-        let Some(core) = (unsafe { core.as_mut() }) else {
+        let Some(core) = (unsafe { inner(core) }) else {
             return FAILED;
         };
         if !mono.is_finite() {
@@ -188,24 +233,133 @@ pub unsafe extern "C" fn ts_sample(core: *mut TsCore, mono: f64) -> i32 {
     })
 }
 
+/// Hand over microphone samples (mono, -1..1) - from ANY thread, the audio thread too. Only
+/// copies them into a ring of FEED_SECONDS; they are analysed on the next `ts_draw`. A new
+/// sample rate drops what is in the ring and starts the analysis afresh.
+///
+/// # Safety
+/// `core` is NULL or a live pointer from `ts_create`; `mono` is NULL or points to `n`
+/// readable floats.
+#[no_mangle]
+pub unsafe extern "C" fn ts_feed_audio(core: *mut TsCore, mono: *const f32, n: usize, sample_rate: f64) -> i32 {
+    guarded(FAILED, || {
+        // SAFETY: only the mutex-guarded feed is touched through this shared reference.
+        let Some(core) = (unsafe { core.as_ref() }) else {
+            return FAILED;
+        };
+        if !(sample_rate.is_finite() && (RATE_MIN..=RATE_MAX).contains(&sample_rate)) {
+            return BAD_ARGUMENT;
+        }
+        if n == 0 {
+            return OK;
+        }
+        if mono.is_null() {
+            return FAILED;
+        }
+        // SAFETY: the caller passes n readable floats.
+        let samples = unsafe { std::slice::from_raw_parts(mono, n) };
+        let cap = (sample_rate * FEED_SECONDS) as usize;
+        let samples = &samples[samples.len().saturating_sub(cap)..];
+        let mut feed = core.feed.lock().unwrap_or_else(|e| e.into_inner());
+        if feed.rate != sample_rate {
+            feed.ring.clear();
+            feed.rate = sample_rate;
+            feed.reset = true;
+        }
+        let overflow = ((feed.ring.len() + samples.len()).saturating_sub(cap)).min(feed.ring.len());
+        feed.ring.drain(..overflow);
+        feed.ring.extend(samples.iter().copied());
+        OK
+    })
+}
+
+/// Whether there is a microphone to listen to: 0 running, 1 no permission, 2 no device.
+/// Drawn as text in the audio panels.
+///
+/// # Safety
+/// `core` as for `ts_sample`.
+#[no_mangle]
+pub unsafe extern "C" fn ts_audio_state(core: *mut TsCore, state: i32) -> i32 {
+    guarded(FAILED, || {
+        // SAFETY: as in ts_set_options.
+        let Some(core) = (unsafe { inner(core) }) else {
+            return FAILED;
+        };
+        core.audio.mic = match state {
+            0 => Mic::Running,
+            1 => Mic::NoPermission,
+            2 => Mic::NoDevice,
+            _ => return BAD_ARGUMENT,
+        };
+        OK
+    })
+}
+
 /// # Safety
 /// `core` as for `ts_sample`; `out` is NULL or points to a writable `TsFrame`.
 #[no_mangle]
-pub unsafe extern "C" fn ts_draw(core: *mut TsCore, w: u32, h: u32, mono: f64, out: *mut TsFrame) -> i32 {
+pub unsafe extern "C" fn ts_draw(core: *mut TsCore, w: u32, h: u32, mono: f64, regions: u32, out: *mut TsFrame) -> i32 {
     guarded(FAILED, || {
+        // The audio thread's samples first: taken under the lock, analysed after it.
+        let (rate, reset) = {
+            // SAFETY: as in ts_feed_audio.
+            let Some(shared) = (unsafe { core.as_ref() }) else {
+                return FAILED;
+            };
+            let mut feed = shared.feed.lock().unwrap_or_else(|e| e.into_inner());
+            // SAFETY: as in ts_set_options - the drawing thread's own part.
+            let Some(inner) = (unsafe { inner(core) }) else {
+                return FAILED;
+            };
+            inner.drained.clear();
+            inner.drained.extend(feed.ring.drain(..));
+            (feed.rate, std::mem::replace(&mut feed.reset, false))
+        };
         // SAFETY: as in ts_set_options; `out` is NULL or a TsFrame the caller owns.
-        let (Some(core), Some(out)) = (unsafe { core.as_mut() }, unsafe { out.as_mut() }) else {
+        let (Some(core), Some(out)) = (unsafe { inner(core) }, unsafe { out.as_mut() }) else {
             return FAILED;
         };
         if !mono.is_finite() {
             return BAD_ARGUMENT;
         }
+        let views = core.state.opts.views;
+        if reset {
+            core.audio.analyzer = Analyzer::with_rate(rate);
+            core.audio.motion.reset();
+        }
+        core.audio.analyzer.spectrum_on = views.has(Views::EQ);
+        if !core.drained.is_empty() {
+            core.audio.analyzer.feed(&core.drained, rate as f32, mono);
+        }
+
         let (w, h) = (w.clamp(MIN_W, MAX_W), h.clamp(MIN_H, MAX_H));
-        core.screen.reset(w as usize, h as usize);
-        core.state.draw(&mut core.screen);
+        let (wu, hu) = (w as usize, h as usize);
+        let all = REGION_DASHBOARD | REGION_AUDIO;
+        let mut regions = if regions & all == 0 { all } else { regions & all };
+        if core.prev.w != wu || core.prev.h != hu {
+            regions = all; // a new size or new options: nothing old is worth keeping
+        }
+        if regions == all {
+            core.screen.reset(wu, hu);
+        } else {
+            // A region not asked for keeps its cells; the asked-for one is drawn afresh.
+            let lay = compose::layout(&core.state, wu, hu);
+            core.screen.reset(wu, hu);
+            core.screen.cells.copy_from_slice(&core.prev.cells);
+            let audio = lay.audio;
+            for y in 0..hu {
+                for x in 0..wu {
+                    let in_audio = audio.is_some_and(|a| a.contains(x, y));
+                    if in_audio == (regions == REGION_AUDIO) {
+                        core.screen.cells[y * wu + x] = BLANK;
+                    }
+                }
+            }
+        }
+        compose::draw(&mut core.state, &mut core.audio, &mut core.screen, mono, regions);
         core.screen.changed_rows(&core.prev, &mut core.dirty);
 
-        let width = w as usize;
+        let width = wu;
         core.out.resize(core.screen.cells.len(), to_c(&BLANK));
         for &y in &core.dirty {
             let span = y as usize * width..(y as usize + 1) * width;

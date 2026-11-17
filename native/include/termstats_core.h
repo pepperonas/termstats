@@ -7,18 +7,21 @@
  *
  * Return values of the int32_t functions: 0 ok, -1 caught panic or null pointer,
  * -2 bad argument. Pointers inside a TsFrame stay valid until the next call on the
- * same core. A core is not thread-safe: call it from one thread at a time.
+ * same core. A core is not thread-safe: call it from one thread at a time - with ONE
+ * exception, ts_feed_audio, which may be called from any thread (the audio thread) while
+ * another thread draws: it only copies the samples into a guarded ring of 2 seconds.
  */
 #ifndef TERMSTATS_CORE_H
 #define TERMSTATS_CORE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define TS_ABI 1
+#define TS_ABI 2
 
 /* Colours are 0xRRGGBB; TS_COLOR_DEFAULT means "the surface's own colour". */
 #define TS_COLOR_DEFAULT 0xFF000000u
@@ -31,6 +34,20 @@ extern "C" {
 #define TS_VIEW_CHARTS     16u
 #define TS_VIEW_PROCESSES  32u
 #define TS_VIEW_DASHBOARD  63u
+#define TS_VIEW_EQ         64u   /* microphone: 28-band equalizer */
+#define TS_VIEW_BPM        128u  /* microphone: tempo */
+#define TS_VIEW_LEVEL      256u  /* microphone: level in dB */
+#define TS_VIEW_AUDIO      448u
+
+/* ts_draw regions: which parts of the frame are drawn anew; a part not asked for keeps its
+ * cells from the previous ts_draw. 0 means both. A new size or new options draw both. */
+#define TS_REGION_DASHBOARD 1u
+#define TS_REGION_AUDIO     2u
+
+/* ts_audio_state: shown as text in the audio panels when not running. */
+#define TS_AUDIO_RUNNING       0
+#define TS_AUDIO_NO_PERMISSION 1
+#define TS_AUDIO_NO_DEVICE     2
 
 /* TsOptions.chrome: the header and footer lines and what they carry. */
 #define TS_CHROME_HEADER   1u
@@ -76,8 +93,14 @@ TsCore *ts_create(const TsOptions *opts);                  /* NULL on bad theme 
 void ts_free(TsCore *core);
 int32_t ts_set_options(TsCore *core, const TsOptions *opts);
 int32_t ts_sample(TsCore *core, double mono);              /* read the machine */
-int32_t ts_draw(TsCore *core, uint32_t w, uint32_t h, double mono, TsFrame *out);
-/* ts_draw clamps w to 40...1000 and h to 8...500; out->w/out->h are the sizes used. */
+int32_t ts_draw(TsCore *core, uint32_t w, uint32_t h, double mono, uint32_t regions, TsFrame *out);
+/* ts_draw clamps w to 40...1000 and h to 8...500; out->w/out->h are the sizes used. It also
+ * analyses the samples fed since the last call. With dashboard and audio views both on, the
+ * audio is a column on the right from 190 columns, else rows at the bottom of the body. */
+int32_t ts_feed_audio(TsCore *core, const float *mono, size_t n, double sample_rate);
+/* mono samples in -1...1 at sample_rate (4000...768000 Hz, else -2), ANY thread. A new rate
+ * drops what is buffered and starts the analysis afresh. */
+int32_t ts_audio_state(TsCore *core, int32_t state);       /* TS_AUDIO_*, else -2 */
 
 #ifdef __cplusplus
 }
