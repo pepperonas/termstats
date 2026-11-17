@@ -26,7 +26,7 @@ const RIGHT_COL_SHARE: f64 = 0.4;
 const NARROW_BELOW: usize = 92;
 const CHART_MIN_H: i64 = 13;
 const CHART_MAX_H: i64 = 12;
-const AXIS_W_PCT: usize = 3;
+pub(crate) const AXIS_W_PCT: usize = 3;
 const AXIS_W_RATE: usize = 5;
 const CHART_FADE_TOP: f64 = 0.55;
 /// The process table is re-read at most this often; partitions likewise, more rarely.
@@ -111,30 +111,36 @@ struct ProcRow {
     rss: u64,
 }
 
-#[derive(Clone, Copy)]
-struct Rect {
-    x: usize,
-    y: usize,
-    w: usize,
-    h: usize,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Rect {
+    pub x: usize,
+    pub y: usize,
+    pub w: usize,
+    pub h: usize,
 }
 
-struct Meter<'a> {
-    label: &'a str,
-    pct: f64,
-    value: Option<String>,
-    note: &'a str,
-    label_w: usize,
-    value_w: usize,
-    secondary: f64,
-    note_w: Option<usize>,
-    fill: f64,
-    peak: f64,
-    unit_w: usize,
+impl Rect {
+    pub fn contains(&self, x: usize, y: usize) -> bool {
+        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
+    }
+}
+
+pub(crate) struct Meter<'a> {
+    pub label: &'a str,
+    pub pct: f64,
+    pub value: Option<String>,
+    pub note: &'a str,
+    pub label_w: usize,
+    pub value_w: usize,
+    pub secondary: f64,
+    pub note_w: Option<usize>,
+    pub fill: f64,
+    pub peak: f64,
+    pub unit_w: usize,
 }
 
 impl<'a> Meter<'a> {
-    fn new(label: &'a str, pct: f64, fill: f64, peak: f64) -> Self {
+    pub(crate) fn new(label: &'a str, pct: f64, fill: f64, peak: f64) -> Self {
         Meter { label, pct, value: None, note: "", label_w: LABEL_W, value_w: VALUE_W, secondary: 0.0,
                 note_w: None, fill, peak, unit_w: 1 }
     }
@@ -183,7 +189,7 @@ pub struct State {
     peaks: HashMap<u64, (VecDeque<f64>, bool)>,
 }
 
-fn key(kind: u64, id: u64) -> u64 {
+pub(crate) fn key(kind: u64, id: u64) -> u64 {
     (kind << 40) | (id & 0xFF_FFFF_FFFF)
 }
 
@@ -474,7 +480,7 @@ impl State {
     // --- what a meter remembers ----------------------------------------------------------
 
     /// The fill to draw: eased in a live session, raw in a snapshot. Numbers are never eased.
-    fn shown(&mut self, k: u64, raw: f64) -> f64 {
+    pub(crate) fn shown(&mut self, k: u64, raw: f64) -> f64 {
         if !self.opts.live {
             return raw;
         }
@@ -484,8 +490,13 @@ impl State {
         entry.0
     }
 
+    /// Drop what a meter remembers, so the next value appears instead of easing in.
+    pub(crate) fn forget(&mut self, k: u64) {
+        self.eased.remove(&k);
+    }
+
     /// The high-water mark of the last PEAK_WINDOW samples.
-    fn peak(&mut self, k: u64, raw: f64) -> f64 {
+    pub(crate) fn peak(&mut self, k: u64, raw: f64) -> f64 {
         let entry = self.peaks.entry(k).or_insert_with(|| (VecDeque::with_capacity(PEAK_WINDOW), true));
         if entry.0.len() == PEAK_WINDOW {
             entry.0.pop_front();
@@ -502,7 +513,7 @@ impl State {
 
     // --- colour --------------------------------------------------------------------------
 
-    fn ramp(&self, t: f64) -> u32 {
+    pub(crate) fn ramp(&self, t: f64) -> u32 {
         self.opts.theme.ramp[(clean(t).clamp(0.0, 1.0) * 255.0).round() as usize]
     }
 
@@ -512,7 +523,7 @@ impl State {
 
     // --- meters --------------------------------------------------------------------------
 
-    fn bar(&self, scr: &mut Screen, x: usize, y: usize, width: usize, pct: f64, secondary: f64, peak: Option<f64>) {
+    pub(crate) fn bar(&self, scr: &mut Screen, x: usize, y: usize, width: usize, pct: f64, secondary: f64, peak: Option<f64>) {
         if width == 0 {
             return;
         }
@@ -551,7 +562,7 @@ impl State {
     }
 
     /// `label  ▉▉▉▉╌╌╌  62.5%  note` on exactly one line.
-    fn meter(&self, scr: &mut Screen, x: usize, y: usize, total: usize, m: Meter) {
+    pub(crate) fn meter(&self, scr: &mut Screen, x: usize, y: usize, total: usize, m: Meter) {
         let th = self.opts.theme;
         let occupied = (m.pct + m.secondary.max(0.0)).min(100.0);
         let value = m.value.unwrap_or_else(|| fmt_pct(occupied));
@@ -759,6 +770,12 @@ impl State {
     /// Rasterise series into braille dots: a filled area from the floor, lines drawn over it
     /// and joined vertically, a fixed-width y axis, one row of time labels.
     fn chart(&self, scr: &mut Screen, r: Rect, series: &[(Vec<f64>, u32, bool)], ylim: Option<(f64, f64)>, axis_w: usize) {
+        self.chart_span(scr, r, series, ylim, axis_w, HISTORY_LEN as f64 * self.opts.interval);
+    }
+
+    /// `chart` for a history with its own window of `window` seconds (the audio histories).
+    pub(crate) fn chart_span(&self, scr: &mut Screen, r: Rect, series: &[(Vec<f64>, u32, bool)], ylim: Option<(f64, f64)>,
+                             axis_w: usize, window: f64) {
         let th = self.opts.theme;
         if r.w <= axis_w || r.h < 2 || series.is_empty() {
             return;
@@ -848,7 +865,6 @@ impl State {
         }
         // The time axis: "now" at the right edge, the window's start at the left, the middle
         // between them - and a label that would touch its neighbour is left out.
-        let window = HISTORY_LEN as f64 * self.opts.interval;
         let labels = [format!("-{:.0}s", window), format!("-{:.0}s", window / 2.0), "now".to_string()];
         let y = r.y + plot_h;
         let mut used: Vec<(usize, usize)> = Vec::new();
@@ -883,12 +899,12 @@ impl State {
 
     // --- frame ---------------------------------------------------------------------------
 
-    fn chrome(&self) -> (usize, usize) {
+    pub(crate) fn chrome(&self) -> (usize, usize) {
         if self.opts.no_border { (1, 2) } else if self.opts.compact { (2, 2) } else { (2, 4) }
     }
 
     /// Draw a panel's frame and title; returns the rectangle its body may use.
-    fn panel(&self, scr: &mut Screen, r: Rect, title: &str, subtitle: &[(String, u32)]) -> Rect {
+    pub(crate) fn panel(&self, scr: &mut Screen, r: Rect, title: &str, subtitle: &[(String, u32)]) -> Rect {
         let th = self.opts.theme;
         if r.w < 4 || r.h == 0 {
             return Rect { x: r.x, y: r.y, w: 0, h: 0 };
@@ -934,7 +950,7 @@ impl State {
         Rect { x: r.x + 1 + pad, y: r.y + 1, w: r.w - 2 - 2 * pad, h: r.h - 2 }
     }
 
-    fn header(&mut self, scr: &mut Screen, width: usize) {
+    pub(crate) fn header(&mut self, scr: &mut Screen, width: usize) {
         let th = self.opts.theme;
         let load = sys::loadavg();
         let ncpu = self.core_pct.len().max(1);
@@ -990,7 +1006,7 @@ impl State {
         scr.put(at, 0, width, &version, th.faint, false);
     }
 
-    fn footer(&self, scr: &mut Screen, y: usize, width: usize) {
+    pub(crate) fn footer(&self, scr: &mut Screen, y: usize, width: usize) {
         let th = self.opts.theme;
         let chrome = self.opts.chrome;
         let brand = if chrome.has(Chrome::BRAND) { format!("© {} Martin Pfeffer | celox.io ", local_year()) } else { String::new() };
@@ -1240,4 +1256,4 @@ fn local_year() -> i32 {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

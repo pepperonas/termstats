@@ -9,7 +9,7 @@ fn opts(live: bool) -> Options {
 }
 
 /// A machine with `ncores` cores, `ndisks` partitions and a full history.
-fn machine(ncores: usize, ndisks: usize, live: bool) -> State {
+pub(crate) fn machine(ncores: usize, ndisks: usize, live: bool) -> State {
     let mut s = State::new(opts(live));
     s.host = "testhost".to_string();
     s.primed = true;

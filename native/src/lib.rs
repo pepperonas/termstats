@@ -3,7 +3,9 @@
 //! dashboard - a picture on the desktop, say - links the same code instead of a copy.
 
 pub mod audio;
+pub mod audio_ui;
 pub mod catalog;
+pub mod compose;
 pub mod color;
 pub mod ffi;
 pub mod motion;

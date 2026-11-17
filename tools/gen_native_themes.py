@@ -57,7 +57,26 @@ def render():
                 f"        wordmark_bg: {tone(th.wordmark_bg)}, wordmark_fg: {tone(th.wordmark_fg)}, bg: {tone(th.bg)},",
                 "    },"]
     out += ["];", ""]
+    out += big_font()
     return "\n".join(out)
+
+
+def big_font():
+    """The headline digits of the microphone screens: the same 3x5 shapes as theme.BIG_FONT,
+    "#" a filled square and "." an empty one, painted by the core in its bar glyph."""
+    out = ["// The five-row font of the level and tempo headlines (theme.BIG_FONT).",
+           f"pub const BIG_DIGIT_ROWS: usize = {T.BIG_DIGIT_ROWS};",
+           f"pub const BIG_DIGIT_SCALE: usize = {T.BIG_DIGIT_SCALE};",
+           f"pub const BIG_DIGIT_GAP: usize = {T.BIG_DIGIT_GAP};",
+           f"pub const BIG_DIGIT_MIN_ROWS: usize = {T.BIG_DIGIT_MIN_ROWS};",
+           f"pub const METRO_W: usize = {T.METRO_W};",
+           "",
+           f"pub static BIG_FONT: &[(char, [&str; {T.BIG_DIGIT_ROWS}])] = &["]
+    for ch, rows in T.BIG_FONT.items():
+        cells = ", ".join(f'"{r}"' for r in rows)
+        out.append(f"    ({ch!r}, [{cells}]),")
+    out += ["];", ""]
+    return out
 
 
 TARGET = ROOT / "native" / "src" / "themes.rs"
