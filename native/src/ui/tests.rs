@@ -748,3 +748,21 @@ fn the_process_count_is_shown_only_when_it_was_counted() {
     let header = row(&drawn(&mut s, 140, 42), 0);
     assert!(!header.contains("proc") && header.contains(" up "), "a count that was never measured is not a zero: {header}");
 }
+
+#[test]
+fn a_view_with_room_is_never_dropped_at_80x24() {
+    // A deterministic machine (10 cores, 2 disks + io): alone or beside one cheap neighbour,
+    // the disk, the charts and the processes all fit 22 body rows, so all of them must show.
+    let names = [(Views::CPU, 0), (Views::MEMORY, 1), (Views::NETWORK, 2), (Views::DISK, 3), (Views::CHARTS, 4), (Views::PROCESSES, 5)];
+    for views in [Views::DISK, Views::CHARTS, Views::PROCESSES,
+                  Views::MEMORY | Views::PROCESSES, Views::NETWORK | Views::CHARTS,
+                  Views::MEMORY | Views::NETWORK | Views::DISK, Views::CPU | Views::DISK] {
+        let mut s = machine(10, 2, true);
+        s.opts.views = Views(views);
+        let all = text(&drawn(&mut s, 80, 24));
+        let on = panels_on(&all);
+        for (bit, i) in names {
+            assert_eq!(on[i], views & bit != 0, "views {views:#b}: panel {i}\n{all}");
+        }
+    }
+}
