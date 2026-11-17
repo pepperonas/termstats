@@ -486,6 +486,80 @@ and 7 MB at 140×42 against 5.4 % / 36 MB; ~0.7 ms CPU per frame; ~9 KB/s to the
   maintains that) - `--size`/`--samples` exist so a service can ask the native core for a
   frame instead.
 
+## Audio in the native core (desktop-core branch, ABI 2)
+
+The equalizer, level and tempo screens exist in the core too, for the wallpaper app that
+links it: the app captures the microphone and feeds samples in, the core analyses and draws
+them into the same cell grid as the dashboard. A PORT of the Python originals, which stay the
+specification - `audio.py`, `motion.py` and the audio bodies of `cli.py`.
+
+- `native/src/audio/` - `fft.rs` (iterative radix-2, magnitudes of bins 0..=n/2, checked
+  against a naive DFT), `spectrum.rs` (rolling 4096 window, symmetric Hann, 28 log bands with
+  numpy's exact `logspace` edges, global ceiling, peak hold), `bpm.rs` (the onset + IOI-median
+  estimator, stale counted from the last ONSET), `mod.rs` (`Analyzer::feed(block, rate, now)`:
+  any block length, re-chunked to 1024 with the remainder carried; each block stamped with the
+  time its last sample arrived, so blocks drained in one call get increasing times ending at
+  or before `now`; a new rate starts afresh; NaN samples become 0; rates outside
+  4000...768000 Hz are ignored). `DemoAudio` is the synth for tests and the bench.
+- **Per-block constants are scaled to the real rate** (`Scale`, k = block duration / 1024 at
+  44.1 kHz): rates `1-(1-c)^k`, decays `d^k`, block counts `n/k`, steps `s*k`. Identity at
+  44.1 kHz, where `at_44_1_khz_the_numbers_are_pythons` holds db, smoothing, tempo, beats,
+  confidence, kick band and all 28 bands to Python's printed numbers. Python itself does NOT
+  scale (at 48 kHz it runs ~9 % faster); the time-based tempo constants need no scaling.
+- **The FFT runs only while `Views::EQ` is on.** Without it the kick band (what the tempo
+  needs) is measured by Goertzel on the bass bins - the same magnitudes. ⚠️ One Goertzel
+  chain per bin was SLOWER than the whole FFT (117 vs 52 µs); the bins now run in passes of
+  16 side by side (25 µs). ⚠️ At low rates the kick band has 40+ bins - the first version
+  capped them at 32 and kept stale magnitudes for the rest (pinned at 8 kHz).
+- `native/src/motion.rs` - motion.py: eased bars, trails, peak hold with gravity, beat
+  envelope snapped to 0 below ENV_FLOOR, VU meter, metronome phase, MAX_DT. Always on in the
+  core (it is a live display); time only from `mono`.
+- `native/src/audio_ui.rs` - every audio view is its own titled panel (`equalizer`,
+  `level`, `tempo`): the equalizer on top stretches; level and tempo below, side by side when
+  `mix_columns(body width)` holds two columns of MIX_MIN_COLUMN_W (no HUD there, the heads
+  padded to equal height before the meters as in `mix_body`, the beat dot in the tempo
+  title), stacked as two `db_body`/`bpm_body` panels otherwise; one view alone takes the
+  region. Big digits only if the equalizer keeps EQ_MIN_ROWS. `ts_audio_state` 1/2 replaces
+  every panel body with `microphone access is off` + `System Settings > Privacy > Microphone`
+  or `no input device`, no bars, `---` where the number would be. Never fed = the quiet
+  state (`---`, the floor level), not an error.
+- `BIG_FONT` (and its row/scale/gap constants, METRO_W) is GENERATED into `themes.rs` by
+  `tools/gen_native_themes.py` - never edited by hand.
+- `native/src/compose.rs` - header and footer stay the dashboard's. Audio only: the whole
+  body. Both: from AUDIO_COLUMN_FROM = 190 columns a right column (40 %, 60...120), the
+  dashboard drawn into a screen of the remaining width as if that were its terminal and
+  copied in; narrower, full-width rows at the BOTTOM of the body (at most half), the
+  dashboard's own budget giving up processes and charts first. The terminal program
+  (`main.rs`) never sets audio bits and still calls `State::draw` directly.
+- C interface, `TS_ABI 2`: `ts_feed_audio(core, mono, n, rate)` from ANY thread - locks a
+  `Mutex` ring of 2 s, drops the oldest on overflow, a new rate clears it; nothing else.
+  `ts_draw(core, w, h, mono, regions, out)` drains the ring on the drawing thread and
+  analyses, then draws the asked-for regions (1 dashboard, 2 audio, 0 = both); a region not
+  asked for keeps its cells from the previous frame; a size or options change draws both.
+  `ts_audio_state(core, 0|1|2)`. ⚠️ Soundness: the drawing thread's part of `TsCore` lives in
+  an `UnsafeCell<Inner>` and every function reaches the core through a SHARED reference -
+  with `&mut TsCore` in `ts_draw`, the feed thread's `&core.feed` would alias it.
+- `--bench` prints `audio block (1024, equalizer on/off)`; measured on this Mac (load ~40):
+  **~52 µs with the FFT, ~25 µs without** - 43 blocks a second at 44.1 kHz is ~0.2 % of a
+  core with the equalizer.
+- Pins: `tests/test_native.py::test_the_audio_constants_agree_in_both_programs` (51
+  constants plus the equalizer labels, read from the Rust sources); Rust tests in
+  `audio/tests.rs`, `motion.rs`, `audio_ui/tests.rs`, `compose/tests.rs`, `ffi/tests.rs`.
+  `cargo test --lib dump_frames -- --ignored --nocapture` prints a composed 200x60 and an
+  audio-only 120x36 frame.
+- Mutation batch (34): 25 caught at once; of the 9 blind, 8 were closed with new pins (peak hold,
+  symmetric vs periodic Hann, a tempo dropped while beats still come - the stale rule is
+  only visible when onsets get too FEW but not too OLD -, the SuperFlux gate - only a slow
+  crescendo shows it -, the afterglow glyph, a lower part taller than its rect, a label past
+  the edge, a rate that changes and changes back between two draws), 1 equivalent (the
+  dashboard's x offset in the blit is always 0). ⚠️ The first rerun failed to COMPILE: the
+  harness's `git checkout` of a mutated file took an uncommitted change along - commit
+  before every batch (the old lesson, met again).
+- Ported as they are (Python quirks, listed rather than fixed): `eq_columns` subtracts the
+  panel chrome from a width that is already the body width (fewer bars than fit);
+  `db_min` starts at 0 and `db_max` at the floor, so before the first block the stats line
+  says `min 100.0 max 20.0`.
+
 ## History and recommendation (0.10.0)
 
 User 2026-11-15: record the load as sparingly as possible and, after two weeks, recommend a
