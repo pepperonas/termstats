@@ -265,7 +265,7 @@ fn the_picture_fills_the_terminal_to_the_last_row() {
 
 #[test]
 fn a_snapshot_has_no_exit_hint() {
-    let mut s = machine(10, 2, false);
+    let mut s = machine(10, 5, false);
     assert!(!text(&drawn(&mut s, 140, 42)).contains("to exit"));
 }
 
@@ -636,7 +636,11 @@ fn the_terminal_options_are_the_whole_dashboard_with_all_its_chrome() {
 #[test]
 fn default_options_draw_what_they_drew_before() {
     // The panels the terminal program showed before the views existed (a --size snapshot).
-    let mut s = sampled(Views::DASHBOARD, false);
+    // A machine filled by hand, not the real one: which panels fit at 80x24 depends on the
+    // core count and the partitions (a 3- or 4-core CI runner keeps its disk panel), so a
+    // reading of the real machine made this test pass here and fail in CI. Ten cores and five
+    // partitions are the machine these panel sets were recorded on.
+    let mut s = machine(10, 5, false);
     for (w, h, wanted) in [(140, 42, [true; 6]), (80, 24, [true, true, true, false, false, false]),
                            (60, 20, [true, true, true, false, false, false])] {
         let all = text(&drawn(&mut s, w, h));
