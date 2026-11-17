@@ -654,7 +654,7 @@ fn every_view_subset_draws_inside_the_screen() {
             let on = panels_on(&all);
             for (i, &bit) in VIEW_BITS.iter().enumerate() {
                 assert!(!on[i] || views & bit != 0, "views {views:#b} {w}x{h}: panel {i} drawn while off\n{all}");
-                assert!(on[i] || views & bit == 0 || dropped_for_room(bit, w),
+                assert!(on[i] || views & bit == 0 || dropped_for_room(views, bit, w),
                         "views {views:#b} {w}x{h}: panel {i} missing while on\n{all}");
             }
         }
@@ -663,9 +663,11 @@ fn every_view_subset_draws_inside_the_screen() {
 
 /// The one way a view that is on may still be missing: on a terminal narrower than
 /// NARROW_BELOW everything stacks, and the disk, the charts and the processes go when the
-/// rows run out (as they did before the views). From 100x30 on, every view that is on shows.
-fn dropped_for_room(bit: u32, w: usize) -> bool {
-    w < NARROW_BELOW && bit & (Views::DISK | Views::CHARTS | Views::PROCESSES) != 0
+/// rows run out (as they did before the views). Rows only run out when a view laid out
+/// ABOVE it is on too (cpu, memory, network, disk, charts, processes - the bit order), so a
+/// view with nothing above it must always show. From 100x30 on, every view that is on shows.
+fn dropped_for_room(views: u32, bit: u32, w: usize) -> bool {
+    w < NARROW_BELOW && bit & (Views::DISK | Views::CHARTS | Views::PROCESSES) != 0 && views & (bit - 1) != 0
 }
 
 #[test]
@@ -736,4 +738,13 @@ fn without_cpu_the_stack_is_one_row_and_without_charts_or_processes_the_rest_sta
     for y in 8..41 {
         assert!(row(&scr, y).trim().is_empty(), "row {y}\n{}", text(&scr));
     }
+}
+
+#[test]
+fn the_process_count_is_shown_only_when_it_was_counted() {
+    let mut s = machine(10, 2, true);
+    assert!(row(&drawn(&mut s, 140, 42), 0).contains(" proc "), "the control: the full dashboard counts them");
+    s.opts.views = Views(Views::DASHBOARD & !Views::PROCESSES);
+    let header = row(&drawn(&mut s, 140, 42), 0);
+    assert!(!header.contains("proc") && header.contains(" up "), "a count that was never measured is not a zero: {header}");
 }

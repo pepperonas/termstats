@@ -928,8 +928,11 @@ impl State {
         col = scr.put(col, 0, width, " up ", th.muted, false);
         let days = (uptime / 86400.0) as u64;
         col = scr.put(col, 0, width, &format!("{:3}d {:02}h", days.min(999), ((uptime % 86400.0) / 3600.0) as u64), th.text, false);
-        col = scr.put(col, 0, width, " proc ", th.muted, false);
-        col = scr.put(col, 0, width, &format!("{:5}", self.nproc.min(99999)), th.text, false);
+        // Without the process view nothing was counted: no field rather than a made-up zero.
+        if self.opts.views.has(Views::PROCESSES) {
+            col = scr.put(col, 0, width, " proc ", th.muted, false);
+            col = scr.put(col, 0, width, &format!("{:5}", self.nproc.min(99999)), th.text, false);
+        }
 
         // The tail degrades in steps decided by the WIDTH alone: sparkline + clock, clock, none.
         let chrome = self.opts.chrome;
