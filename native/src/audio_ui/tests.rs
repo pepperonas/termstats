@@ -262,3 +262,22 @@ fn with_the_microphone_off_level_and_tempo_always_show_dashes() {
         }
     }
 }
+
+#[test]
+fn a_panel_too_short_for_the_message_still_shows_its_dashes_first() {
+    for mic in [Mic::NoPermission, Mic::NoDevice] {
+        let mut audio = heard(1.0);
+        audio.mic = mic;
+        for views in [Views::LEVEL, Views::BPM] {
+            for h in 3..=4 {
+                // a frame of two rows: one or two body rows, no more than the message has lines
+                let mut s = state(views);
+                let mut scr = Screen::new(60, h);
+                let r = Rect { x: 0, y: 0, w: 60, h };
+                draw(&mut s, &mut audio, &mut scr, r, 1.0);
+                let all = text(&scr, r);
+                assert!(all.split('│').any(|seg| seg.trim() == "---"), "views {views} {mic:?} h {h}\n{all}");
+            }
+        }
+    }
+}
