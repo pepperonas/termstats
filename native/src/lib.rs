@@ -6,6 +6,7 @@ pub mod audio;
 pub mod catalog;
 pub mod color;
 pub mod ffi;
+pub mod motion;
 pub mod recommend;
 pub mod record;
 pub mod screen;
