@@ -389,3 +389,24 @@ fn at_a_low_rate_every_kick_bin_is_measured_without_the_fft() {
         assert!((x - y).abs() <= 1e-3 * x.max(1.0), "bin {bin}: {x} vs {y}");
     }
 }
+
+#[test]
+fn the_superflux_lag_spans_the_same_time_at_any_rate() {
+    let block = |sr: f64| BLOCK as f64 / sr;
+    let reference = (bpm::SF_LAG as f64 * block(44100.0), bpm::SF_WIN as f64 * block(44100.0));
+    let at44 = Analyzer::with_rate(44100.0);
+    assert_eq!((at44.tempo.lag(), at44.tempo.win()), (bpm::SF_LAG, bpm::SF_WIN), "identity at the reference rate");
+    for sr in [96000.0, 48000.0, 22050.0] {
+        let an = Analyzer::with_rate(sr);
+        let (lag, win) = (an.tempo.lag() as f64 * block(sr), an.tempo.win() as f64 * block(sr));
+        assert!((lag - reference.0).abs() <= block(sr) / 2.0 + 1e-12, "{sr}: lag {lag} vs {}", reference.0);
+        assert!((win - reference.1).abs() <= block(sr) / 2.0 + 1e-12, "{sr}: win {win} vs {}", reference.1);
+    }
+}
+
+#[test]
+fn at_96_khz_the_click_train_still_locks() {
+    let (an, _) = click_train(96000.0, 2000, 12.0, 12.0);
+    let bpm = an.bpm.unwrap_or(0.0);
+    assert!((124.0..=128.0).contains(&bpm), "{bpm}");
+}

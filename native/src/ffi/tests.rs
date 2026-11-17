@@ -272,6 +272,11 @@ fn header_matches_the_rust_side() {
     assert!(header.contains("int32_t ts_draw(TsCore *core, uint32_t w, uint32_t h, double mono, uint32_t regions, TsFrame *out);"));
     assert!(header.contains("int32_t ts_feed_audio(TsCore *core, const float *mono, size_t n, double sample_rate);"));
     assert!(header.contains("#include <stddef.h>"), "size_t needs stddef.h");
+    // the one thread-safety exception does not reach ts_free - said in the note and at the prototype
+    let note = header.split("*/").next().unwrap();
+    assert!(note.contains("BEFORE\n * ts_free"), "threading note");
+    let free = header.lines().find(|l| l.starts_with("void ts_free(")).unwrap();
+    assert!(free.contains("stop and join the audio feed first"), "{free}");
     for function in ["ts_abi_version", "ts_version", "ts_theme_count", "ts_theme_name", "ts_create", "ts_free",
                      "ts_set_options", "ts_sample", "ts_draw", "ts_feed_audio", "ts_audio_state"] {
         assert!(header.contains(&format!("{function}(")), "{function} missing from the header");
@@ -449,5 +454,53 @@ fn a_rate_that_changes_and_changes_back_still_starts_afresh() {
     assert_eq!(ts_feed_audio(core, &[0.25; 2048], 44100.0), 0);
     assert_eq!(ts_draw(core, 120, 36, 2.0, &mut frame), 0);
     assert_eq!(inner_of(core).audio.analyzer.blocks, 2);
+    ts_free(core);
+}
+
+fn ring(core: *mut TsCore) -> (usize, usize, f64) {
+    let feed = unsafe { &(*core).feed }.lock().unwrap();
+    (feed.ring.len(), feed.ring.capacity(), feed.rate)
+}
+
+#[test]
+fn feeding_never_allocates_once_the_rate_is_set() {
+    let core = audio_core(Views::AUDIO);
+    assert_eq!(ts_feed_audio(core, &[0.1; 10], 48000.0), 0);
+    let (_, cap, _) = ring(core);
+    assert!(cap >= 96000, "{cap}");
+    for _ in 0..200 {
+        assert_eq!(ts_feed_audio(core, &[0.1; 1000], 48000.0), 0);
+        assert_eq!(ring(core).1, cap, "the ring grew");
+    }
+    assert_eq!(ts_feed_audio(core, &[0.1; 10], 96000.0), 0);
+    assert!(ring(core).1 >= 192000, "a new rate reserves its two seconds");
+    ts_free(core);
+}
+
+#[test]
+fn a_bad_draw_leaves_the_ring_alone() {
+    let core = audio_core(Views::AUDIO);
+    assert_eq!(ts_feed_audio(core, &[0.1; 5000], 44100.0), 0);
+    assert_eq!(unsafe { super::ts_draw(core, 120, 36, 1.0, 3, std::ptr::null_mut()) }, -1);
+    let mut frame = empty_frame();
+    assert_eq!(ts_draw(core, 120, 36, f64::NAN, &mut frame), -2);
+    assert_eq!(ring(core).0, 5000, "the samples wait for a draw that can use them");
+    ts_free(core);
+}
+
+#[test]
+fn the_rate_has_one_source_of_truth() {
+    let core = audio_core(Views::AUDIO);
+    let rate = 47999.99; // not a float32: the two sides must not disagree about it
+    assert_eq!(ts_feed_audio(core, &[0.1; 3000], rate), 0);
+    let mut frame = empty_frame();
+    assert_eq!(ts_draw(core, 120, 36, 1.0, &mut frame), 0);
+    let analyzer_rate = inner_of(core).audio.analyzer.sample_rate();
+    assert_eq!(analyzer_rate, ring(core).2);
+    let blocks = inner_of(core).audio.analyzer.blocks;
+    assert_eq!(blocks, 2);
+    assert_eq!(ts_feed_audio(core, &[0.1; 1100], rate), 0);
+    assert_eq!(ts_draw(core, 120, 36, 1.1, &mut frame), 0);
+    assert_eq!(inner_of(core).audio.analyzer.blocks, 4, "the analysis carried on (952 left over + 1100)");
     ts_free(core);
 }

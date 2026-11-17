@@ -8,7 +8,8 @@
 //!
 //! One function may be called from another thread: `ts_feed_audio`, from the audio thread
 //! of the caller. It only locks the feed ring, copies the samples in and returns; it never
-//! touches what the drawing thread owns. Everything else of a core lives in an `UnsafeCell`
+//! touches what the drawing thread owns. It must not race `ts_free`: the caller stops and
+//! joins its feed before freeing the core (the header says so at both places). Everything else of a core lives in an `UnsafeCell`
 //! that only the one drawing thread reaches - so the two never alias.
 
 use crate::audio::Analyzer;
@@ -184,8 +185,13 @@ pub unsafe extern "C" fn ts_create(opts: *const TsOptions) -> *mut TsCore {
     })
 }
 
+/// The caller stops and joins its audio feed first: `ts_feed_audio` is the one function a
+/// second thread may call, and a call racing (or following) this one uses freed memory.
+/// This is a documented contract, not something the core can check.
+///
 /// # Safety
-/// `core` is NULL or a pointer from `ts_create` that has not been freed; it is not used afterwards.
+/// `core` is NULL or a pointer from `ts_create` that has not been freed; it is not used
+/// afterwards - by no thread, in particular not by a still running `ts_feed_audio`.
 #[no_mangle]
 pub unsafe extern "C" fn ts_free(core: *mut TsCore) {
     guarded((), || {
@@ -250,6 +256,9 @@ pub unsafe extern "C" fn ts_feed_audio(core: *mut TsCore, mono: *const f32, n: u
         if !(sample_rate.is_finite() && (RATE_MIN..=RATE_MAX).contains(&sample_rate)) {
             return BAD_ARGUMENT;
         }
+        // The ONE value of the rate from here on: the analyzer takes it as f32, so the ring
+        // stores what survives that - otherwise a rate like 47999.99 would read as a change.
+        let sample_rate = sample_rate as f32 as f64;
         if n == 0 {
             return OK;
         }
@@ -265,6 +274,9 @@ pub unsafe extern "C" fn ts_feed_audio(core: *mut TsCore, mono: *const f32, n: u
             feed.ring.clear();
             feed.rate = sample_rate;
             feed.reset = true;
+            // Reserved once per rate: the ring never holds more than `cap`, so no later
+            // feed allocates (the audio thread must not).
+            feed.ring.reserve(cap);
         }
         let overflow = ((feed.ring.len() + samples.len()).saturating_sub(cap)).min(feed.ring.len());
         feed.ring.drain(..overflow);
@@ -300,7 +312,14 @@ pub unsafe extern "C" fn ts_audio_state(core: *mut TsCore, state: i32) -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn ts_draw(core: *mut TsCore, w: u32, h: u32, mono: f64, regions: u32, out: *mut TsFrame) -> i32 {
     guarded(FAILED, || {
-        // The audio thread's samples first: taken under the lock, analysed after it.
+        // Arguments first: a call that cannot draw must not take the samples away.
+        if core.is_null() || out.is_null() {
+            return FAILED;
+        }
+        if !mono.is_finite() {
+            return BAD_ARGUMENT;
+        }
+        // The audio thread's samples: taken under the lock, analysed after it.
         let (rate, reset) = {
             // SAFETY: as in ts_feed_audio.
             let Some(shared) = (unsafe { core.as_ref() }) else {
@@ -319,9 +338,6 @@ pub unsafe extern "C" fn ts_draw(core: *mut TsCore, w: u32, h: u32, mono: f64, r
         let (Some(core), Some(out)) = (unsafe { inner(core) }, unsafe { out.as_mut() }) else {
             return FAILED;
         };
-        if !mono.is_finite() {
-            return BAD_ARGUMENT;
-        }
         let views = core.state.opts.views;
         if reset {
             core.audio.analyzer = Analyzer::with_rate(rate);

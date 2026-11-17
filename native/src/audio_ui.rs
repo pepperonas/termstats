@@ -281,8 +281,12 @@ impl Ctx<'_> {
         let peak = self.state.peak(key(K_AUDIO, A_DB_PEAK), pct);
         rows.push(Row::Meter { label: "level", pct, value: format!("{:6.1}dB", spl(db)), label_w: 9, value_w: 8, unit_w: 2,
                                fill: self.view.meter, peak });
-        rows.push(Row::Text(vec![("min ".into(), th.label, false), (format!("{:.1}", spl(db_min)), th.soft, false),
-                                 ("   max ".into(), th.label, false), (format!("{:.1}", spl(db_max)), th.soft, false),
+        // Before the first block there are no extremes (Python would print min 100.0 max 20.0,
+        // its starting values - a deliberate difference).
+        let (lo, hi) = if self.audio.analyzer.blocks == 0 { (" --".to_string(), " --".to_string()) }
+                       else { (format!("{:.1}", spl(db_min)), format!("{:.1}", spl(db_max))) };
+        rows.push(Row::Text(vec![("min ".into(), th.label, false), (lo, th.soft, false),
+                                 ("   max ".into(), th.label, false), (hi, th.soft, false),
                                  (format!("   {SEP}   beats "), th.label, false), (format!("{beats}"), th.soft, false)]));
         rows
     }
@@ -513,9 +517,20 @@ fn paint_eq(ctx: &mut Ctx, scr: &mut Screen, r: Rect) {
 // Bodies and panels
 // ---------------------------------------------------------------------------------
 
+/// The rows a body starts with: the status line and a gap, or nothing (see `hud_owner`).
+fn hud_rows(hud: bool) -> Vec<Row> {
+    if hud { vec![Row::Hud, Row::Blank] } else { Vec::new() }
+}
+
+/// Big digits when the body holds them: BIG_DIGIT_MIN_ROWS counts the status line and its
+/// gap, which a body without the status line does not spend.
+fn big_fits(rows: usize, hud: bool) -> bool {
+    rows + if hud { 0 } else { 2 } >= BIG_DIGIT_MIN_ROWS
+}
+
 fn db_rows(ctx: &mut Ctx, width: usize, rows: usize, hud: bool) -> Vec<Row> {
-    let mut out = if hud { vec![Row::Hud, Row::Blank] } else { Vec::new() };
-    out.extend(ctx.level_block(rows >= BIG_DIGIT_MIN_ROWS));
+    let mut out = hud_rows(hud);
+    out.extend(ctx.level_block(big_fits(rows, hud)));
     let used: usize = out.iter().map(Row::height).sum();
     let remaining = rows as i64 - used as i64 - 2;
     if remaining >= AUDIO_CHART_MIN_H as i64 {
@@ -527,9 +542,9 @@ fn db_rows(ctx: &mut Ctx, width: usize, rows: usize, hud: bool) -> Vec<Row> {
     out
 }
 
-fn bpm_rows(ctx: &mut Ctx, width: usize, rows: usize) -> Vec<Row> {
-    let mut out = vec![Row::Hud, Row::Blank];
-    out.extend(ctx.tempo_block(rows >= BIG_DIGIT_MIN_ROWS));
+fn bpm_rows(ctx: &mut Ctx, width: usize, rows: usize, hud: bool) -> Vec<Row> {
+    let mut out = hud_rows(hud);
+    out.extend(ctx.tempo_block(big_fits(rows, hud)));
     let used: usize = out.iter().map(Row::height).sum();
     let remaining = rows as i64 - used as i64 - 2;
     if remaining >= AUDIO_CHART_MIN_H as i64 {
@@ -574,20 +589,43 @@ fn side_by_side_rows(big: bool) -> usize {
     if big { BIG_DIGIT_ROWS + 3 + 2 } else { 3 }
 }
 
-/// Rows of a stacked level body without a chart (hud, gap, block).
-fn level_rows(big: bool) -> usize {
-    2 + if big { BIG_DIGIT_ROWS + 4 } else { 3 }
+/// Rows of a stacked level body without a chart ([hud, gap,] block).
+fn level_rows(big: bool, hud: bool) -> usize {
+    2 * usize::from(hud) + if big { BIG_DIGIT_ROWS + 4 } else { 3 }
 }
 
-/// Rows of a stacked tempo body without a chart (hud, gap, block with the metronome).
-fn tempo_rows(big: bool) -> usize {
-    2 + if big { BIG_DIGIT_ROWS + 5 } else { 3 }
+/// Rows of a stacked tempo body without a chart ([hud, gap,] block with the metronome).
+fn tempo_rows(big: bool, hud: bool) -> usize {
+    2 * usize::from(hud) + if big { BIG_DIGIT_ROWS + 5 } else { 3 }
+}
+
+/// The status line (beat dot, BPM, dB, confidence) is drawn at most ONCE in the region:
+/// in the equalizer when it is on; else in the one level or tempo panel; with level and
+/// tempo both on and no equalizer, nowhere - each shows its own number, and the tempo
+/// panel's title carries the beat dot (as Python's wide mix does).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum HudOwner {
+    Eq,
+    Lower,
+    Nobody,
+}
+
+fn hud_owner(views: Views) -> HudOwner {
+    match (views.has(Views::EQ), views.has(Views::LEVEL), views.has(Views::BPM)) {
+        (true, _, _) => HudOwner::Eq,
+        (false, true, true) => HudOwner::Nobody,
+        _ => HudOwner::Lower,
+    }
 }
 
 fn subtitle(ctx: &Ctx, text: &str) -> Vec<(String, u32)> {
     vec![(format!(" {SEP} {text}"), ctx.th().muted)]
 }
 
+/// Without a microphone (`ts_audio_state` 1/2): the message, no bars. The level and tempo
+/// panels ALWAYS show `---` where their number would be - in big digits when they fit
+/// under the message, else on one line (first, when even that does not fit under it).
+/// The equalizer panel shows the message only.
 fn message(ctx: &mut Ctx, scr: &mut Screen, body: Rect, number: bool) {
     let th = ctx.th();
     let lines: &[(&str, u32)] = match ctx.audio.mic {
@@ -595,9 +633,16 @@ fn message(ctx: &mut Ctx, scr: &mut Screen, body: Rect, number: bool) {
         _ => &[("no input device", th.text)],
     };
     let mut rows: Vec<Row> = lines.iter().map(|&(t, c)| Row::Text(vec![(t.to_string(), c, false)])).collect();
-    if number && body.h >= rows.len() + 1 + BIG_DIGIT_ROWS {
-        rows.push(Row::Blank);
-        rows.extend(ctx.big_number("---", th.muted));
+    let dashes = || Row::Text(vec![("---".to_string(), th.muted, true)]);
+    if number {
+        if body.h >= rows.len() + 1 + BIG_DIGIT_ROWS {
+            rows.push(Row::Blank);
+            rows.extend(ctx.big_number("---", th.muted));
+        } else if body.h > rows.len() {
+            rows.push(dashes());
+        } else {
+            rows.insert(0, dashes());
+        }
     }
     paint_rows(ctx, scr, body, &rows);
 }
@@ -609,7 +654,7 @@ enum Kind {
     Tempo,
 }
 
-fn panel(ctx: &mut Ctx, scr: &mut Screen, r: Rect, kind: Kind, side: Option<&[Row]>) {
+fn panel(ctx: &mut Ctx, scr: &mut Screen, r: Rect, kind: Kind, side: Option<&[Row]>, hud: bool) {
     let title = match kind {
         Kind::Eq => "equalizer",
         Kind::Level => "level",
@@ -620,8 +665,8 @@ fn panel(ctx: &mut Ctx, scr: &mut Screen, r: Rect, kind: Kind, side: Option<&[Ro
         Kind::Level => subtitle(ctx, "dB, uncalibrated estimate"),
         Kind::Tempo => subtitle(ctx, "beats per minute"),
     };
-    if kind == Kind::Tempo && side.is_some() && ctx.audio.mic == Mic::Running {
-        // side by side there is no HUD: the beat dot moves into the title
+    if kind == Kind::Tempo && hud_owner(ctx.state.opts.views) == HudOwner::Nobody && ctx.audio.mic == Mic::Running {
+        // no status line anywhere: the beat dot moves into the tempo title
         let (dot, tone, _) = ctx.beat_dot();
         sub.insert(0, (format!(" {dot}"), tone));
     }
@@ -637,11 +682,11 @@ fn panel(ctx: &mut Ctx, scr: &mut Screen, r: Rect, kind: Kind, side: Option<&[Ro
         (_, Some(rows)) => paint_rows(ctx, scr, body, rows),
         (Kind::Eq, None) => paint_eq(ctx, scr, body),
         (Kind::Level, None) => {
-            let rows = db_rows(ctx, body.w, body.h, true);
+            let rows = db_rows(ctx, body.w, body.h, hud);
             paint_rows(ctx, scr, body, &rows)
         }
         (Kind::Tempo, None) => {
-            let rows = bpm_rows(ctx, body.w, body.h);
+            let rows = bpm_rows(ctx, body.w, body.h, hud);
             paint_rows(ctx, scr, body, &rows)
         }
     }
@@ -650,11 +695,12 @@ fn panel(ctx: &mut Ctx, scr: &mut Screen, r: Rect, kind: Kind, side: Option<&[Ro
 /// The rows the lower part (level and tempo) asks for, frame included; None without either.
 fn lower_want(views: Views, width: usize, ch: usize, cw: usize, big: bool) -> usize {
     let (level, tempo) = (views.has(Views::LEVEL), views.has(Views::BPM));
+    let hud = hud_owner(views) == HudOwner::Lower;
     match (level, tempo) {
         (true, true) if mix_columns(width.saturating_sub(cw)).is_some() => ch + side_by_side_rows(big),
-        (true, true) => 2 * ch + level_rows(big) + tempo_rows(big),
-        (true, false) => ch + level_rows(big),
-        (false, true) => ch + tempo_rows(big),
+        (true, true) => 2 * ch + level_rows(big, hud) + tempo_rows(big, hud),
+        (true, false) => ch + level_rows(big, hud),
+        (false, true) => ch + tempo_rows(big, hud),
         _ => 0,
     }
 }
@@ -695,12 +741,13 @@ pub fn draw(state: &mut State, audio: &mut AudioState, scr: &mut Screen, rect: R
     };
     let eq_h = if eq_on { rect.h - lower_h } else { 0 };
     if eq_on && eq_h > 0 {
-        panel(&mut ctx, scr, Rect { h: eq_h, ..rect }, Kind::Eq, None);
+        panel(&mut ctx, scr, Rect { h: eq_h, ..rect }, Kind::Eq, None, true);
     }
     if lower_h == 0 {
         return;
     }
     let lower = Rect { y: rect.y + eq_h, h: lower_h, ..rect };
+    let hud = hud_owner(views) == HudOwner::Lower;
     match (level_on, tempo_on) {
         (true, true) => {
             if let Some(_col) = mix_columns(lower.w.saturating_sub(cw)) {
@@ -708,16 +755,16 @@ pub fn draw(state: &mut State, audio: &mut AudioState, scr: &mut Screen, rect: R
                 let rows = lower.h.saturating_sub(ch);
                 let body_w = left_w.saturating_sub(cw);
                 let (l, r) = if ctx.audio.mic == Mic::Running { mix_rows(&mut ctx, body_w, rows) } else { (vec![], vec![]) };
-                panel(&mut ctx, scr, Rect { w: left_w, ..lower }, Kind::Level, Some(&l));
-                panel(&mut ctx, scr, Rect { x: lower.x + left_w, w: lower.w - left_w, ..lower }, Kind::Tempo, Some(&r));
+                panel(&mut ctx, scr, Rect { w: left_w, ..lower }, Kind::Level, Some(&l), false);
+                panel(&mut ctx, scr, Rect { x: lower.x + left_w, w: lower.w - left_w, ..lower }, Kind::Tempo, Some(&r), false);
             } else {
                 let top = lower.h / 2;
-                panel(&mut ctx, scr, Rect { h: top, ..lower }, Kind::Level, None);
-                panel(&mut ctx, scr, Rect { y: lower.y + top, h: lower.h - top, ..lower }, Kind::Tempo, None);
+                panel(&mut ctx, scr, Rect { h: top, ..lower }, Kind::Level, None, hud);
+                panel(&mut ctx, scr, Rect { y: lower.y + top, h: lower.h - top, ..lower }, Kind::Tempo, None, hud);
             }
         }
-        (true, false) => panel(&mut ctx, scr, lower, Kind::Level, None),
-        _ => panel(&mut ctx, scr, lower, Kind::Tempo, None),
+        (true, false) => panel(&mut ctx, scr, lower, Kind::Level, None, hud),
+        _ => panel(&mut ctx, scr, lower, Kind::Tempo, None, hud),
     }
 }
 

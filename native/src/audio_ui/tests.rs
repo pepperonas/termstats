@@ -98,7 +98,8 @@ fn without_microphone_access_every_panel_says_so_and_shows_no_bars() {
             for glyph in SPARK.iter().take(7).chain([&BAR_SECONDARY, &VPEAK, &BAR_EMPTY]) {
                 assert!(!all.contains(*glyph), "{glyph} at {w}x{h}\n{all}");
             }
-            assert!(!all.contains("dB, uncalibrated") || !all.contains(" 20.0"), "no level digits");
+            // no level reading: the only "dB" left is the one in the level panel's title
+            assert_eq!(all.matches("dB").count(), all.matches("dB, uncalibrated").count(), "level digits\n{all}");
         }
     }
 }
@@ -110,6 +111,8 @@ fn never_fed_is_the_quiet_state() {
     let all = text(&scr, r);
     assert!(all.contains("waiting for"), "{all}");
     assert!(!all.contains("microphone"), "{all}");
+    assert!(all.contains("min  --   max  --"), "no extremes before the first block\n{all}");
+    assert!(!all.contains("100.0"), "{all}");
     // the tempo is the big "---": the minus glyph row of three squares, twice per digit
     assert!(all.contains("██████  ██████  ██████"), "{all}");
 }
@@ -203,6 +206,57 @@ fn tiny_rects_neither_panic_nor_spill() {
                     for x in 0..w + 4 {
                         assert!(scr.cells[y * (w + 4) + x] == BLANK || r.contains(x, y), "views {views} {w}x{h} at ({x},{y})");
                     }
+                }
+            }
+        }
+    }
+}
+
+/// How many status lines (`●  BPM …  ·  conf ▉…`) the frame carries.
+fn huds(all: &str) -> usize {
+    all.matches("·  conf ").count()
+}
+
+#[test]
+fn the_status_line_is_drawn_at_most_once() {
+    let mut audio = heard(8.0);
+    for views in SUBSETS {
+        let eq = views & Views::EQ != 0;
+        let both = views & Views::LEVEL != 0 && views & Views::BPM != 0;
+        let want = if eq || !both { 1 } else { 0 };
+        for (w, h) in SIZES {
+            let (scr, r) = frame(views, w, h, &mut audio);
+            let all = text(&scr, r);
+            assert_eq!(huds(&all), want, "views {views} at {w}x{h}\n{all}");
+            if both && !eq {
+                let title = all.lines().find(|l| l.contains("tempo")).unwrap();
+                assert!(title.contains(BEAT_ON) || title.contains(BEAT_OFF), "beat dot in the tempo title\n{all}");
+            }
+        }
+    }
+}
+
+#[test]
+fn with_the_microphone_off_level_and_tempo_always_show_dashes() {
+    let big_dash = "██████  ██████  ██████";
+    for mic in [Mic::NoPermission, Mic::NoDevice] {
+        let mut audio = heard(5.0);
+        audio.mic = mic;
+        for (w, h) in [(80, 24), (200, 60)] {
+            for views in SUBSETS {
+                let (scr, r) = frame(views, w, h, &mut audio);
+                let all = text(&scr, r);
+                let numbers = (views & Views::LEVEL != 0) as usize + (views & Views::BPM != 0) as usize;
+                // big dashes (their middle row) or a one-line "---", per panel body
+                let dashes: usize = all.lines()
+                    .map(|l| l.matches(big_dash).count() + l.split('│').filter(|seg| seg.trim() == "---").count())
+                    .sum();
+                assert_eq!(dashes, numbers, "views {views} {mic:?} at {w}x{h}\n{all}");
+                // no bars anywhere: only the dashes' own squares may be drawn
+                let squares = all.matches('█').count();
+                assert_eq!(squares % 9, 0, "{all}");
+                if views == Views::EQ {
+                    assert_eq!(squares, 0, "no bars in the equalizer\n{all}");
                 }
             }
         }

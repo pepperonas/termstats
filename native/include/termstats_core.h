@@ -9,7 +9,10 @@
  * -2 bad argument. Pointers inside a TsFrame stay valid until the next call on the
  * same core. A core is not thread-safe: call it from one thread at a time - with ONE
  * exception, ts_feed_audio, which may be called from any thread (the audio thread) while
- * another thread draws: it only copies the samples into a guarded ring of 2 seconds.
+ * another thread draws: it only copies the samples into a guarded ring of 2 seconds and
+ * never allocates once the rate is set. That exception does NOT cover ts_free: the caller
+ * must stop its audio feed and join it (no ts_feed_audio running or to come) BEFORE
+ * ts_free - a feed racing ts_free uses freed memory.
  */
 #ifndef TERMSTATS_CORE_H
 #define TERMSTATS_CORE_H
@@ -90,7 +93,7 @@ const char *ts_version(void);
 uint32_t ts_theme_count(void);
 const char *ts_theme_name(uint32_t index);                 /* NULL past the end */
 TsCore *ts_create(const TsOptions *opts);                  /* NULL on bad theme */
-void ts_free(TsCore *core);
+void ts_free(TsCore *core);  /* stop and join the audio feed first (see above) */
 int32_t ts_set_options(TsCore *core, const TsOptions *opts);
 int32_t ts_sample(TsCore *core, double mono);              /* read the machine */
 int32_t ts_draw(TsCore *core, uint32_t w, uint32_t h, double mono, uint32_t regions, TsFrame *out);
@@ -101,6 +104,8 @@ int32_t ts_feed_audio(TsCore *core, const float *mono, size_t n, double sample_r
 /* mono samples in -1...1 at sample_rate (4000...768000 Hz, else -2), ANY thread. A new rate
  * drops what is buffered and starts the analysis afresh. */
 int32_t ts_audio_state(TsCore *core, int32_t state);       /* TS_AUDIO_*, else -2 */
+/* Not running: every audio panel shows the message and no bars; the level and tempo panels
+ * show "---" where their number would be. */
 
 #ifdef __cplusplus
 }

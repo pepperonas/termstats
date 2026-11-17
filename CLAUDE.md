@@ -506,6 +506,8 @@ specification - `audio.py`, `motion.py` and the audio bodies of `cli.py`.
   44.1 kHz, where `at_44_1_khz_the_numbers_are_pythons` holds db, smoothing, tempo, beats,
   confidence, kick band and all 28 bands to Python's printed numbers. Python itself does NOT
   scale (at 48 kHz it runs ~9 % faster); the time-based tempo constants need no scaling.
+  ⚠️ The SuperFlux lag window (SF_LAG/SF_WIN) IS a block count and is scaled too (fix
+  round 1: at 96 kHz it had shrunk to half its time span); pinned at 22.05/48/96 kHz.
 - **The FFT runs only while `Views::EQ` is on.** Without it the kick band (what the tempo
   needs) is measured by Goertzel on the bass bins - the same magnitudes. ⚠️ One Goertzel
   chain per bin was SLOWER than the whole FFT (117 vs 52 µs); the bins now run in passes of
@@ -519,10 +521,15 @@ specification - `audio.py`, `motion.py` and the audio bodies of `cli.py`.
   `mix_columns(body width)` holds two columns of MIX_MIN_COLUMN_W (no HUD there, the heads
   padded to equal height before the meters as in `mix_body`, the beat dot in the tempo
   title), stacked as two `db_body`/`bpm_body` panels otherwise; one view alone takes the
-  region. Big digits only if the equalizer keeps EQ_MIN_ROWS. `ts_audio_state` 1/2 replaces
-  every panel body with `microphone access is off` + `System Settings > Privacy > Microphone`
-  or `no input device`, no bars, `---` where the number would be. Never fed = the quiet
-  state (`---`, the floor level), not an error.
+  region. Big digits only if the equalizer keeps EQ_MIN_ROWS. **The status line**
+  (`●  BPM …  ·  dB  ·  conf`) is drawn at most ONCE: in the equalizer when it is on; else in
+  the one level or tempo panel; with level AND tempo and no equalizer, nowhere (each shows
+  its own number, the tempo title carries the beat dot) - pinned for all seven subsets.
+  `ts_audio_state` 1/2 replaces every panel body with `microphone access is off` +
+  `System Settings > Privacy > Microphone` or `no input device` and no bars; the level and
+  tempo panels ALWAYS add `---` (big digits when they fit under the message, else one line,
+  first when even that does not fit); the equalizer shows the message only. Never fed = the
+  quiet state (`---`, the floor level), not an error.
 - `BIG_FONT` (and its row/scale/gap constants, METRO_W) is GENERATED into `themes.rs` by
   `tools/gen_native_themes.py` - never edited by hand.
 - `native/src/compose.rs` - header and footer stay the dashboard's. Audio only: the whole
@@ -532,7 +539,12 @@ specification - `audio.py`, `motion.py` and the audio bodies of `cli.py`.
   dashboard's own budget giving up processes and charts first. The terminal program
   (`main.rs`) never sets audio bits and still calls `State::draw` directly.
 - C interface, `TS_ABI 2`: `ts_feed_audio(core, mono, n, rate)` from ANY thread - locks a
-  `Mutex` ring of 2 s, drops the oldest on overflow, a new rate clears it; nothing else.
+  `Mutex` ring of 2 s, drops the oldest on overflow, a new rate clears it and RESERVES the
+  two seconds (no later feed allocates); nothing else. The rate is stored as it survives
+  `f32` - the one value the analyzer also sees, so a rate like 47999.99 is not a change on
+  every draw. ⚠️ `ts_feed_audio` must not race `ts_free`: a documented contract (header
+  note + prototype), the app stops and joins its audio feed first; no refcounting.
+  `ts_draw` checks `core`/`out`/`mono` BEFORE it drains the ring.
   `ts_draw(core, w, h, mono, regions, out)` drains the ring on the drawing thread and
   analyses, then draws the asked-for regions (1 dashboard, 2 audio, 0 = both); a region not
   asked for keeps its cells from the previous frame; a size or options change draws both.
@@ -555,10 +567,10 @@ specification - `audio.py`, `motion.py` and the audio bodies of `cli.py`.
   dashboard's x offset in the blit is always 0). ⚠️ The first rerun failed to COMPILE: the
   harness's `git checkout` of a mutated file took an uncommitted change along - commit
   before every batch (the old lesson, met again).
-- Ported as they are (Python quirks, listed rather than fixed): `eq_columns` subtracts the
-  panel chrome from a width that is already the body width (fewer bars than fit);
-  `db_min` starts at 0 and `db_max` at the floor, so before the first block the stats line
-  says `min 100.0 max 20.0`.
+- Ported as it is (a Python quirk, listed rather than fixed): `eq_columns` subtracts the
+  panel chrome from a width that is already the body width (fewer bars than fit).
+- **Deliberate difference:** before the first block the level panel says
+  `min  --   max  --`; Python prints its starting values `min 100.0 max 20.0`.
 
 ## History and recommendation (0.10.0)
 

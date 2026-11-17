@@ -4,9 +4,10 @@
 //! they are re-chunked to `BLOCK` samples, as the Python program reads them. Numbers come
 //! out: the level in dBFS, 28 band levels with peaks, the tempo. Nothing here draws.
 //!
-//! The Python program's per-block smoothing constants are tuned for 44.1 kHz. A block of
-//! 1024 samples at 48 kHz is shorter, so here every per-block constant is scaled by the
-//! block's real duration against that reference (`Scale`) - at 44.1 kHz it is the identity.
+//! The Python program's per-block constants are tuned for 44.1 kHz. A block of 1024 samples
+//! at 48 kHz is shorter, so here every per-block constant - the smoothing rates, the peak
+//! hold and fall, the SuperFlux lag window of the tempo - is scaled by the block's real
+//! duration against that reference (`Scale`); at 44.1 kHz it is the identity.
 
 pub mod bpm;
 pub mod fft;
@@ -129,7 +130,7 @@ impl Analyzer {
             sample_rate,
             scale,
             spectrum: Spectrum::new(sample_rate, scale),
-            tempo: BpmAnalyzer::new(),
+            tempo: BpmAnalyzer::with_scale(scale),
             spectrum_on: true,
             pending: Vec::with_capacity(2 * BLOCK),
             db: DB_FLOOR,

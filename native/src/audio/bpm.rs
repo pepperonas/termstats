@@ -1,7 +1,10 @@
 //! Energy-onset + IOI-median tempo estimator - a port of `BpmAnalyzer` in termstats/audio.py
 //! (which mirrors inspector-rust's bpm.ts and disco-controller). Everything here is in
-//! seconds already, except the SuperFlux lag window, which counts blocks as in Python.
+//! seconds already, except the SuperFlux lag window: SF_LAG and SF_WIN count 44.1 kHz
+//! blocks, as in Python, and are converted by `Scale` so the window spans the same TIME at
+//! any rate (at 44.1 kHz they are the constants themselves).
 
+use super::Scale;
 use std::collections::VecDeque;
 
 pub const THRESHOLD: f64 = 1.4;
@@ -22,6 +25,8 @@ pub struct BpmAnalyzer {
     onsets: VecDeque<f64>,
     energy_hist: VecDeque<(f64, f64)>,
     ef: VecDeque<f64>,
+    lag: usize,
+    win: usize,
     raw_bpm_hist: VecDeque<(f64, f64)>,
     first_t: Option<f64>,
     pub last_onset: f64,
@@ -37,9 +42,15 @@ impl Default for BpmAnalyzer {
 }
 
 impl BpmAnalyzer {
+    /// At the reference rate.
     pub fn new() -> Self {
-        BpmAnalyzer { onsets: VecDeque::new(), energy_hist: VecDeque::new(),
-                      ef: VecDeque::with_capacity(SF_LAG + SF_WIN), raw_bpm_hist: VecDeque::new(), first_t: None,
+        Self::with_scale(Scale { k: 1.0 })
+    }
+
+    pub fn with_scale(scale: Scale) -> Self {
+        let (lag, win) = (scale.blocks(SF_LAG as f64) as usize, scale.blocks(SF_WIN as f64) as usize);
+        BpmAnalyzer { onsets: VecDeque::new(), energy_hist: VecDeque::new(), lag, win,
+                      ef: VecDeque::with_capacity(lag + win), raw_bpm_hist: VecDeque::new(), first_t: None,
                       last_onset: -1e9, display_bpm: 0.0, confidence: 0.0, onset_strength: 0.0 }
     }
 
@@ -50,12 +61,12 @@ impl BpmAnalyzer {
         while self.energy_hist.front().is_some_and(|&(t, _)| now - t > AVG_WINDOW_S) {
             self.energy_hist.pop_front();
         }
-        let reference = if self.ef.len() >= SF_LAG + SF_WIN {
-            self.ef.iter().take(SF_WIN).cloned().fold(f64::MIN, f64::max)
+        let reference = if self.ef.len() >= self.lag + self.win {
+            self.ef.iter().take(self.win).cloned().fold(f64::MIN, f64::max)
         } else {
             0.0
         };
-        if self.ef.len() == SF_LAG + SF_WIN {
+        if self.ef.len() == self.lag + self.win {
             self.ef.pop_front();
         }
         self.ef.push_back(energy);
@@ -134,6 +145,15 @@ impl BpmAnalyzer {
     /// `int(round(display_bpm))` - Python rounds half to even, so does this.
     pub fn bpm(&self) -> u32 {
         self.display_bpm.round_ties_even() as u32
+    }
+
+    /// The SuperFlux lag and window in blocks at this analyzer's rate.
+    pub fn lag(&self) -> usize {
+        self.lag
+    }
+
+    pub fn win(&self) -> usize {
+        self.win
     }
 
     pub fn onset_rate(&self) -> f64 {
