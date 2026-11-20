@@ -11,6 +11,14 @@ line will be 1.0.0.
 
 ## [Unreleased]
 
+### Added
+- **The daily-report example judges a machine you have in mind.** Name one configuration of
+  `catalog/hardware.json` in `~/.config/termstats/candidate.json` (or `TERMSTATS_REPORT_CANDIDATE`);
+  the mail then opens with how well it matches the history (a percentage per area and in total:
+  100 between the needs of "fits" and "with reserve", proportionally less below, a mild discount
+  above) and whether it is worth buying, against the cheapest MacBook "with reserve" and the cheaper
+  steps of the same machine. Example only, not part of the package.
+
 ## [0.12.0] - 2026-11-17
 
 The terminal program behaves exactly as before; `termstats -eq/-bpm/-db/-x` still run in

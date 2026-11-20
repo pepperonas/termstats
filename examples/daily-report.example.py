@@ -16,6 +16,8 @@ already has SMTP set up and the laptop has not:
     TERMSTATS_REPORT_FROM=reports@example.org      optional: From header (default: msmtp's)
     TERMSTATS_NATIVE_BIN=/path/termstats-native    optional: where the native core is
     TERMSTATS_REPORT_BROWSER=/path/to/chrome       optional: the browser that prints the PDF
+    TERMSTATS_REPORT_CANDIDATE=~/wish.json         optional: a machine you have in mind (default
+                                                   ~/.config/termstats/candidate.json, see candidate())
 
     daily-report.example.py              yesterday, once (a marker remembers what was sent)
     daily-report.example.py --date 2026-11-15      that day, sent regardless of the marker
@@ -488,6 +490,204 @@ def german_plain(g):
     out += ["", "Die beiden Aufbauten im Vergleich"] + [f"  {line}" for line in g["compare"]]
     return "\n".join(out + [""] + g["notes"])
 
+# --- the machine you have in mind: how well it matches the measured need ----------------------
+#
+# A JSON file names one configuration out of catalog/hardware.json, for example
+#   {"device": "macbook-pro-16", "chip": "apple-m5-pro-18c", "ram_gb": 64, "ssd_gb": 2048,
+#    "note": "Standard-Display, ohne Netzteil"}
+# at ~/.config/termstats/candidate.json or wherever TERMSTATS_REPORT_CANDIDATE points. The report
+# then says every day how well it matches what the history asks for, and whether it is worth buying.
+
+CANDIDATE_WEIGHTS = (("ram", 0.35), ("cpu", 0.25), ("ssd", 0.20), ("gpu", 0.20))   # memory is what runs out first
+OVERSIZE_PENALTY = 0.5        # beyond "with reserve": 50 % off for capacity that would sit idle entirely
+WORTH_EXTRA_SHARE = 0.10      # up to 10 % over the cheapest laptop "with reserve" counts as the same price
+
+
+def catalogue_path():
+    choice = os.environ.get("TERMSTATS_CATALOG")
+    return pathlib.Path(choice) if choice else pathlib.Path(__file__).resolve().parent.parent / "catalog" / "hardware.json"
+
+
+def candidate_path():
+    choice = os.environ.get("TERMSTATS_REPORT_CANDIDATE")
+    return pathlib.Path(os.path.expanduser(choice)) if choice else pathlib.Path.home() / ".config" / "termstats" / "candidate.json"
+
+
+def configure(catalogue, wish):
+    """The wished-for configuration with name, scores and price, plus the other RAM/SSD steps of the
+    same device and chip (for "the same machine with less would do"). None when it is not in the catalogue."""
+    chip = catalogue["chips"].get(wish.get("chip"))
+    device = next((d for d in catalogue["devices"] if d["id"] == wish.get("device")), None)
+    if not chip or not device:
+        return None
+    variant = next((v for v in device["variants"] if v["chip"] == wish["chip"]), None)
+    if not variant:
+        return None
+    rams = {o["gb"]: o["plus_eur"] for o in variant["ram_options"]}
+    ssds = {o["gb"]: o["plus_eur"] for o in variant["ssd_options"]}
+    if wish.get("ram_gb") not in rams or wish.get("ssd_gb") not in ssds:
+        return None
+
+    def build(ram, ssd):
+        return {"ram_gb": ram, "ssd_gb": ssd, "price_eur": variant["base_price_eur"] + rams[ram] + ssds[ssd]}
+
+    return {"name": f'{device["vendor"]} {device["name"]}', "chip": chip["name"], "multi": chip.get("multi"), "gpu": chip.get("gpu"),
+            "display_inch": device.get("display_inch"), "note": wish.get("note", ""),
+            **build(wish["ram_gb"], wish["ssd_gb"]),
+            "steps": sorted((build(r, s) for r in rams for s in ssds), key=lambda c: c["price_eur"])}
+
+
+def dimension_score(have, fits, reserve):
+    """100 between the needs of "fits" and "with reserve"; less below "fits" (in proportion), and a
+    gentle discount above "with reserve" for capacity the history gives no use for."""
+    if not fits:
+        return 100.0
+    if have < fits:
+        return 100.0 * have / fits
+    if have <= reserve:
+        return 100.0
+    return 100.0 * (1 - OVERSIZE_PENALTY * (1 - reserve / have))
+
+
+def assess(spec, data):
+    """How well `spec` matches the history: per dimension and as one percentage, with a verdict."""
+    tiers = data["tiers"]
+    need = {t["tier"]: t["need"] for t in tiers}
+    low, fits, reserve = need["just enough"], need["fits"], need["with reserve"]
+    now_multi = data["machine"].get("multi")
+    now_gpu = spec.get("now_gpu")
+    have = {"ram": spec["ram_gb"], "ssd": spec["ssd_gb"], "cpu": spec["multi"], "gpu": spec["gpu"]}
+    dims = []
+    for key, weight in CANDIDATE_WEIGHTS:
+        field = {"ram": "ram_gb", "ssd": "ssd_gb", "cpu": "multi", "gpu": "gpu"}[key]
+        if have[key] is None or not fits.get(field):
+            continue
+        dims.append({"key": key, "weight": weight, "have": have[key], "low": low[field], "fits": fits[field],
+                     "reserve": reserve[field], "score": dimension_score(have[key], fits[field], reserve[field])})
+    total = sum(d["weight"] for d in dims) or 1
+    percent = sum(d["score"] * d["weight"] for d in dims) / total
+    short = [d["key"] for d in dims if d["have"] < d["low"]]
+    tight = [d["key"] for d in dims if d["low"] <= d["have"] < d["fits"]]
+    roomy = all(d["have"] >= d["reserve"] for d in dims)
+    best = tiers[2].get("laptop") if len(tiers) > 2 else None           # cheapest MacBook "with reserve"
+    cheaper = next((s for s in spec["steps"] if s["price_eur"] < spec["price_eur"]
+                    and s["ram_gb"] >= reserve["ram_gb"] and s["ssd_gb"] >= reserve["ssd_gb"]), None)
+    extra = spec["price_eur"] - best["price_eur"] if best else None
+    if short:
+        verdict, worth = "nein", "Nein: zu knapp bei " + ", ".join(DIM_DE[k] for k in short) + "."
+    elif tight:
+        verdict, worth = "eher nicht", ("Eher nicht: er reicht nur knapp bei " + ", ".join(DIM_DE[k] for k in tight)
+                                        + ". Für diesen Preis sollte er mindestens „passt“ erfüllen.")
+    elif roomy and (extra is None or extra <= WORTH_EXTRA_SHARE * best["price_eur"]):
+        verdict, worth = "ja", "Ja: er deckt den gemessenen Bedarf mit Reserve, ohne nennenswert mehr zu kosten als nötig."
+    elif roomy:
+        verdict, worth = "ja, mit Aufpreis", (f'Ja, wenn dir die Extras {euro(extra)} wert sind: den Bedarf mit Reserve deckt schon '
+                                              f'das günstigste passende MacBook für {euro(best["price_eur"])}.')
+    else:
+        verdict, worth = "ja", "Ja: er erfüllt die Stufe „passt“; für die volle Reserve fehlt wenig."
+    return {"percent": percent, "dims": dims, "verdict": verdict, "worth": worth, "best": best, "extra": extra,
+            "cheaper": cheaper, "now_multi": now_multi, "now_gpu": now_gpu, "ready": data.get("ready", True),
+            "days": data.get("history", {}).get("days"), "short_now": data["machine"].get("short", [])}
+
+
+DIM_DE = {"ram": "Arbeitsspeicher", "ssd": "Datenträger", "cpu": "Prozessor", "gpu": "Grafik"}
+
+
+def candidate_lines(spec, a):
+    """The verdict on the wished-for machine as text lines - one source for mail, HTML and PDF."""
+    head = (f'{spec["name"]} – {spec["chip"]}, {spec["ram_gb"]} GB Speicher, {size(spec["ssd_gb"])} SSD – '
+            f'{euro(spec["price_eur"])}' + (f' ({spec["note"]})' if spec["note"] else ""))
+    rows = []
+    for d in a["dims"]:
+        if d["key"] == "ram":
+            have, need = f'{d["have"]} GB', f'„passt“ {de(d["fits"], 0)} GB, „mit Reserve“ {de(d["reserve"], 0)} GB'
+        elif d["key"] == "ssd":
+            have, need = size(d["have"]), f'„passt“ {de(d["fits"], 0)} GB, „mit Reserve“ {de(d["reserve"], 0)} GB'
+        else:
+            base = a["now_multi"] if d["key"] == "cpu" else a["now_gpu"]
+            if base:
+                have = f'{de(100 * d["have"] / base, 0)} % des jetzigen Chips'
+                need = f'„passt“ {de(100 * d["fits"] / base, 0)} %, „mit Reserve“ {de(100 * d["reserve"] / base, 0)} %'
+            else:
+                have = f'{d["have"]:,}'.replace(",", ".") + " Punkte"
+                need = (f'„passt“ {d["fits"]:,.0f}, „mit Reserve“ {d["reserve"]:,.0f} Punkte').replace(",", ".")
+        rows.append((DIM_DE[d["key"]], f'{have} – verlangt: {need}', d["score"]))
+    notes = []
+    if a["cheaper"]:
+        c = a["cheaper"]
+        notes.append(f'Dieselbe Ausführung mit {c["ram_gb"]} GB und {size(c["ssd_gb"])} erfüllt ebenfalls „mit Reserve“ '
+                     f'und kostet {euro(c["price_eur"])} ({euro(spec["price_eur"] - c["price_eur"])} weniger).')
+    if a["best"] and a["extra"] is not None and a["extra"] > 0:
+        b = a["best"]
+        notes.append(f'Günstigstes MacBook „mit Reserve“: {b["vendor"]} {b["name"]} – {b["chip"]}, {b["ram_gb"]} GB, '
+                     f'{size(b["ssd_gb"])} – {euro(b["price_eur"])}; dein Wunschgerät kostet {euro(a["extra"])} mehr'
+                     + (f', dafür: {", ".join(a["extras"])}.' if a.get("extras") else "."))
+    if a["short_now"]:
+        notes.append("Ein neuer Rechner lohnt sich überhaupt: der jetzige ist zu knapp bei "
+                     + ", ".join(SHORT_DE.get(k, k) for k in a["short_now"]) + ".")
+    if not a["ready"]:
+        notes.append(f'Vorläufig: erst {a["days"]} von 14 Tagen aufgezeichnet, Bedarf und Prozentwert können sich noch ändern.')
+    notes.append("Übereinstimmung: je Bereich 100 %, wenn das Gerät zwischen „passt“ und „mit Reserve“ liegt; darunter anteilig weniger, "
+                 "darüber ein milder Abzug für Leistung, die der Verlauf nicht braucht. Gewichtet: Speicher 35 %, Prozessor 25 %, "
+                 "Datenträger und Grafik je 20 %.")
+    return head, rows, notes
+
+
+def current_gpu(catalogue, machine):
+    """The graphics score of the chip the history was measured on (catalogue name "<chip> (<n> CPU …")."""
+    chip, ncpu = machine.get("chip", ""), machine.get("ncpu")
+    for entry in catalogue["chips"].values():
+        if chip and entry["name"].startswith(chip + " (") and f"({ncpu} CPU" in entry["name"]:
+            return entry.get("gpu")
+    return None
+
+
+def extras(catalogue, spec, best):
+    """What the wished-for machine has beyond the cheapest MacBook "with reserve" - what the extra money buys."""
+    device = next((d for d in catalogue["devices"] if d["id"] == best.get("device")), {})
+    chip = next((c for c in catalogue["chips"].values() if c["name"] == best.get("chip")), {})
+    out = []
+    if spec.get("display_inch") and device.get("display_inch") and spec["display_inch"] > device["display_inch"]:
+        out.append(f'{de(spec["display_inch"])} statt {de(device["display_inch"])} Zoll Bildschirm')
+    if spec.get("multi") and chip.get("multi") and spec["multi"] > chip["multi"]:
+        out.append(f'{de(100 * (spec["multi"] / chip["multi"] - 1), 0)} % mehr Mehrkernleistung')
+    if spec.get("gpu") and chip.get("gpu") and spec["gpu"] > chip["gpu"]:
+        out.append(f'{de(100 * (spec["gpu"] / chip["gpu"] - 1), 0)} % mehr Grafikleistung')
+    if spec["ram_gb"] > best["ram_gb"]:
+        out.append(f'{spec["ram_gb"]} statt {best["ram_gb"]} GB Speicher')
+    if spec["ssd_gb"] > best["ssd_gb"]:
+        out.append(f'{size(spec["ssd_gb"])} statt {size(best["ssd_gb"])} SSD')
+    return out
+
+
+def candidate(data):
+    """(spec, assessment) of the wished-for machine; None when none is configured or it cannot be judged."""
+    path = candidate_path()
+    if not data or not path.exists():
+        return None
+    try:
+        catalogue = json.loads(catalogue_path().read_text(encoding="utf-8"))
+        spec = configure(catalogue, json.loads(path.read_text(encoding="utf-8")))
+        if spec is None:
+            print(f"daily-report: {path} names nothing in the catalogue - no verdict", file=sys.stderr)
+            return None
+        spec["now_gpu"] = current_gpu(catalogue, data["machine"])
+        verdict = assess(spec, data)
+        verdict["extras"] = extras(catalogue, spec, verdict["best"]) if verdict["best"] and (verdict["extra"] or 0) > 0 else []
+        return spec, verdict
+    except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
+        print(f"daily-report: no verdict on the wished-for machine ({error})", file=sys.stderr)
+        return None
+
+
+def candidate_plain(spec, a):
+    head, rows, notes = candidate_lines(spec, a)
+    out = [f'Dein Wunschgerät: {de(a["percent"], 0)} % Übereinstimmung – lohnt sich: {a["verdict"]}', "-" * 60, head, "", a["worth"], ""]
+    width = max(len(label) for label, _t, _s in rows) + 2
+    out += [f"  {label + ':':<{width}}{de(score, 0):>4} %  {text}" for label, text, score in rows]
+    return "\n".join(out + [""] + notes)
+
+
 CSS = """
 @page { size: A4; margin: 14mm 14mm 15mm; }
 * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -520,6 +720,7 @@ td.n { white-space: nowrap; }
 tr.has td { border-bottom: 0; padding-bottom: 1px; }
 td.why { color: #52514e; font-size: 8.5pt; padding-top: 0; }
 .lead { margin: 6px 0 8px; }
+.facts td.score { text-align: right; white-space: nowrap; font-weight: 650; font-variant-numeric: tabular-nums; padding-right: 14px; width: 1%; }
 .facts td:first-child { color: #52514e; white-space: nowrap; width: 1%; padding-right: 16px; }
 .warn { border: 1px solid #e4e3dd; border-left: 4px solid #eda100; border-radius: 6px; padding: 7px 10px; font-size: 9.5pt; margin: 6px 0 8px; }
 pre { font-family: Menlo, Consolas, monospace; font-size: 7pt; line-height: 1.45; white-space: pre-wrap; background: #f6f6f3; border-radius: 6px; padding: 9px 10px; margin: 6px 0 0; }
@@ -528,7 +729,7 @@ footer { color: #8a897f; font-size: 8pt; margin-top: 16px; }
 """
 
 
-def report_html(day, machine, rows, summary, pairs, report, g):
+def report_html(day, machine, rows, summary, pairs, report, g, wish=None):
     gb = 1024.0
     esc = html.escape
     installed_gb = (summary["installed"] or 0) / gb
@@ -545,6 +746,8 @@ def report_html(day, machine, rows, summary, pairs, report, g):
            f'<p class="sub">{esc(machine.get("host", ""))} · {esc(machine.get("model", "?"))} · {esc(machine.get("chip", "?"))} · {esc(str(machine.get("ncpu", "?")))} Kerne · {de(installed_gb, 0)} GB</p>',
            '<div class="tiles">' + "".join(f'<div class="tile"><span>{esc(label)}</span><b>{esc(value)}</b><small>{esc(extra)}</small></div>' for value, label, extra in tiles) + "</div>"]
 
+    if wish:
+        out.append(candidate_pdf_html(*wish))
     out.append('<section><h2>Prozessor</h2><p class="note">Auslastung aller Kerne in Prozent, je Minute. Lücken sind Ruhezustand.</p>'
                + line_chart(rows, [("cpu_avg", "Mittel der Minute", BLUE, 1, True), ("cpu_max", "Spitze der Minute", ORANGE, 1, False)], "%", y_max=100) + "</section>")
     out.append('<section><h2>Arbeitsspeicher</h2><p class="note">Belegt ist, was im Speicher lag. Gebraucht ist, was der Rechner ohne Komprimieren und Auslagern belegt hätte.</p>'
@@ -605,6 +808,32 @@ def report_html(day, machine, rows, summary, pairs, report, g):
     return "".join(out)
 
 
+def candidate_mail_html(spec, a):
+    """The verdict at the top of the mail, before the day's numbers."""
+    esc = html.escape
+    head, rows, notes = candidate_lines(spec, a)
+    colour = {"ja": "#1b7a4f", "ja, mit Aufpreis": "#1b7a4f", "eher nicht": "#9a6200", "nein": "#b3261e"}.get(a["verdict"], "#333")
+    cells = "".join(f'<tr><td style="padding:3px 12px 3px 0;color:#555;white-space:nowrap">{esc(label)}</td>'
+                    f'<td style="padding:3px 12px 3px 0;text-align:right;font-variant-numeric:tabular-nums"><b>{de(score, 0)} %</b></td>'
+                    f'<td style="padding:3px 0">{esc(text)}</td></tr>' for label, text, score in rows)
+    return (f'<div style="border:1px solid #ddd;border-left:4px solid {colour};border-radius:8px;padding:12px 14px;margin:0 0 18px">'
+            f'<div style="font-size:13px;color:#555">Dein Wunschgerät</div>'
+            f'<div style="font-size:22px;font-weight:650;margin:2px 0">{de(a["percent"], 0)} % Übereinstimmung '
+            f'<span style="color:{colour}">· lohnt sich: {esc(a["verdict"])}</span></div>'
+            f'<div style="margin:2px 0 8px">{esc(head)}</div><p style="margin:0 0 8px"><b>{esc(a["worth"])}</b></p>'
+            f'<table style="border-collapse:collapse;font-size:13px">{cells}</table>'
+            + "".join(f'<p style="margin:6px 0 0;color:#555;font-size:12px">{esc(n)}</p>' for n in notes) + "</div>")
+
+
+def candidate_pdf_html(spec, a):
+    esc = html.escape
+    head, rows, notes = candidate_lines(spec, a)
+    return (f'<section><h2>Dein Wunschgerät: {de(a["percent"], 0)} % Übereinstimmung · lohnt sich: {esc(a["verdict"])}</h2>'
+            f'<p class="lead">{esc(head)}</p><p><b>{esc(a["worth"])}</b></p><table class="facts">'
+            + "".join(f'<tr><td>{esc(label)}</td><td class="score">{de(score, 0)} %</td><td>{esc(text)}</td></tr>' for label, text, score in rows)
+            + "</table>" + "".join(f'<p class="note">{esc(n)}</p>' for n in notes) + "</section>")
+
+
 BROWSERS = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium",
             "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
             "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"]
@@ -651,22 +880,28 @@ def build(day):
         g = None                        # an older termstats-native: its own (English) text is used
     if g:
         report = german_plain(g)
+    wish = candidate(data)
+    wish_text = candidate_plain(*wish) if wish else ""
     title = f"Ressourcenverbrauch am {day:%d.%m.%Y}"
     width = max(len(label) for label, _ in pairs)
     plain = "\n".join([title, "=" * len(title), ""] + [f"{label + ':':<{width + 2}}{text}" for label, text in pairs]
+                      + (["", wish_text] if wish_text else [])
                       + ["", "Empfehlung (aus dem gesamten Verlauf, höchstens vier Wochen)", "-" * 60, report, "",
                          "Erzeugt von termstats auf diesem Rechner. Abbestellen: den täglichen Auftrag entfernen."])
     table = "".join(f'<tr><td style="padding:4px 14px 4px 0;vertical-align:top;white-space:nowrap;color:#555"><b>{html.escape(label)}</b></td>'
                     f'<td style="padding:4px 0">{html.escape(text)}</td></tr>' for label, text in pairs)
     rich = (f'<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;color:#1a1a1a;max-width:860px">'
-            f'<h2 style="margin:0 0 12px">{html.escape(title)}</h2><table style="border-collapse:collapse;font-size:14px">{table}</table>'
+            f'<h2 style="margin:0 0 12px">{html.escape(title)}</h2>'
+            + (candidate_mail_html(*wish) if wish else "")
+            + f'<table style="border-collapse:collapse;font-size:14px">{table}</table>'
             f'<h3 style="margin:22px 0 8px">Empfehlung <span style="font-weight:normal;color:#555">(aus dem gesamten Verlauf, höchstens vier Wochen)</span></h3>'
             f'<pre style="font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.45;background:#f4f4f6;color:#1a1a1a;padding:12px;border-radius:8px;white-space:pre-wrap">{html.escape(report)}</pre>'
             f'<p style="color:#555;font-size:12px">Erzeugt von termstats auf diesem Rechner. Abbestellen: den täglichen Auftrag entfernen.</p></div>')
     subject = (f'termstats {day:%d.%m.}: CPU Ø {de(summary["cpu_avg"], 0)} %, '
                f'RAM-Bedarf bis {de(summary["demand_max"] / 1024 if summary["demand_max"] else None)} GB'
-               + (f' - passt: {short}' if short else ""))
-    pdf = to_pdf(report_html(day, machine, rows, summary, pairs, report, g))
+               + (f' - Wunschgerät {de(wish[1]["percent"], 0)} %, lohnt sich: {wish[1]["verdict"]}' if wish
+                  else f' - passt: {short}' if short else ""))
+    pdf = to_pdf(report_html(day, machine, rows, summary, pairs, report, g, wish))
     attached = ("Der Bericht mit Diagrammen hängt als PDF an." if pdf
                 else "Ohne PDF: auf diesem Rechner wurde kein Browser gefunden, der es drucken kann.")
     plain = plain.replace("\n\n", f"\n\n{attached}\n\n", 1)

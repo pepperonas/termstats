@@ -6,7 +6,7 @@ Guidance for Claude Code when working in this repository.
 
 `termstats` — a single-command terminal system dashboard (CPU, RAM, swap, disk, network, top
 processes, live history charts). Pure Python, no server, no config file; the only state on disk is the optional history (0.10.0).
-Repo `pepperonas/termstats` (public, MIT). **Current version 0.12.0**, 1548 pytest tests + 171 `cargo test` in `native/` (one ignored: the frame dumper).
+Repo `pepperonas/termstats` (public, MIT). **Current version 0.12.0**, 1561 pytest tests + 171 `cargo test` in `native/` (one ignored: the frame dumper).
 Runtime dependencies: psutil and rich - **no plotext since 0.8.0** (see "Resource use").
 
 ## The rename (2026-08-30) — read this first
@@ -623,6 +623,16 @@ service with autostart; program NAMES may be logged; three tiers from the data.
   password-protected, and this Mac's `pdftoppm` is xpdf's (no `-png`).
 - The recorder runs on this Mac since 2026-11-15 (`termstats record status`); the first real
   recommendation is due 2026-11-29.
+- **Wished-for machine (2026-11-20, user request):** the daily mail opens with a verdict on ONE
+  configuration named in `~/.config/termstats/candidate.json` (local, not in the repo: a purchase
+  plan is personal; `TERMSTATS_REPORT_CANDIDATE` overrides, `TERMSTATS_CATALOG` points at another
+  catalogue). Price and scores come from `catalog/hardware.json` - a configuration the catalogue
+  does not list gives no verdict, never a guessed price. Match per area = 100 between "fits" and
+  "with reserve", `have/fits` below, `1 - 0.5·(1 - reserve/have)` above; weights memory .35,
+  processor .25, storage/graphics .20. Verdict: "nein" (below "just enough"), "eher nicht" (below
+  "fits"), "ja" (with reserve, at most 10 % over the cheapest MacBook "with reserve"), "ja, mit
+  Aufpreis" (with reserve, dearer: the extras are listed). Pins: `tests/test_daily_report_candidate.py`
+  (13, five mutations caught). Currently: 16" MacBook Pro, M5 Pro 18/20, 64 GB, 2 TB.
 
 ## Releases (0.9.1)
 
