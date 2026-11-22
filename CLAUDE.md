@@ -621,6 +621,11 @@ service with autostart; program NAMES may be logged; three tiers from the data.
   `--user-data-dir`; `--pdf out.pdf` writes it without sending). Look at it after changes:
   `gs -sDEVICE=png16m -r85 -sOutputFile=pg-%d.png` - the Read tool calls Chrome's PDF
   password-protected, and this Mac's `pdftoppm` is xpdf's (no `-png`).
+  ⚠️ **Under launchd the PDF went missing (found 2026-11-22):** the agent ran with
+  `ProcessType Background`, headless Chrome took minutes there and the mails went out without the
+  attachment (18 KB instead of ~360 KB, msmtp log). Now `ProcessType Standard` in the local plist,
+  `QUIET_BROWSER` flags (mock keychain etc.), `PDF_TIMEOUT_S` 300, and the log line says
+  `with PDF (N KB)` / `WITHOUT PDF`. Test from launchd: `launchctl submit … -- env … --date <day>`.
 - The recorder runs on this Mac since 2026-11-15 (`termstats record status`); the first real
   recommendation is due 2026-11-29.
 - **Wished-for machine (2026-11-20, user request):** the daily mail opens with a verdict on ONE

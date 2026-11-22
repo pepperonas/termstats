@@ -839,6 +839,14 @@ BROWSERS = ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Ap
             "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge"]
 
 
+# Under launchd the browser otherwise waits on the keychain and background services; with
+# these it prints in about half the time. The timeout is generous because a background job
+# runs throttled - a PDF a few minutes late is better than a mail without one.
+QUIET_BROWSER = ("--use-mock-keychain", "--password-store=basic", "--disable-background-networking",
+                 "--disable-component-update", "--disable-sync", "--no-service-autorun")
+PDF_TIMEOUT_S = 300
+
+
 def browser():
     choice = os.environ.get("TERMSTATS_REPORT_BROWSER")
     for candidate in ([choice] if choice else BROWSERS):
@@ -858,9 +866,9 @@ def to_pdf(page):
         pathlib.Path(source).write_text(page, encoding="utf-8")
         try:
             subprocess.run([binary, "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-                            f"--user-data-dir={os.path.join(work, 'profile')}", "--no-pdf-header-footer",
+                            f"--user-data-dir={os.path.join(work, 'profile')}", "--no-pdf-header-footer", *QUIET_BROWSER,
                             f"--print-to-pdf={target}", pathlib.Path(source).as_uri()],
-                           capture_output=True, timeout=120)
+                           capture_output=True, timeout=PDF_TIMEOUT_S)
         except (OSError, subprocess.SubprocessError):
             return None
         data = pathlib.Path(target).read_bytes() if os.path.exists(target) else b""
@@ -963,7 +971,8 @@ def main(argv):
     send(subject, plain, rich, pdf, pdf_name)
     if not explicit:
         marker.write_text(day.isoformat() + "\n")
-    print(f"daily-report: sent {day} to {os.environ['TERMSTATS_REPORT_TO']}")
+    print(f"daily-report: sent {day} to {os.environ['TERMSTATS_REPORT_TO']} "
+          + (f"with PDF ({len(pdf) // 1024} KB)" if pdf else "WITHOUT PDF"))
 
 
 if __name__ == "__main__":
