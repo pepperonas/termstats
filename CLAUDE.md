@@ -632,7 +632,7 @@ service with autostart; program NAMES may be logged; three tiers from the data.
   processor .25, storage/graphics .20. Verdict: "nein" (below "just enough"), "eher nicht" (below
   "fits"), "ja" (with reserve, at most 10 % over the cheapest MacBook "with reserve"), "ja, mit
   Aufpreis" (with reserve, dearer: the extras are listed). Pins: `tests/test_daily_report_candidate.py`
-  (13, five mutations caught). Currently: 16" MacBook Pro, M5 Pro 18/20, 64 GB, 2 TB.
+  (13, five mutations caught). Which machine is configured stays local - it is a personal plan.
 
 ## Releases (0.9.1)
 
